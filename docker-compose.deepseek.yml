@@ -1,0 +1,48 @@
+# Профиль DeepSeek-OCR (Linux + NVIDIA GPU на хосте или отдельной машине).
+#
+# 1) На GPU-хосте поднимите vLLM DeepSeek-OCR (см. docs/DEPLOY_LINUX_DEEPSEEK.md):
+#    git clone https://github.com/mbrcic/Deepseek-OCR-vllm-docker.git
+#    cd Deepseek-OCR-vllm-docker && docker compose up -d --build
+#    → API http://HOST:8000
+#
+# 2) На этом проекте:
+#    cp .env.deepseek.example .env
+#    docker compose -f docker-compose.yml -f docker-compose.deepseek.yml --profile deepseek up -d --build
+#
+# Чертежи остаются в вашей сети; облако не используется.
+
+services:
+  deepseek-ocr:
+    profiles: ["deepseek"]
+    build: ./services/deepseek_ocr
+    restart: unless-stopped
+    environment:
+      DEEPSEEK_BACKEND_URL: ${DEEPSEEK_BACKEND_URL:-http://host.docker.internal:8000}
+      DEEPSEEK_BACKEND_TIMEOUT: ${DEEPSEEK_BACKEND_TIMEOUT:-300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${DEEPSEEK_ADAPTER_PORT:-8080}:8080"
+    networks:
+      - belnet
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  web:
+    depends_on:
+      deepseek-ocr:
+        condition: service_healthy
+        required: false
+    environment:
+      DEEPSEEK_OCR_URL: http://deepseek-ocr:8080
+      PDF_OCR_ENGINE: deepseek
+      PDF_LOCAL_ONLY: "1"
+      PDF_VISION_MODE: "off"
+      PDF_VISION_ZONES: "0"
+      PDF_VISION_TABLES: "0"
+      PDF_REPORT_LLM: "0"
+      PDF_REPORT_FAITHFUL: "1"

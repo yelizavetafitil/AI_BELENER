@@ -41,6 +41,8 @@ services:
       DATABASE_URL: postgresql://belener:belener@db:5432/belnipiai
       OLLAMA_HOST: http://ollama:11434
       EDOCR_URL: ${EDOCR_URL:-}
+      DEEPSEEK_OCR_URL: ${DEEPSEEK_OCR_URL:-}
+      PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
     volumes:
       - ./:/workspace:ro
     depends_on:

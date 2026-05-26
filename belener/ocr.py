@@ -310,6 +310,28 @@ def zone_to_base64_png(
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _ocr_with_tesseract(
+    doc: fitz.Document,
+    page_index: int,
+    clip: fitz.Rect,
+    *,
+    dpi: int,
+    lang: str,
+    zone: str,
+    psm_val: int,
+    img: Image.Image | None,
+) -> str:
+    eff_dpi = _cap_dpi_for_clip(clip, dpi)
+    if img is None:
+        img = _render_clip(doc, page_index, clip, dpi)
+    text = ""
+    if img is not None and shutil.which("tesseract"):
+        text = _tesseract_cli(img, lang=lang, psm=psm_val, dpi=eff_dpi, zone=zone)
+    if not text and ocr_fitz_fallback():
+        text = _tesseract_fitz(doc, page_index, clip, dpi=eff_dpi, lang=lang)
+    return text
+
+
 def ocr_region(
     doc: fitz.Document,
     page_index: int,
@@ -321,23 +343,45 @@ def ocr_region(
     psm: int | None = None,
     img: Image.Image | None = None,
 ) -> str:
-    if not tesseract_available():
-        return ""
     if _rect_too_small(clip):
         return ""
 
+    from belener.config import ocr_engine, ocr_fallback_tesseract
+
     lang = lang or ocr_lang()
     psm_val = psm if psm is not None else ocr_psm_for_zone(zone)
-    eff_dpi = _cap_dpi_for_clip(clip, dpi)
-
-    if img is None:
-        img = _render_clip(doc, page_index, clip, dpi)
-    text = ""
-    if img is not None and shutil.which("tesseract"):
-        text = _tesseract_cli(img, lang=lang, psm=psm_val, dpi=eff_dpi, zone=zone)
-    if not text and ocr_fitz_fallback():
-        text = _tesseract_fitz(doc, page_index, clip, dpi=eff_dpi, lang=lang)
     use_spell = _is_table_zone(zone) or (zone or "").casefold().startswith("stamp")
+
+    engine = ocr_engine()
+    use_deepseek = engine in ("deepseek", "auto")
+
+    if use_deepseek:
+        from belener.deepseek_ocr import (
+            deepseek_ocr_enabled,
+            normalize_deepseek_table_text,
+            ocr_pil_image,
+        )
+
+        if deepseek_ocr_enabled():
+            if img is None:
+                img = _render_clip(doc, page_index, clip, dpi)
+            if img is not None:
+                raw = ocr_pil_image(img, zone=zone, filename=f"{zone or 'zone'}.png")
+                if raw:
+                    if _is_table_zone(zone):
+                        raw = normalize_deepseek_table_text(raw)
+                    return finalize_ocr_text(raw, spell=use_spell)
+        if engine == "deepseek" and not ocr_fallback_tesseract():
+            return ""
+        if not tesseract_available():
+            return ""
+
+    elif not tesseract_available():
+        return ""
+
+    text = _ocr_with_tesseract(
+        doc, page_index, clip, dpi=dpi, lang=lang, zone=zone, psm_val=psm_val, img=img
+    )
     return finalize_ocr_text(text, spell=use_spell)
 
 
@@ -349,7 +393,21 @@ def ocr_stamp_frame(
     dpi: int,
     lang: str | None = None,
 ) -> str:
-    """OCR рамки: один рендер, два прохода Tesseract (поля + таблица подписей)."""
+    """OCR рамки: DeepSeek (если включён) или два прохода Tesseract."""
+    from belener.config import ocr_engine, ocr_fallback_tesseract
+
+    if ocr_engine() in ("deepseek", "auto"):
+        from belener.deepseek_ocr import deepseek_ocr_enabled, ocr_pil_image
+
+        if deepseek_ocr_enabled():
+            img = _render_clip(doc, page_index, clip, dpi)
+            if img is not None:
+                text = ocr_pil_image(img, zone="stamp_frame", filename="stamp.png")
+                if text:
+                    return finalize_ocr_text(text, spell=True)
+        if ocr_engine() == "deepseek" and not ocr_fallback_tesseract():
+            return ""
+
     lang = lang or ocr_lang()
     eff_dpi = _cap_dpi_for_clip(clip, dpi)
     img = _render_clip(doc, page_index, clip, dpi)
@@ -359,18 +417,18 @@ def ocr_stamp_frame(
     block = ""
     sig_grid = ""
     if shutil.which("tesseract"):
-        block = _tesseract_cli(img, lang=lang, psm=6, dpi=eff_dpi)
+        block = _tesseract_cli(img, lang=lang, psm=6, dpi=eff_dpi, zone="stamp_frame")
         w, h = img.size
         sig_w = max(1, int(w * 0.58))
         sig_img = img.crop((0, 0, sig_w, h))
-        sig_grid = _tesseract_cli(sig_img, lang=lang, psm=4, dpi=eff_dpi)
+        sig_grid = _tesseract_cli(sig_img, lang=lang, psm=4, dpi=eff_dpi, zone="stamp_sig")
 
     if not block and not sig_grid:
         return ocr_region(doc, page_index, clip, dpi=dpi, lang=lang, zone="stamp_frame")
 
     parts = [t for t in (block, sig_grid) if t]
     combined = parts[0] if len(parts) == 1 else parts[0] + "\n\n--- stamp_sig ---\n\n" + parts[1]
-    return finalize_ocr_text(combined)
+    return finalize_ocr_text(combined, spell=True)
 
 
 def _merge_ocr_passes(parts: list[str]) -> str:

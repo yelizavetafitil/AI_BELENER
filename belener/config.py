@@ -124,6 +124,29 @@ def ocr_fitz_fallback() -> bool:
     return (os.environ.get("PDF_OCR_FITZ_FALLBACK") or "0").strip().lower() in ("1", "true", "yes", "on")
 
 
+def local_only_mode() -> bool:
+    """Строго локально: без vision/LLM-отчёта (чертежи не уходят в облако)."""
+    return (os.environ.get("PDF_LOCAL_ONLY") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def ocr_engine() -> str:
+    """tesseract | deepseek | auto (deepseek + fallback tesseract)."""
+    raw = (os.environ.get("PDF_OCR_ENGINE") or "tesseract").strip().casefold()
+    if raw in ("deepseek", "auto", "tesseract"):
+        return raw
+    return "tesseract"
+
+
+def ocr_fallback_tesseract() -> bool:
+    """При PDF_OCR_ENGINE=deepseek — дозаполнение Tesseract, если сервис не ответил."""
+    return (os.environ.get("PDF_OCR_FALLBACK_TESS") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def ocr_min_rect_pt() -> float:
     try:
         return max(24.0, min(float(os.environ.get("PDF_OCR_MIN_RECT_PT", "48").strip()), 200.0))
@@ -519,6 +542,8 @@ def ocr_timeout_sec() -> int:
 
 def vision_mode() -> str:
     """auto — vision только если OCR неполный; always — всегда; off — только OCR."""
+    if local_only_mode():
+        return "off"
     default = "auto" if accuracy_mode() else "off"
     return (os.environ.get("PDF_VISION_MODE") or default).strip().lower()
 
@@ -604,6 +629,8 @@ def report_markdown_tables() -> bool:
 
 
 def report_llm_enabled() -> bool:
+    if local_only_mode():
+        return False
     return (os.environ.get("PDF_REPORT_LLM") or "0").strip().lower() in ("1", "true", "yes", "on")
 
 
