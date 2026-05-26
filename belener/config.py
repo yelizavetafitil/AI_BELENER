@@ -1,0 +1,636 @@
+"""Настройки OCR зон."""
+
+from __future__ import annotations
+
+import os
+
+
+def extract_mode() -> str:
+    """accuracy — макс. точность (OCR+CV+vision); fast — только быстрый OCR."""
+    return (os.environ.get("PDF_EXTRACT_MODE") or "accuracy").strip().lower()
+
+
+def accuracy_mode() -> bool:
+    return extract_mode() in ("accuracy", "max", "high", "1", "true")
+
+
+def ocr_lang() -> str:
+    # rus — меньше «cmpoumenbcmba»; eng добавляйте только если нужны латинские метки
+    return (os.environ.get("PDF_OCR_LANG") or "rus").strip() or "rus"
+
+
+def ocr_psm_for_zone(zone: str) -> int:
+    """Tesseract page segmentation mode по типу зоны."""
+    key = zone.lower()
+    if key in ("stamp_frame", "stamp_block"):
+        default = "6"
+    elif key == "stamp_cell":
+        default = "7"
+    elif key.startswith("stamp"):
+        default = "4"
+    elif key in (
+        "explication",
+        "legend",
+        "right_column",
+        "tables_block",
+        "spec_right",
+        "spec_left",
+        "legend_table",
+    ):
+        default = "4"
+    elif key in ("body", "sheet_notes", "notes"):
+        default = "6"
+    else:
+        default = "6"
+    env_key = f"PDF_OCR_PSM_{key.upper()}" if key else "PDF_OCR_PSM"
+    raw = (os.environ.get(env_key) or os.environ.get("PDF_OCR_PSM") or default).strip()
+    try:
+        return max(3, min(int(raw), 13))
+    except ValueError:
+        return int(default)
+
+
+def stamp_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_STAMP_FRAC", "0.30").strip())
+        return max(0.14, min(v, 0.42))
+    except ValueError:
+        return 0.30
+
+
+def right_column_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_RIGHT_FRAC", "0.44").strip())
+        return max(0.32, min(v, 0.52))
+    except ValueError:
+        return 0.44
+
+
+def expl_split_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_EXPL_FRAC", "0.34").strip())
+        return max(0.22, min(v, 0.48))
+    except ValueError:
+        return 0.34
+
+
+def stamp_dpi() -> int:
+    try:
+        return max(560, min(int(os.environ.get("PDF_STAMP_DPI", "720").strip()), 1200))
+    except ValueError:
+        return 720
+
+
+def stamp_grid_enabled() -> bool:
+    """OCR штампа по ячейкам сетки ГОСТ (точнее, чем целый блок)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_STAMP_GRID") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def stamp_block_dpi() -> int:
+    default = "480" if accuracy_mode() else "380"
+    try:
+        return max(280, min(int(os.environ.get("PDF_STAMP_BLOCK_DPI", default).strip()), 600))
+    except ValueError:
+        return int(default)
+
+
+def stamp_block_width_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_STAMP_BLOCK_W", "0.52").strip())
+        return max(0.38, min(v, 0.62))
+    except ValueError:
+        return 0.52
+
+
+def stamp_block_height_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_STAMP_BLOCK_H", "0.40").strip())
+        return max(0.28, min(v, 0.48))
+    except ValueError:
+        return 0.40
+
+
+def table_dpi() -> int:
+    default = "560" if accuracy_mode() else "400"
+    try:
+        return max(280, min(int(os.environ.get("PDF_TABLE_DPI", default).strip()), 720))
+    except ValueError:
+        return int(default)
+
+
+def ocr_fitz_fallback() -> bool:
+    """Fitz OCR fallback очень медленный на CPU — по умолчанию выкл."""
+    return (os.environ.get("PDF_OCR_FITZ_FALLBACK") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def ocr_min_rect_pt() -> float:
+    try:
+        return max(24.0, min(float(os.environ.get("PDF_OCR_MIN_RECT_PT", "48").strip()), 200.0))
+    except ValueError:
+        return 48.0
+
+
+def ollama_host() -> str:
+    return (os.environ.get("OLLAMA_HOST") or "http://localhost:11434").strip()
+
+
+def discover_zones_enabled() -> bool:
+    """Полный перебор зон — медленно (~10+ мин). По умолчанию выкл, геометрия build_zones."""
+    return (os.environ.get("PDF_DISCOVER_ZONES") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def discover_zones_fast() -> bool:
+    """Уточнение зон по якорям OCR (штамп, экспликация) — быстрее полного discover."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_DISCOVER_ZONES_FAST") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def table_search_dpi() -> int:
+    try:
+        return max(200, min(int(os.environ.get("PDF_TABLE_SEARCH_DPI", "300").strip()), 480))
+    except ValueError:
+        return 300
+
+
+def stamp_llm_model() -> str:
+    return (os.environ.get("PDF_STAMP_LLM_MODEL") or os.environ.get("MODEL_DEFAULT") or "gemma3:4b").strip()
+
+
+def model_drawing() -> str:
+    """Текстовая модель: ответы по отчёту чертежа (после зонного OCR)."""
+    return (os.environ.get("MODEL_DRAWING") or "").strip()
+
+
+def model_scan() -> str:
+    """Текстовая модель: ответы по OCR обычного скана (не САПР-чертёж)."""
+    return (os.environ.get("MODEL_SCAN") or os.environ.get("MODEL_SCANNED_PDF") or "").strip()
+
+
+def scan_dpi() -> int:
+    try:
+        return max(150, min(int(os.environ.get("PDF_SCAN_DPI", "300").strip()), 400))
+    except ValueError:
+        return 300
+
+
+def scan_as_drawing() -> bool:
+    """Скан инженерного листа → зонный OCR/vision (штамп, таблицы)."""
+    return (os.environ.get("PDF_SCAN_AS_DRAWING") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def drawing_aspect_min() -> float:
+    """Мин. ширина/высота для зон штампа и таблиц (сканы А3×2, А4×3 ≈ 1.35–1.5)."""
+    try:
+        return max(1.2, min(float(os.environ.get("PDF_DRAWING_ASPECT_MIN", "1.35").strip()), 2.5))
+    except ValueError:
+        return 1.35
+
+
+def drawing_page_min_pt() -> float:
+    """Мин. размер стороны листа (pt) для скана-чертежа без текстового слоя."""
+    try:
+        return max(400.0, min(float(os.environ.get("PDF_DRAWING_PAGE_MIN_PT", "750").strip()), 5000.0))
+    except ValueError:
+        return 750.0
+
+
+def vision_scan_first() -> bool:
+    """Скан: сразу vision без OCR (медленно). По умолчанию выкл — сначала Tesseract, vision дозаполняет."""
+    return (os.environ.get("PDF_SCAN_VISION_FIRST") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def vision_postprocess() -> bool:
+    """Vision только после OCR (штамп/таблицы/текст листа), не в середине пайплайна."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_VISION_POST") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def sheet_text_enabled() -> bool:
+    """Искать и выводить текст вне таблиц и штампа."""
+    return (os.environ.get("PDF_SHEET_TEXT") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def sheet_text_vision_always_scan() -> bool:
+    """На сканах: vision для текста вне таблиц, если OCR слабый."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_SHEET_TEXT_VISION") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def vision_combined() -> bool:
+    """Штамп + таблицы одним запросом к VL (≈2× быстрее, чем два подряд)."""
+    return (os.environ.get("PDF_VISION_COMBINED") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def layout_vision_enabled() -> bool:
+    """Cropped vision per detected block. Disabled by default for CPU/low-RAM PCs."""
+    return (os.environ.get("PDF_LAYOUT_VISION") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def stamp_universal_enabled() -> bool:
+    """Штамп только из рамки (vision), подписи полей как на чертеже — без шаблона ГОСТ."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_STAMP_UNIVERSAL") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def report_stamp_frame_only() -> bool:
+    """В отчёт — только рамка (без таблиц). По умолчанию выкл.: нужны таблицы и ТТ с листа."""
+    return (os.environ.get("PDF_REPORT_STAMP_ONLY") or "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def blueprint_extract_enabled() -> bool:
+    """Алгоритм engineering-drawing-extractor: отделение таблиц от поля чертежа."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_BLUEPRINT_EXTRACT") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def cv_tables_enabled() -> bool:
+    """OpenCV: отделение таблиц от чертежа (локально, без облака)."""
+    return (os.environ.get("PDF_CV_TABLES") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def cv_tables_always() -> bool:
+    """В режиме accuracy — CV на каждом скане, не только при слабом OCR."""
+    if accuracy_mode():
+        return (os.environ.get("PDF_CV_TABLES_ALWAYS") or "1").strip().lower() in ("1", "true", "yes", "on")
+    return (os.environ.get("PDF_CV_TABLES_ALWAYS") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def cv_cells_enabled() -> bool:
+    """OCR по ячейкам внутри каждой таблицы (точнее, медленнее)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_CV_CELLS") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def cv_tables_dpi() -> int:
+    default = "420" if accuracy_mode() else "360"
+    try:
+        cap = 520 if accuracy_mode() else 480
+        return max(280, min(int(os.environ.get("PDF_CV_TABLES_DPI", default).strip()), cap))
+    except ValueError:
+        return int(default)
+
+
+def edocr_enabled() -> bool:
+    return bool(edocr_url())
+
+
+def edocr_url() -> str:
+    return (os.environ.get("EDOCR_URL") or "").strip().rstrip("/")
+
+
+def edocr_timeout_sec() -> int:
+    try:
+        return max(30, min(int(os.environ.get("EDOCR_TIMEOUT", "300").strip()), 900))
+    except ValueError:
+        return 300
+
+
+def layout_ocr_enabled() -> bool:
+    """Доп. OCR по layout-блокам. По умолчанию выкл — достаточно геометрических зон."""
+    return (os.environ.get("PDF_LAYOUT_OCR") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def vision_timeout_sec() -> int:
+    """Таймаут одного vision-запроса к Ollama (штамп/таблицы). В accuracy — выше по умолчанию."""
+    cap = 900 if accuracy_mode() else 300
+    default = 300 if accuracy_mode() else 75
+    raw = (os.environ.get("PDF_VISION_TIMEOUT") or "").strip()
+    try:
+        v = int(raw) if raw else default
+    except ValueError:
+        v = default
+    return max(30, min(v, cap))
+
+
+def vision_layout_max_blocks() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_VISION_LAYOUT_MAX_BLOCKS", "2").strip()), 5))
+    except ValueError:
+        return 2
+
+
+def vision_num_predict() -> int:
+    try:
+        return max(256, min(int(os.environ.get("PDF_VISION_NUM_PREDICT", "900").strip()), 3000))
+    except ValueError:
+        return 900
+
+
+def vision_stamp_dpi() -> int:
+    try:
+        return max(240, min(int(os.environ.get("PDF_VISION_STAMP_DPI", "384").strip()), 600))
+    except ValueError:
+        return 384
+
+
+def vision_table_dpi() -> int:
+    try:
+        return max(280, min(int(os.environ.get("PDF_VISION_TABLE_DPI", "480").strip()), 720))
+    except ValueError:
+        return 480
+
+
+def vision_stamp_max_side() -> int:
+    try:
+        return max(640, min(int(os.environ.get("PDF_VISION_STAMP_MAX_SIDE", "1024").strip()), 1600))
+    except ValueError:
+        return 1024
+
+
+def vision_table_max_side() -> int:
+    try:
+        return max(960, min(int(os.environ.get("PDF_VISION_TABLE_MAX_SIDE", "1400").strip()), 2048))
+    except ValueError:
+        return 1400
+
+
+def body_dpi() -> int:
+    try:
+        return max(280, min(int(os.environ.get("PDF_BODY_DPI", "420").strip()), 720))
+    except ValueError:
+        return 420
+
+
+def img2table_enabled() -> bool:
+    """Таблицы через img2table — по умолчанию только если зонный OCR слабый."""
+    default = "0"
+    return (os.environ.get("PDF_IMG2TABLE") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def img2table_when_weak() -> bool:
+    """Не дублировать img2table, если зонный OCR уже дал структуру."""
+    return (os.environ.get("PDF_IMG2TABLE_WHEN_WEAK") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def img2table_zone_enabled() -> bool:
+    """img2table по прямоугольнику зоны, если OCR+CV дали слабую структуру (локально)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_IMG2TABLE_ZONE") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def table_clahe_enabled() -> bool:
+    """CLAHE для табличных зон перед Tesseract."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_TABLE_CLAHE") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def ocr_deskew_enabled() -> bool:
+    """Deskew скана перед Tesseract (как deskew в промышленных пайплайнах)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_OCR_DESKEW") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def report_faithful() -> bool:
+    """Только OCR/парсер, без LLM-полировки отчёта (нет подгонки текста)."""
+    return (os.environ.get("PDF_REPORT_FAITHFUL") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def report_include_body_text() -> bool:
+    """Сырой OCR поля чертежа в отчёт (на схемах часто нечитаем)."""
+    return (os.environ.get("PDF_REPORT_BODY") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def body_ocr_enabled() -> bool:
+    """OCR поля чертежа вне таблиц (подписи, ТТ на листе) — плитками, без облака."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_BODY_OCR") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def body_ocr_tiled() -> bool:
+    return (os.environ.get("PDF_BODY_OCR_TILED") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def body_min_chars() -> int:
+    """Меньше символов в зоне body — дозаполнение vision (ТТ, примечания)."""
+    try:
+        return max(80, min(int(os.environ.get("PDF_BODY_MIN_CHARS", "400").strip()), 8000))
+    except ValueError:
+        return 400
+
+
+def vision_body_dpi() -> int:
+    try:
+        return max(280, min(int(os.environ.get("PDF_VISION_BODY_DPI", "420").strip()), 600))
+    except ValueError:
+        return 420
+
+
+def vision_body_max_side() -> int:
+    try:
+        return max(960, min(int(os.environ.get("PDF_VISION_BODY_MAX_SIDE", "1536").strip()), 2048))
+    except ValueError:
+        return 1536
+
+
+def notes_column_frac() -> float:
+    try:
+        v = float(os.environ.get("PDF_NOTES_FRAC", "0.30").strip())
+        return max(0.18, min(v, 0.42))
+    except ValueError:
+        return 0.30
+
+
+def extract_dpi() -> int:
+    try:
+        return max(200, min(int(os.environ.get("PDF_EXTRACT_DPI", "360").strip()), 600))
+    except ValueError:
+        return 360
+
+
+def extract_tile_px() -> int:
+    try:
+        return max(1200, min(int(os.environ.get("PDF_EXTRACT_TILE_PX", "2400").strip()), 4000))
+    except ValueError:
+        return 2400
+
+
+def extract_tile_overlap() -> int:
+    try:
+        return max(80, min(int(os.environ.get("PDF_EXTRACT_TILE_OVERLAP", "240").strip()), 600))
+    except ValueError:
+        return 240
+
+
+def extract_text_layer_min() -> int:
+    """Меньше символов на странице — нужен OCR всего листа."""
+    try:
+        return max(0, min(int(os.environ.get("PDF_EXTRACT_TEXT_MIN", "120").strip()), 2000))
+    except ValueError:
+        return 120
+
+
+def extract_text_layer_fast_min() -> int:
+    """Экспорт nanoCAD: достаточно текстового слоя — без полностраничного OCR."""
+    try:
+        return max(80, min(int(os.environ.get("PDF_TEXT_LAYER_FAST_MIN", "280").strip()), 5000))
+    except ValueError:
+        return 280
+
+
+def extract_parallel_pages() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_EXTRACT_PARALLEL", "1").strip()), 4))
+    except ValueError:
+        return 1
+
+
+def ocr_timeout_sec() -> int:
+    try:
+        return max(60, min(int(os.environ.get("PDF_OCR_TIMEOUT", "180").strip()), 600))
+    except ValueError:
+        return 180
+
+
+def vision_mode() -> str:
+    """auto — vision только если OCR неполный; always — всегда; off — только OCR."""
+    default = "auto" if accuracy_mode() else "off"
+    return (os.environ.get("PDF_VISION_MODE") or default).strip().lower()
+
+
+def vision_zones_enabled() -> bool:
+    if vision_mode() == "off":
+        return False
+    default = "1" if accuracy_mode() else "1"
+    return (os.environ.get("PDF_VISION_ZONES") or default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def vision_tables_enabled() -> bool:
+    """Vision для таблиц (перечень, легенда) — по умолчанию выкл: модель часто «додумывает» строки."""
+    if vision_mode() == "off":
+        return False
+    raw = os.environ.get("PDF_VISION_TABLES")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    if report_faithful():
+        return False
+    return False
+
+
+def vision_stamp_enabled() -> bool:
+    """Vision для штампа (медленно на CPU). По умолчанию выкл — штамп через OCR."""
+    if report_faithful():
+        return False
+    raw = os.environ.get("PDF_VISION_STAMP")
+    if raw is None or not str(raw).strip():
+        return False
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def img2table_spec_primary() -> bool:
+    """Сначала img2table для зон перечня (на crop часто хуже CV; вкл. при необходимости)."""
+    default = "0"
+    return (os.environ.get("PDF_IMG2TABLE_SPEC") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def ocr_max_pixels() -> int:
+    try:
+        return max(8_000_000, min(int(os.environ.get("PDF_OCR_MAX_PIXELS", "45000000").strip()), 120_000_000))
+    except ValueError:
+        return 45_000_000
+
+
+def vision_zones_model() -> str:
+    return (
+        os.environ.get("PDF_VISION_MODEL")
+        or os.environ.get("PDF_VISION_ZONES_MODEL")
+        or "qwen2.5vl:7b"
+    ).strip()
+
+
+def vision_zone_dpi() -> int:
+    try:
+        return max(240, min(int(os.environ.get("PDF_VISION_DPI", "420").strip()), 720))
+    except ValueError:
+        return 420
+
+
+def vision_max_side() -> int:
+    try:
+        return max(800, min(int(os.environ.get("PDF_VISION_MAX_SIDE", "1280").strip()), 1600))
+    except ValueError:
+        return 1280
+
+
+def stamp_llm_enabled() -> bool:
+    if vision_zones_enabled():
+        return False
+    return (os.environ.get("PDF_STAMP_LLM") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def report_markdown_tables() -> bool:
+    """Таблицы в отчёте — markdown | col | (как в чате), не ASCII +---+."""
+    return (os.environ.get("PDF_REPORT_MARKDOWN") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def report_llm_enabled() -> bool:
+    return (os.environ.get("PDF_REPORT_LLM") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def report_llm_mode() -> str:
+    """polish — правка готового markdown; json — сборка из JSON (без мусора черновика)."""
+    default = "json" if accuracy_mode() else "polish"
+    return (os.environ.get("PDF_REPORT_LLM_MODE") or default).strip().lower()
+
+
+def report_llm_timeout_sec() -> int:
+    try:
+        return max(30, min(int(os.environ.get("PDF_REPORT_LLM_TIMEOUT", "90").strip()), 300))
+    except ValueError:
+        return 90
+
+
+def report_llm_num_predict() -> int:
+    try:
+        return max(512, min(int(os.environ.get("PDF_REPORT_LLM_NUM_PREDICT", "2048").strip()), 4096))
+    except ValueError:
+        return 2048
+
+
+def report_llm_model() -> str:
+    return (
+        os.environ.get("PDF_REPORT_LLM_MODEL")
+        or model_drawing()
+        or os.environ.get("MODEL_DEFAULT")
+        or "gemma3:4b"
+    ).strip()

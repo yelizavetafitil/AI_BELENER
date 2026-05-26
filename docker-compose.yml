@@ -1,0 +1,72 @@
+# БелнипиAI — http://localhost:8090
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: belener
+      POSTGRES_PASSWORD: belener
+      POSTGRES_DB: belnipiai
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - belnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U belener -d belnipiai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    mem_limit: ${OLLAMA_MEM_LIMIT:-24g}
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - belnet
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${WEB_PORT:-8090}:5000"
+    environment:
+      DATABASE_URL: postgresql://belener:belener@db:5432/belnipiai
+      OLLAMA_HOST: http://ollama:11434
+      EDOCR_URL: ${EDOCR_URL:-}
+    volumes:
+      - ./:/workspace:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - belnet
+
+  # Опционально: eDOCr (keras-ocr для мех. чертежей). ~3–4 ГБ RAM при работе.
+  # docker compose --profile edocr up -d --build
+  edocr:
+    profiles: ["edocr"]
+    build: ./services/edocr
+    restart: unless-stopped
+    mem_limit: ${EDOCR_MEM_LIMIT:-4g}
+    ports:
+      - "${EDOCR_PORT:-5001}:5001"
+    networks:
+      - belnet
+
+networks:
+  belnet:
+    driver: bridge
+
+volumes:
+  pg_data:
+  ollama_data:

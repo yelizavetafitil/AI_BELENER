@@ -1,0 +1,15 @@
+flask>=3.0
+psycopg2-binary
+ollama
+pymupdf
+pdf2image
+python-docx
+pandas
+openpyxl
+xlrd
+Pillow>=10.0
+spylls>=0.1.7
+numpy>=1.26
+opencv-python-headless>=4.8
+img2table>=1.2
+pandas>=2.0
