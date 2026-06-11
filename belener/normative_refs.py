@@ -12,8 +12,8 @@ _WB_R = r"(?![A-Za-zА-Яа-яёЁ])"
 
 _NUM_BODY = r"[\d\s.\-–—\+]+"
 
-# Только индекс обозначения перед ОСТ (02 ОСТ …), не позиция перед ГОСТ
-_LEAD_OST = r"(?:(?<![\d.\-xх×])(?P<lead>\d{2})\s+)?"
+# Индекс позиции перед ОСТ: 01–20, не «60» из М16х60
+_LEAD_OST = r"(?:(?<![\d.\-xх×])(?P<lead>0[1-9]|1[0-9]|20)\s+)?"
 
 # (РД …) (СО …) в ТТ
 _PAREN = r"(?:\(\s*)?"
@@ -25,7 +25,7 @@ _TYPE_SPECS: list[tuple[str, str, str]] = [
     ("СО", rf"{_PAREN}{_WB_L}(?:СО|CO|SO){_WB_R}", ""),
     ("ГОСТ", rf"{_WB_L}(?:ГОСТ|GOST){_WB_R}(?:\s*(?:Р|R)\.?)?", ""),
     ("СТБ", rf"{_WB_L}(?:СТБ|STB){_WB_R}", ""),
-    ("ТУ", rf"{_WB_L}(?:ТУ|TU){_WB_R}", ""),
+    ("ТУ", rf"{_PAREN}{_WB_L}(?:ТУ|TU){_WB_R}", ""),
     ("СНиП", rf"{_WB_L}(?:СНиП|SNIP){_WB_R}", ""),
     ("СП", rf"{_WB_L}(?:СП|SP){_WB_R}", ""),
     ("ISO", rf"{_WB_L}ISO{_WB_R}", ""),
@@ -48,7 +48,9 @@ _CLIP: dict[str, re.Pattern[str]] = {
     ),
     "ОСТ": re.compile(
         r"^("
-        r"[\d\s.]+-\d{2,4}"  # 34 10.748-97, 34-10-615-93
+        r"\d{2}[\s.]\d[\d\s.]*-\d{2}"  # 34.10.700-97
+        r"|\d+-\d+-\d{2}"  # 36-146-88
+        r"|[\d\s.]+-\d{2}"  # прочие с годом из 2 цифр
         r")",
         re.I,
     ),
@@ -86,6 +88,8 @@ _MAT_BEFORE = re.compile(
 
 def _light_clean(raw: str) -> str:
     s = (raw or "").replace("–", "-").replace("—", "-")
+    s = re.sub(r"(\d)\s+\.", r"\1.", s)
+    s = re.sub(r"\.\s+(\d)", r".\1", s)
     return re.sub(r"\s+", " ", s.strip())
 
 
@@ -104,21 +108,43 @@ def _digits_count(s: str) -> int:
     return sum(1 for c in s if c.isdigit())
 
 
+def _year_plausible(num: str, kind: str) -> bool:
+    """Отсечь OCR-«годы» вроде 1000 или 1899 в хвосте номера."""
+    n = _light_clean(num)
+    m = re.search(r"-(\d{2,4})$", n)
+    if not m:
+        return True
+    y = m.group(1)
+    if len(y) == 4:
+        try:
+            yi = int(y)
+        except ValueError:
+            return False
+        if kind == "ГОСТ":
+            return 1950 <= yi <= 2039
+        if kind in ("ТУ", "СТБ"):
+            return 1900 <= yi <= 2039
+        return 1900 <= yi <= 2039
+    return True
+
+
 def _num_complete(num: str, kind: str) -> bool:
     n = _light_clean(num)
     if not n or _digits_count(n) < 3:
         return False
+    if not _year_plausible(n, kind):
+        return False
     if kind == "ГОСТ":
         return bool(re.search(r"-\d{2,4}$", n))
     if kind == "ОСТ":
-        return bool(re.search(r"-\d{2,4}$", n)) and len(n.replace(" ", "")) >= 6
+        return bool(re.search(r"-\d{2}$", n)) and _digits_count(n) >= 7
     if kind in ("СТП", "РД", "СНиП"):
         return bool(re.search(r"\d", n)) and len(n) >= 5
     if kind == "СО":
         return "." in n and len(n) >= 8
     if kind == "ТУ":
         parts = [p for p in n.split("-") if p]
-        return len(parts) >= 3 and len(parts[-1]) == 4
+        return len(parts) >= 3 and len(parts[-1]) in (2, 4)
     if kind == "СТБ":
         return bool(re.fullmatch(r"\d+-\d{4}", n.replace(" ", "")))
     return len(n.replace(" ", "")) >= 4
@@ -129,6 +155,11 @@ def _material_start(text: str, type_start: int) -> int:
     chunk = text[max(line_start, type_start - 30) : type_start]
     m = _MAT_BEFORE.search(chunk)
     if m:
+        mat = m.group(1)
+        if re.search(r"[xх×]\d", mat, re.I) or re.match(r"[мm]\d", mat, re.I):
+            return type_start
+        if re.match(r"(?i)болт|гайк|шайб|труб", chunk[max(0, m.start() - 12) : m.start()] + mat):
+            return type_start
         return type_start - len(m.group(0))
     return type_start
 
@@ -156,11 +187,293 @@ def _dedupe_key(ref: str) -> str:
     return s
 
 
+def _ost_key_digits(ref: str) -> str:
+    s = _light_clean(ref)
+    m = re.search(r"(?i)(?:ост|oct|ost)\s*(.+)$", s)
+    if not m:
+        return ""
+    return re.sub(r"\D", "", _light_clean(m.group(1)))
+
+
+def _canonical_number(kind: str, ref: str) -> str:
+    if kind == "ОСТ":
+        d = _ost_key_digits(ref)
+        if d:
+            return d
+    s = _light_clean(ref).casefold()
+    num_m = re.search(
+        r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        s,
+        re.I,
+    )
+    body = _light_clean(num_m.group(1)) if num_m else s
+    return re.sub(r"\D", "", body)
+
+
+def _base_number_key(kind: str, ref: str) -> str:
+    digits = _canonical_number(kind, ref)
+    if not digits:
+        return _canonical_key(kind, ref)
+    if kind in ("ТУ", "СТБ", "СО"):
+        return f"{kind.casefold()}:{digits}"
+    base = re.sub(r"\d{2,4}$", "", digits) if len(digits) > 4 else digits
+    return f"{kind.casefold()}:{base}"
+
+
+def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
+    blob = _light_clean(text)
+    if not blob:
+        return False
+    ref_s = _light_clean(ref)
+    if ref_s.casefold() in blob.casefold():
+        return True
+    num_m = re.search(
+        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        ref_s,
+    )
+    if not num_m:
+        return False
+    body_digits = re.sub(r"\D", "", _light_clean(num_m.group(1)))
+    if len(body_digits) < 4:
+        return False
+    hints = {
+        "ГОСТ": r"гост|gost",
+        "ОСТ": r"ост|oct|ost",
+        "ТУ": r"ту|tu",
+        "СТП": r"стп|stp",
+    }
+    hint = hints.get(kind, kind.casefold())
+    low = blob.casefold()
+    for m in re.finditer(rf"(?<![a-zа-яё]){hint}(?![a-zа-яё])", low):
+        after = re.sub(r"\D", "", low[m.end() : m.end() + 72])
+        if after.startswith(body_digits):
+            nxt = after[len(body_digits) : len(body_digits) + 1]
+            if not nxt or not nxt.isdigit():
+                return True
+    return False
+
+
+def prune_unconfirmed_variants(
+    refs: list[dict[str, str]],
+    *trusted_texts: str,
+) -> list[dict[str, str]]:
+    """Убрать OCR-варианты года/номера, не подтверждённые PDF-текстом таблиц/ТТ."""
+    trusted = "\n".join(str(t or "") for t in trusted_texts if str(t or "").strip())
+    if not refs:
+        return []
+    if not trusted.strip():
+        return list(refs or [])
+
+    confirmed_bases: set[str] = set()
+    for item in refs or []:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        if _ref_in_source_text(trusted, kind, ref):
+            confirmed_bases.add(_base_number_key(kind, ref))
+
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in refs or []:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        key = _canonical_key(kind, ref)
+        if not key or key in seen:
+            continue
+        base = _base_number_key(kind, ref)
+        if _ref_in_source_text(trusted, kind, ref):
+            out.append(item)
+            seen.add(key)
+            continue
+        if base in confirmed_bases:
+            continue
+    return out
+
+
+def merge_page_supplement(
+    primary: list[dict[str, str]],
+    page_refs: list[dict[str, str]],
+    *trusted_texts: str,
+) -> list[dict[str, str]]:
+    """Добавить с page OCR только новые позиции, не спорящие с таблицей/ТТ."""
+    if not page_refs:
+        return list(primary or [])
+    trusted = "\n".join(str(t or "") for t in trusted_texts if str(t or "").strip())
+    have = {_canonical_key(str(x.get("kind") or ""), str(x.get("ref") or "")) for x in primary or []}
+    have_bases = {_base_number_key(str(x.get("kind") or ""), str(x.get("ref") or "")) for x in primary or []}
+    confirmed_bases = {
+        _base_number_key(str(x.get("kind") or ""), str(x.get("ref") or ""))
+        for x in primary or []
+        if trusted and _ref_in_source_text(trusted, str(x.get("kind") or ""), str(x.get("ref") or ""))
+    }
+    extra: list[dict[str, str]] = []
+    for item in page_refs or []:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        key = _canonical_key(kind, ref)
+        base = _base_number_key(kind, ref)
+        if not key or key in have:
+            continue
+        if base in have_bases or base in confirmed_bases:
+            if not _ref_in_source_text(trusted, kind, ref):
+                continue
+        extra.append(item)
+        have.add(key)
+        have_bases.add(base)
+    return merge_normative_refs(primary, extra)
+
+
+def dedupe_normative_year_variants(
+    refs: list[dict[str, str]],
+    *source_texts: str,
+) -> list[dict[str, str]]:
+    """Один номер — одна запись: убрать OCR-варианты года (7798-71 при 7798-70 в таблице)."""
+    combined = "\n".join(str(t or "") for t in source_texts if str(t or "").strip())
+    if not refs:
+        return []
+    groups: dict[str, list[dict[str, str]]] = {}
+    order: list[str] = []
+    for item in refs:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        base = _base_number_key(kind, ref)
+        if base not in groups:
+            groups[base] = []
+            order.append(base)
+        groups[base].append(item)
+
+    sources_list = [str(t or "") for t in source_texts if str(t or "").strip()]
+
+    def _rank(it: dict[str, str]) -> tuple[int, int, int]:
+        kind = str(it.get("kind") or "")
+        ref = str(it.get("ref") or "")
+        in_src = 0 if combined and _ref_in_source_text(combined, kind, ref) else 1
+        votes = sum(1 for src in sources_list if _ref_in_source_text(src, kind, ref))
+        ref_len = len(_light_clean(ref))
+        return (in_src, -votes, -ref_len)
+
+    out: list[dict[str, str]] = []
+    for base in order:
+        items = groups[base]
+        if len(items) == 1:
+            out.append(items[0])
+            continue
+        out.append(min(items, key=_rank))
+    return out
+
+
+def dedupe_normative_list(refs: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Один канонический номер — одна строка в ответе."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in refs or []:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        key = _canonical_key(kind, ref)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _ref_vote_count(kind: str, ref: str, sources: list[str]) -> int:
+    return sum(1 for src in sources if _ref_in_source_text(src, kind, ref))
+
+
+def _digits_one_apart(a: str, b: str) -> bool:
+    if not a or not b or len(a) != len(b):
+        return False
+    return sum(x != y for x, y in zip(a, b)) == 1
+
+
+def resolve_single_digit_variants(
+    refs: list[dict[str, str]],
+    sources: list[str],
+) -> list[dict[str, str]]:
+    """Один символ в номере: оставить вариант с большим числом совпадений в тайлах."""
+    drop: set[int] = set()
+    for i, a in enumerate(refs):
+        if id(a) in drop:
+            continue
+        ka = str(a.get("kind") or "")
+        da = _canonical_number(ka, str(a.get("ref") or ""))
+        if not da:
+            continue
+        for b in refs[i + 1 :]:
+            if id(b) in drop:
+                continue
+            kb = str(b.get("kind") or "")
+            if ka != kb:
+                continue
+            db = _canonical_number(kb, str(b.get("ref") or ""))
+            if not _digits_one_apart(da, db):
+                continue
+            va = _ref_vote_count(ka, str(a.get("ref") or ""), sources)
+            vb = _ref_vote_count(kb, str(b.get("ref") or ""), sources)
+            if va > vb:
+                drop.add(id(b))
+            elif vb > va:
+                drop.add(id(a))
+    return [r for r in refs if id(r) not in drop]
+
+
+def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]]:
+    """Слияние OCR по тайлам: голосование за вариант подписи на листе."""
+    uniq = [str(t or "").strip() for t in source_texts if str(t or "").strip()]
+    if not uniq:
+        return []
+
+    combined = "\n\n".join(uniq)
+    combined_refs = extract_normative_refs(combined)
+    if not combined_refs:
+        return []
+
+    variants: dict[str, list[dict[str, str]]] = {}
+    for src in uniq:
+        for item in extract_normative_refs(src):
+            key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+            variants.setdefault(key, []).append(item)
+
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in combined_refs:
+        kind = str(item.get("kind") or "")
+        ref = str(item.get("ref") or "")
+        key = _canonical_key(kind, ref)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        opts = variants.get(key, [item])
+        by_ref: dict[str, dict[str, str]] = {}
+        for opt in opts:
+            by_ref[str(opt.get("ref") or "")] = opt
+        if len(by_ref) == 1:
+            out.append(next(iter(by_ref.values())))
+            continue
+        best_ref = max(
+            by_ref.keys(),
+            key=lambda r: (_ref_vote_count(kind, r, uniq), len(_light_clean(r))),
+        )
+        out.append(by_ref[best_ref])
+
+    merged = dedupe_normative_year_variants(out, *uniq)
+    merged = resolve_single_digit_variants(merged, uniq)
+    return dedupe_normative_list(merged)
+
+
 def _canonical_key(kind: str, ref: str) -> str:
     """Ключ дедупликации: тип + номер."""
     s = _light_clean(ref).casefold()
     s = re.sub(r"^\d{1}\s+(?=гост|gost)", "", s)
     s = re.sub(r"^\(\s*", "", s)
+    if kind == "ОСТ":
+        digits = _ost_key_digits(ref)
+        if digits:
+            return f"{kind.casefold()}:{digits}"
+    if kind in ("ГОСТ", "ТУ", "СТБ"):
+        digits = _canonical_number(kind, ref)
+        if digits:
+            return f"{kind.casefold()}:{digits}"
     num_m = re.search(
         r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so)\s*(?:р\.?|r\.?)?\s*(.+)$",
         s,
@@ -195,15 +508,29 @@ def _polish_normative_ref(ref: str) -> str:
     )
     if mat:
         start = max(0, start - 24) + mat.start()
-    return s[start:].strip()
+    out = s[start:].strip()
+    out = re.sub(
+        r"^(?!(?:0[1-9]|1[0-9]|20)\s)\d{2}\s+(?=(?:ОСТ|OST|OCT)\b)",
+        "",
+        out,
+        flags=re.I,
+    )
+    return out
 
 
 def _pick_better_ref(a: str, b: str) -> str:
-    """Короче и без хвоста таблицы — лучше."""
+    """Без хвоста таблицы; полнее — ближе к подписи на листе (материал, размер)."""
+    la, lb = _light_clean(a), _light_clean(b)
+    if la and lb:
+        if la.casefold() in lb.casefold() and len(lb) > len(la):
+            return b
+        if lb.casefold() in la.casefold() and len(la) > len(lb):
+            return a
+
     def score(r: str) -> tuple[int, int]:
         s = _light_clean(r)
         tail = 1 if re.search(r"\s+\d+(?:[.,]\d+)?\s*$", s) else 0
-        return (tail, len(s))
+        return (tail, -len(s))
 
     return a if score(a) <= score(b) else b
 
@@ -217,6 +544,21 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     s = re.sub(r"(?i)р\s*д", "РД", s)
     s = re.sub(r"(?i)с\s*о\s*(\d)", r"СО \1", s)
     s = re.sub(r"(?i)т\s*у\s*(\d)", r"ТУ \1", s)
+    s = re.sub(r"(?i)\(\s*(?:ту|tu)\s*\n+\s*", "(ТУ ", s)
+    s = re.sub(r"(\d)-\s*\n+\s*(\d)", r"\1-\2", s)
+    s = re.sub(r"(\d{4,})-(\d{2})\s+(\d{2})(?![\d])", r"\1-\2\3", s)
+    s = re.sub(
+        r"((?:ГОСТ|GOST)\s+[\d\s.\-]+-\d{2,4})\s+([A-Za-zА-Яа-я]\-[\w\-]+(?:\s+(?:ГОСТ|GOST)))",
+        r"\1\n\2",
+        s,
+        flags=re.I,
+    )
+    s = re.sub(
+        r"((?:ГОСТ|GOST)\s+[\d\s.\-]+-\d{2,4})\s*[-—_=\.]{2,}\s*([A-Za-zА-Яа-я][\w\-]*\s+(?:ГОСТ|GOST))",
+        r"\1\n\2",
+        s,
+        flags=re.I,
+    )
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
     s = re.sub(
         r"((?:ОСТ|OST|OCT|ГОСТ|GOST|СТБ|STB|ТУ|СТП|РД|СО|DIN|EN|ISO|IEC))\s*\n+\s*([\d\+])",
@@ -271,6 +613,7 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
 
     ref = re.sub(r"[.,;:]+$", "", ref).rstrip()
     ref = re.sub(r"^\(\s*", "", ref)
+    ref = re.sub(r"\)\.?$", "", ref).strip()
     if not _ref_has_one_type(ref):
         return None
 

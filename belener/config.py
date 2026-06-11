@@ -628,6 +628,83 @@ def normative_scan_dpi() -> int:
         return 120
 
 
+def normative_table_dpi() -> int:
+    """DPI OCR таблиц/ТТ в быстром пути нормативов (ниже table_dpi)."""
+    try:
+        default = str(min(table_dpi(), 320))
+        return max(200, min(int(os.environ.get("PDF_NORMATIVE_TABLE_DPI", default).strip()), 480))
+    except ValueError:
+        return min(table_dpi(), 320)
+
+
+def normative_full_page_ocr_enabled() -> bool:
+    """OCR всей страницы — очень медленно; по умолчанию выкл."""
+    return (os.environ.get("PDF_NORMATIVE_PAGE_OCR") or "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_drawing_fallback_enabled() -> bool:
+    """Полный drawing pipeline при пустых нормативах — минуты; по умолчанию выкл."""
+    return (os.environ.get("PDF_NORMATIVE_DRAWING_FALLBACK") or "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_page_crop_dpi() -> int:
+    try:
+        return max(120, min(int(os.environ.get("PDF_NORMATIVE_PAGE_CROP_DPI", "180").strip()), 280))
+    except ValueError:
+        return 180
+
+
+def normative_page_crop_max_side() -> int:
+    try:
+        return max(1600, min(int(os.environ.get("PDF_NORMATIVE_PAGE_CROP_MAX", "3600").strip()), 4800))
+    except ValueError:
+        return 3600
+
+
+def normative_crops_enabled() -> bool:
+    """PDF → скрины зон → OCR (как PNG). Основной режим для «все ГОСТ»."""
+    return (os.environ.get("PDF_NORMATIVE_CROPS") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_time_budget_sec() -> float:
+    """Жёсткий бюджет ответа для «все ГОСТ» (сек)."""
+    try:
+        return max(30.0, min(float(os.environ.get("PDF_NORMATIVE_TIME_BUDGET", "150").strip()), 300.0))
+    except ValueError:
+        return 150.0
+
+
+def normative_zone_max_sec() -> float:
+    """Макс. время OCR одной зоны (защита от stamp_tight 80 с)."""
+    try:
+        return max(8.0, min(float(os.environ.get("PDF_NORMATIVE_ZONE_MAX", "22").strip()), 60.0))
+    except ValueError:
+        return 22.0
+
+
+def normative_tile_overlap_frac() -> float:
+    """Наложение соседних тайлов (доля шага сетки), чтобы строки не резались по границе."""
+    try:
+        return max(0.06, min(float(os.environ.get("PDF_NORMATIVE_TILE_OVERLAP", "0.12").strip()), 0.25))
+    except ValueError:
+        return 0.12
+
+
 def normative_vision_enabled() -> bool:
     """Vision (локальный Ollama) для «все gost» — точность как PNG, без облака."""
     return (os.environ.get("PDF_NORMATIVE_VISION") or "0").strip().lower() in (

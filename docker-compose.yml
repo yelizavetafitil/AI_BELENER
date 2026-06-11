@@ -58,6 +58,8 @@ services:
       PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
     volumes:
       - ./:/workspace:ro
+      - ./belener:/app/belener:ro
+      - ./app.py:/app/app.py:ro
       - ./scripts:/app/scripts:ro
       - ./data:/app/data
     depends_on:

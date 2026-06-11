@@ -20,26 +20,135 @@ _NORMATIVE_HINT = re.compile(
     r"(?i)"
     r"(?:гост|gost)\s*[\dрr]"
     r"|(?:ост|ost)\s*[\d]"
-    r"|(?:стп|stp)\s*[\d]"
-    r"|(?:рд|rd)\s*[\d]"
-    r"|(?:ту|tu)\s*[\d]"
-    r"|(?:со|co|so)\s*[\d]"
+    r"|(?:стп|stp)\s*[\d(]"
+    r"|(?:рд|rd)\s*[\d(]"
+    r"|(?:ту|tu)\s*[\d(]"
+    r"|(?:со|co|so)\s*[\d(]"
     r"|(?:стб|stb)\s*[\d]"
     r"|снип"
     r"|\bsp\s*\d"
 )
 
+_TT_KINDS = ("ТУ", "СТП", "РД", "СО")
+_TT_LAYER_HINTS: dict[str, re.Pattern[str]] = {
+    "ТУ": re.compile(r"(?i)(?:\(|^|[\s;])(?:ту|tu)\s*[\d(]"),
+    "СТП": re.compile(r"(?i)(?:\(|^|[\s;])(?:стп|stp)\s*[\d(]"),
+    "РД": re.compile(r"(?i)(?:\(|^|[\s;])(?:рд|rd)\s*[\d(]"),
+    "СО": re.compile(r"(?i)(?:\(|^|[\s;])(?:со|co|so)\s*[\d(]"),
+}
+
+
+def _refs_kinds(refs: list[dict[str, str]]) -> set[str]:
+    return {str(r.get("kind") or "") for r in refs if str(r.get("kind") or "")}
+
+
+def _tt_types_hinted_in_sources(*sources: str) -> set[str]:
+    combined = "\n".join(str(t or "") for t in sources if str(t or "").strip())
+    if not combined.strip():
+        return set()
+    return {kind for kind, rx in _TT_LAYER_HINTS.items() if rx.search(combined)}
+
+
+def _ocr_zone_available() -> bool:
+    from belener.ocr import tesseract_available
+    from belener.paddle_ocr import paddle_ocr_enabled
+
+    return tesseract_available() or paddle_ocr_enabled()
+
+
+def _pdf_layer_is_normative(text: str) -> bool:
+    """PDF-слой с реальными нормативами (не мусор/метаданные без ГОСТ)."""
+    blob = (text or "").strip()
+    if len(blob) < 40 or not _NORMATIVE_HINT.search(blob):
+        return False
+    return bool(extract_normative_refs(blob))
+
+
+def _missing_tt_types(refs: list[dict[str, str]], *sources: str) -> set[str]:
+    hinted = _tt_types_hinted_in_sources(*sources)
+    if not hinted:
+        return set()
+    return hinted - (_refs_kinds(refs) & hinted)
+
+
+def _needs_sheet_notes_pass(
+    refs: list[dict[str, str]],
+    doc: fitz.Document,
+    layer_parts: list[str],
+    zone_blobs: list[str],
+    zones_by_page: dict[int, Any] | None = None,
+) -> bool:
+    if _missing_tt_types(refs, *layer_parts, *zone_blobs):
+        return True
+    if _refs_kinds(refs) & set(_TT_KINDS):
+        return False
+    for i in range(doc.page_count):
+        zones = (zones_by_page or {}).get(i) or _resolve_normative_zones(doc, i)
+        rect = zones.rects.get("sheet_notes")
+        if rect is None or rect.is_empty:
+            continue
+        if not (_text_in_rect(doc[i], rect) or "").strip():
+            return True
+    return False
+
+
+def _sheet_notes_blob(
+    doc: fitz.Document,
+    page_index: int,
+    zones: Any | None = None,
+) -> tuple[str, str]:
+    """Текстовый слой колонки ТТ и OCR отдельно."""
+    from belener.config import normative_table_dpi
+    from belener.ocr import ocr_region
+
+    zones = zones or _resolve_normative_zones(doc, page_index)
+    rect = zones.rects.get("sheet_notes")
+    if rect is None or rect.is_empty:
+        return "", ""
+    page = doc[page_index]
+    layer = (_text_in_rect(page, rect) or "").strip()
+    ocr = ""
+    if _ocr_zone_available():
+        try:
+            ocr = (
+                ocr_region(doc, page_index, rect, dpi=normative_table_dpi(), zone="sheet_notes") or ""
+            ).strip()
+        except Exception:
+            ocr = ""
+        if ocr and layer and ocr.casefold() == layer.casefold():
+            ocr = ""
+    return layer, ocr
+
+
+def _normative_scan_page(doc: fitz.Document, page_index: int, zones: Any) -> str:
+    """Быстрый OCR поля схемы (без штампа/таблицы) — вместо page OCR."""
+    from belener.normative_scan import ocr_normative_scan
+
+    t0 = time.monotonic()
+    text = (ocr_normative_scan(doc, page_index, doc[page_index].rect, zones, force=True) or "").strip()
+    if text:
+        log.info(
+            "normative scan page %s %.1fs chars=%s",
+            page_index + 1,
+            time.monotonic() - t0,
+            len(text),
+        )
+    return text
+
 
 def _page_text(doc: fitz.Document, page_index: int) -> str:
-    """Текстовый слой или OCR всей страницы (внутри — плитки для больших листов)."""
+    """OCR всей страницы — только если явно включён PDF_NORMATIVE_PAGE_OCR."""
+    from belener.config import normative_full_page_ocr_enabled
+    from belener.ocr import ocr_page_full
+
     page = doc[page_index]
     layer = (page.get_text("text") or "").strip()
+    if not normative_full_page_ocr_enabled():
+        return layer
     has_hint = bool(_NORMATIVE_HINT.search(layer))
     has_refs = bool(extract_normative_refs(layer)) if has_hint else False
     if len(layer) >= _TEXT_LAYER_MIN and has_hint and has_refs:
         return layer
-    from belener.ocr import ocr_page_full
-
     dpi = body_dpi()
     t0 = time.monotonic()
     ocr = (ocr_page_full(doc, page_index, dpi=dpi) or "").strip()
@@ -64,6 +173,19 @@ def _text_in_rect(page: fitz.Page, rect: fitz.Rect | None) -> str:
         return (page.get_text("text", clip=rect) or "").strip()
     except Exception:
         return ""
+
+
+def _zone_needs_ocr(text: str) -> bool:
+    blob = (text or "").strip()
+    if not blob:
+        return True
+    hints = len(_NORMATIVE_HINT.findall(blob))
+    refs = len(extract_normative_refs(blob))
+    if hints >= 2 and refs < max(1, int(hints * 0.55)):
+        return True
+    if _NORMATIVE_HINT.search(blob) and refs == 0:
+        return True
+    return False
 
 
 def _resolve_normative_zones(doc: fitz.Document, page_index: int):
@@ -92,19 +214,10 @@ def _resolve_normative_zones(doc: fitz.Document, page_index: int):
 
 
 def _normative_table_jobs(zones) -> list[tuple[str, fitz.Rect]]:
-    """Все табличные зоны — без unified early return (эскизы VR/GT)."""
+    """Табличные зоны для нормативов — без legend/explication/body (лишний OCR)."""
     jobs: list[tuple[str, fitz.Rect]] = []
     seen: set[str] = set()
-    for key in (
-        "spec_right",
-        "spec_left",
-        "tables_block",
-        "explication",
-        "legend_table",
-        "legend",
-        "right_column",
-        "body",
-    ):
+    for key in ("tables_block", "spec_right", "spec_left"):
         rect = zones.rects.get(key)
         if rect is None or rect.is_empty:
             continue
@@ -126,17 +239,30 @@ def _zone_normative_blobs(
     doc: fitz.Document,
     page_index: int,
     *,
+    zones: Any | None = None,
     ocr_if_no_hint: bool = True,
-) -> list[str]:
-    """Текст табличных зон и ТТ — для эскизов CAD (NanoCAD/AutoCAD)."""
-    from belener.config import table_dpi
-    from belener.normative_scan import normative_scan_rect, ocr_normative_scan
-    from belener.ocr import ocr_region, tesseract_available
+) -> tuple[list[str], list[str]]:
+    """PDF-текст зон (trusted) и OCR (supplement) — отдельно."""
+    from belener.config import normative_table_dpi
+    from belener.ocr import ocr_region
 
     page = doc[page_index]
-    zones = _resolve_normative_zones(doc, page_index)
-    blobs: list[str] = []
+    zones = zones or _resolve_normative_zones(doc, page_index)
+    trusted: list[str] = []
+    ocr_supp: list[str] = []
     seen: set[tuple[int, int, int, int]] = set()
+
+    def _append_ocr(key: str, rect: fitz.Rect, text: str, *, force: bool = False) -> None:
+        if not ocr_if_no_hint or not _ocr_zone_available():
+            return
+        if not force and not _zone_needs_ocr(text):
+            return
+        try:
+            ocr = (ocr_region(doc, page_index, rect, dpi=normative_table_dpi(), zone=key) or "").strip()
+        except Exception:
+            ocr = ""
+        if ocr and ocr.casefold() not in {(text or "").casefold()}:
+            ocr_supp.append(ocr)
 
     for key, rect in _normative_table_jobs(zones):
         sig = (round(rect.x0), round(rect.y0), round(rect.x1), round(rect.y1))
@@ -145,16 +271,10 @@ def _zone_normative_blobs(
         seen.add(sig)
         text = _text_in_rect(page, rect)
         if text:
-            blobs.append(text)
-        if ocr_if_no_hint and tesseract_available() and (not text or not _NORMATIVE_HINT.search(text)):
-            try:
-                ocr = (ocr_region(doc, page_index, rect, dpi=table_dpi(), zone=key) or "").strip()
-            except Exception:
-                ocr = ""
-            if ocr:
-                blobs.append(ocr)
+            trusted.append(text)
+        _append_ocr(key, rect, text)
 
-    for key in ("sheet_notes", "legend_table", "legend"):
+    for key in ("sheet_notes",):
         rect = zones.rects.get(key)
         if rect is None or rect.is_empty:
             continue
@@ -164,29 +284,13 @@ def _zone_normative_blobs(
         seen.add(sig)
         text = _text_in_rect(page, rect)
         if text:
-            blobs.append(text)
-        elif ocr_if_no_hint and tesseract_available():
-            try:
-                ocr = (ocr_region(doc, page_index, rect, dpi=table_dpi(), zone=key) or "").strip()
-            except Exception:
-                ocr = ""
-            if ocr:
-                blobs.append(ocr)
+            trusted.append(text)
+        force = not text or bool(
+            _missing_tt_types(_refs_from_texts(text), text, page.get_text("text") or "")
+        )
+        _append_ocr(key, rect, text, force=force)
 
-    ns = ocr_normative_scan(doc, page_index, page.rect, zones, force=True)
-    if ns:
-        blobs.append(ns)
-    elif ocr_if_no_hint and tesseract_available():
-        rect = normative_scan_rect(page.rect, zones)
-        if not rect.is_empty:
-            try:
-                body = (ocr_region(doc, page_index, rect, dpi=table_dpi(), zone="body") or "").strip()
-            except Exception:
-                body = ""
-            if body:
-                blobs.append(body)
-
-    return blobs
+    return trusted, ocr_supp
 
 
 def _ocr_image_path(path: str) -> str:
@@ -212,93 +316,165 @@ def _refs_from_texts(*texts: str) -> list[dict[str, str]]:
     return merge_normative_refs(*groups) if groups else []
 
 
+def _count_normative_hints(*texts: str) -> int:
+    return sum(len(_NORMATIVE_HINT.findall(str(t or ""))) for t in texts)
+
+
+def _needs_page_ocr(refs: list[dict[str, str]], *source_texts: str) -> bool:
+    if not refs:
+        return True
+    hints = _count_normative_hints(*source_texts)
+    if hints >= 4 and len(refs) < max(3, int(hints * 0.55)):
+        return True
+    return False
+
+
+def _needs_normative_scan(refs: list[dict[str, str]], *source_texts: str) -> bool:
+    if len(refs) >= 12:
+        return False
+    return _needs_page_ocr(refs, *source_texts)
+
+
 def extract_normatives_from_document(
     doc: fitz.Document,
     filename: str = "document.pdf",
     *,
     source_path: str | None = None,
-    allow_drawing_fallback: bool = True,
+    allow_drawing_fallback: bool | None = None,
 ) -> dict[str, Any]:
-    """Vision (если есть) + OCR → объединённые нормативы."""
-    from belener.config import normative_vision_enabled
-    from belener.normative_refs import merge_normative_refs
+    """Нормативы: PDF→скрины зон→OCR (основной путь) или текстовый слой CAD."""
+    from belener.config import normative_crops_enabled, normative_drawing_fallback_enabled
+
+    if normative_crops_enabled():
+        from belener.normative_crops import extract_normatives_document_crops
+
+        return extract_normatives_document_crops(doc, filename)
+
+    if allow_drawing_fallback is None:
+        allow_drawing_fallback = normative_drawing_fallback_enabled()
+
+    return _extract_normatives_legacy(
+        doc,
+        filename,
+        source_path=source_path,
+        allow_drawing_fallback=allow_drawing_fallback,
+    )
+
+
+def _extract_normatives_legacy(
+    doc: fitz.Document,
+    filename: str = "document.pdf",
+    *,
+    source_path: str | None = None,
+    allow_drawing_fallback: bool = False,
+) -> dict[str, Any]:
+    """Прежний многоступенчатый путь (PDF_NORMATIVE_CROPS=0)."""
+    from belener.config import (
+        normative_full_page_ocr_enabled,
+        normative_vision_enabled,
+    )
+    from belener.normative_refs import (
+        dedupe_normative_year_variants,
+        merge_normative_refs,
+        merge_page_supplement,
+        prune_unconfirmed_variants,
+    )
 
     t0 = time.monotonic()
-    page_texts: list[str] = []
-    zone_blobs: list[str] = []
+    layer_parts: list[str] = []
+    zone_trusted: list[str] = []
+    ocr_supplements: list[str] = []
+    zones_by_page: dict[int, Any] = {}
+    if doc.page_count <= 3:
+        for i in range(doc.page_count):
+            zones_by_page[i] = _resolve_normative_zones(doc, i)
     for i in range(doc.page_count):
-        page_texts.append(_page_text(doc, i))
-        if doc.page_count <= 3:
-            zone_blobs.extend(_zone_normative_blobs(doc, i, ocr_if_no_hint=False))
-    combined = "\n\n".join(t for t in page_texts if t)
-    ocr_refs = _refs_from_texts(combined, *zone_blobs)
+        layer_parts.append((doc[i].get_text("text") or "").strip())
+        if i in zones_by_page:
+            zt, zo = _zone_normative_blobs(doc, i, zones=zones_by_page[i], ocr_if_no_hint=True)
+            zone_trusted.extend(zt)
+            ocr_supplements.extend(zo)
 
-    vision_refs: list[dict[str, str]] = []
-    pipeline = "normative_page_ocr"
+    pdf_sources: list[str] = [t for t in zone_trusted if str(t or "").strip()]
+    zone_refs = _refs_from_texts(*pdf_sources) if pdf_sources else []
+    if len(zone_refs) < 5:
+        for part in layer_parts:
+            if part and _pdf_layer_is_normative(part) and part not in pdf_sources:
+                pdf_sources.append(part)
+    trusted_sources: list[str] = list(pdf_sources)
+    refs = _refs_from_texts(*trusted_sources)
+    layer_only = [p for p in layer_parts if _pdf_layer_is_normative(p)]
+    if layer_only and layer_only != pdf_sources:
+        refs = merge_page_supplement(refs, _refs_from_texts(*layer_only), *trusted_sources)
+        for part in layer_only:
+            if part not in pdf_sources:
+                pdf_sources.append(part)
+                trusted_sources.append(part)
+    pipeline = "normative_layer+zones" if zone_trusted else "normative_layer"
+    page_texts: list[str] = []
+    ocr_trusted: list[str] = [t for t in ocr_supplements if str(t or "").strip()]
+
+    if ocr_supplements and len(zone_refs) < 4:
+        refs = merge_page_supplement(refs, _refs_from_texts(*ocr_supplements), *trusted_sources, *ocr_trusted)
+        pipeline = f"{pipeline}+zone_ocr"
+    elif ocr_supplements:
+        log.info("normative skip zone OCR merge: pdf_layer refs=%s", len(zone_refs))
+
+    missing_tt = _missing_tt_types(refs, *trusted_sources, *layer_parts, *ocr_trusted)
+    if (
+        _needs_sheet_notes_pass(refs, doc, layer_parts, zone_trusted, zones_by_page)
+        and doc.page_count <= 3
+    ):
+        for i in range(doc.page_count):
+            tt_layer, tt_ocr = _sheet_notes_blob(doc, i, zones_by_page.get(i))
+            if tt_layer:
+                trusted_sources.append(tt_layer)
+                pdf_sources.append(tt_layer)
+                refs = merge_normative_refs(refs, _refs_from_texts(tt_layer))
+            if tt_ocr and not tt_layer:
+                ocr_trusted.append(tt_ocr)
+                refs = merge_page_supplement(
+                    refs, _refs_from_texts(tt_ocr), *trusted_sources, *ocr_trusted
+                )
+        if missing_tt:
+            pipeline = f"{pipeline}+tt"
+            log.info("normative TT supplement kinds=%s", sorted(missing_tt))
+
+    scan_sources = (*trusted_sources, *ocr_trusted, *layer_parts)
+    if _needs_normative_scan(refs, *scan_sources) and len(zone_refs) < 8:
+        for i in range(doc.page_count):
+            zones = zones_by_page.get(i) or _resolve_normative_zones(doc, i)
+            if normative_full_page_ocr_enabled():
+                page_texts.append(_page_text(doc, i))
+            else:
+                scan = _normative_scan_page(doc, i, zones)
+                if scan:
+                    page_texts.append(scan)
+                    ocr_trusted.append(scan)
+        page_refs = _refs_from_texts(*page_texts)
+        refs = merge_page_supplement(refs, page_refs, *trusted_sources, *ocr_trusted)
+        if page_refs:
+            pipeline = f"{pipeline}+scan" if not normative_full_page_ocr_enabled() else f"{pipeline}+page"
+    elif _needs_normative_scan(refs, *scan_sources):
+        log.info("normative skip scan: pdf_layer refs=%s", len(zone_refs))
+
     vision_model = ""
-
-    if normative_vision_enabled():
+    if normative_vision_enabled() and not refs:
         from belener.normative_vision import extract_normatives_document_vision, vision_available
 
         if vision_available():
             vresult = extract_normatives_document_vision(doc, filename)
             if vresult.get("ok") and vresult.get("normative_refs"):
-                vision_refs = list(vresult["normative_refs"])
+                refs = merge_normative_refs(list(vresult["normative_refs"]), refs)
                 vision_model = str(vresult.get("vision_model") or "")
                 pipeline = str(vresult.get("pipeline") or "normative_vision")
             elif vresult.get("ok") is False:
                 log.warning("normative vision unavailable: %s", vresult.get("error"))
-        else:
-            log.warning("normative vision enabled but Ollama/vision model not ready — OCR only")
 
-    layer = "\n\n".join(
-        (doc[i].get_text("text") or "").strip() for i in range(doc.page_count)
-    )
-    layer_refs = _refs_from_texts(layer) if layer.strip() else []
-    refs = merge_normative_refs(vision_refs, ocr_refs, layer_refs)
-    if vision_refs:
-        pipeline = f"{pipeline}+ocr" if ocr_refs else pipeline
-
-    if not refs and doc.page_count <= 3:
-        zone_ocr_blobs: list[str] = []
-        for i in range(doc.page_count):
-            zone_ocr_blobs.extend(_zone_normative_blobs(doc, i, ocr_if_no_hint=True))
-        zone_refs = _refs_from_texts(*zone_ocr_blobs)
-        if zone_refs:
-            refs = merge_normative_refs(refs, zone_refs)
-            pipeline = "normative_zones_ocr" if pipeline == "normative_page_ocr" else f"{pipeline}+zones"
-
-    if not refs and doc.page_count == 1:
-        try:
-            from belener.config import stamp_block_dpi, table_dpi
-            from belener.sheet_read import ocr_sheet_by_zones
-            from belener.sheet_text import ocr_non_table_text
-
-            zones = _resolve_normative_zones(doc, 0)
-            zoned = ocr_sheet_by_zones(
-                doc,
-                zones,
-                stamp_dpi=stamp_block_dpi(),
-                table_dpi=table_dpi(),
-                page_index=0,
-            )
-            sheet_blobs = [
-                zoned.get("table_text") or "",
-                zoned.get("sheet_notes_text") or "",
-                *(zoned.get("zone_texts") or {}).values(),
-            ]
-            body, _ = ocr_non_table_text(doc, doc[0].rect, zones, page_index=0)
-            if body:
-                sheet_blobs.append(body)
-            zoned_refs = _refs_from_texts(*sheet_blobs)
-            if zoned_refs:
-                refs = merge_normative_refs(refs, zoned_refs)
-                pipeline = "normative_zoned_ocr"
-        except Exception:
-            log.warning("normative zoned OCR failed", exc_info=True)
+    refs = dedupe_normative_year_variants(refs, *pdf_sources, *ocr_trusted)
+    refs = prune_unconfirmed_variants(refs, *pdf_sources, *ocr_trusted)
 
     drawing: dict[str, Any] | None = None
-
     if allow_drawing_fallback and not refs and doc.page_count == 1 and source_path:
         log.info("normative fallback: full drawing pipeline %s", filename)
         from belener.extract import extract_pdf_path
@@ -309,6 +485,7 @@ def extract_normatives_from_document(
             refs = collect_normative_refs(drawing)
             pipeline = "normative_drawing_fallback"
 
+    combined = "\n\n".join(t for t in page_texts if t) or "\n\n".join(layer_parts)
     log.info(
         "normative extract done %.1fs refs=%s pages=%s (%s)",
         time.monotonic() - t0,
@@ -324,7 +501,7 @@ def extract_normatives_from_document(
         "normative_refs": refs,
         "vision_model": vision_model or None,
         "source_text_chars": len(combined),
-        "page_texts": page_texts,
+        "page_texts": page_texts or layer_parts,
         "drawing": drawing,
     }
 
@@ -388,6 +565,8 @@ def normative_refs_to_markdown(
         lines.append(f"**Файл:** {filename}")
     if pipeline:
         mode = "Vision (Ollama)" if "vision" in pipeline else "OCR"
+        if "crop" in pipeline or "tile" in pipeline:
+            mode = "Тайлы листа (OCR)"
         lines.append(f"**Режим:** {mode} (`{pipeline}`)")
     lines.append("")
 
