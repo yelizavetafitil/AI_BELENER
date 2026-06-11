@@ -1,0 +1,11 @@
+{
+  "file": "BNP-1828-0-ЭМ1Л7.pdf",
+  "seconds": 1182.9,
+  "pipeline": "belener_zoned_ocr",
+  "ok": true,
+  "spec_ocr_chars": 4497,
+  "spec_rows": 0,
+  "ungrounded_count": 0,
+  "ungrounded_sample": [],
+  "faithful_ok": true
+}

@@ -1,0 +1,441 @@
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_000.png	/ | | | | | | | |
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_001.png	<math>-</math>
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_002.png	Шкаф телемеханики ШТМ
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_003.png	КВПЭф 2х2х0,52
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_004.png	Gnd
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_005.png	ПИ-4
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_006.png	<b>C41</b>
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_007.png	Gnd
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_008.png	Πopm № 1<br>RS-485
+paddle_rec/lines/050-4-ТЛМ1_л.3_spec_left_009.png	<b>C47</b>
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_001.png	1 1118-0-ГП9.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_002.png	2 1118-0-ГП9.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_003.png	3 1118-0-ГП9.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_004.png	4 1118-0-ГП9.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_left_005.png	5 1118-0-ГП9.И5 Изделие крепежное МС5 6 12,0
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_000.png	Экспликация зданий и сооружений
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_001.png	Таблица 1
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_002.png	Номер на плане | Наименование | Координаты квадрата сетки | Примечание
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_003.png	3 | Пускорезервная котельная (ПРК) | — | Существующая
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_004.png	Условные обозначения
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_005.png	Таблица 2
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_006.png	Обозначение | Примечание
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_007.png	— | Граница работ по генеральному плану
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_008.png	— | Площадка для контейнеров под ТБО Тип 1
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_009.png	— | Пониженный БР 100.30.15
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_010.png	— | Восстанавливаемый асфальтобетонный проезд Тип 2
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_spec_right_011.png	— | Проектируемое ограждение
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_000.png	Изм. | Кол. уч. | Лист | № док. | Подпись | Дата
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_001.png	Заказчик
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_002.png	ОАО «КВАДРА»
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_003.png	Реконструкция объекта
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_004.png	Обозначение / шифр: 9999-0-ГК1
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_005.png	Организация: РУП "БЕЛНИПИЭНЕРГОПРОМ"
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_006.png	Масштаб: 1:500
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_007.png	Формат: A4x4
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_008.png	Очередь строительства: I очередь строительства
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_009.png	Разделы на листе: Генеральный план; План благоустройства
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_010.png	Разраб. | Петров | 11.25
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_011.png	Пров. | Петров | 11.25
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_012.png	Н.контр. | Лось | 11.25
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_013.png	ГИП | Лось | 11.25
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_014.png	Нач. отд. | Лось | 11.25
+paddle_rec/lines/_10-16-25_23.01.2026_1118-0-ГП9_л.4_stamp_frame_015.png	Утв. | Сидоров | 11.25
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_000.png	Схема расположения металлоконструкций на отм. 203,77
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_001.png	2 очередь строительства
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_002.png	14
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_003.png	Ось главного
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_004.png	L 100
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_005.png	κορημςα
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_006.png	Ось Ду 200
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_007.png	40
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_008.png	на отм.201,92
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_009.png	2500*
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_010.png	Б7
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_011.png	800
+paddle_rec/lines/BNP-007-0-КМ1_л.5_spec_left_012.png	J.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_000.png	1о уклону
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_001.png	Общие технические требования и ведомость элементов смотреть лист 3.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_002.png	Заглушка †4
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_003.png	C245
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_004.png	Обварить
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_005.png	По уклону
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_006.png	по контуру
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_007.png	1,67
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_008.png	201,07*
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_009.png	<math>\perp \!\!\! \perp</math>
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_010.png	Сущ. траверса
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_011.png	007-0-KM1
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_012.png	2500*
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_013.png	Ось главного
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_014.png	Реконструкция газораспределительной системы Мини-ТЭЦ г.Молодежно
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_015.png	κορημςα
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_016.png	Молоденьких электрических сетей котлоагрегатов ДЕ-25/14
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_017.png	Изм. Кол. уч. Лист № док.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_018.png	Подп.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_019.png	Дата
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_020.png	cm.№10,11; ПЭВМ-50 cm.№6,7,8; КВГМ-100 cm.№9; ДКВР 10/13 cm.№1,2
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_021.png	Раз раб.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_022.png	Федотович
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_023.png	Стадия
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_024.png	/lucm
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_025.png	/lucmob
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_026.png	Общестроительные работы.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_027.png	Навесы и площадки обслуживания
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_028.png	Гл. контр. Бакинец
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_029.png	Схемы расположения металлоконструкций
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_030.png	РУП “БЕЛНИПИЭНЕРГОПРОМ”
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_031.png	МИНСК БЕЛИСЬ
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_032.png	Нова
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_033.png	Н. контр.
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_034.png	отм.203,77; 201,67. Узлы 6-8
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_035.png	Копировал
+paddle_rec/lines/BNP-007-0-КМ1_л.5_stamp_frame_036.png	Формат А1
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_000.png	Ведомость перемычек
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_001.png	Марка, поз. Схема сечения
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_002.png	ПР1 (схема перемычки ПР1)
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_003.png	ПР2 (схема перемычки ПР2)
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_004.png	ПР3 (схема перемычки ПР3)
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_left_005.png	ПР4 (схема перемычки ПР4)
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_001.png	1 1782-1-АР1.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_002.png	2 1782-1-АР1.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_003.png	3 1782-1-АР1.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_004.png	4 1782-1-АР1.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/BNP-1782-1-АР1_L2_spec_right_005.png	5 1782-1-АР1.И5 Изделие крепежное МС5 6 12,0
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_000.png	1782-1-АР1
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_001.png	Реконструкция ПС 110 кВ "Камвольный комбинат" с заменой ОД и КЗ 110 кВ на элегазовые выключатели
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_002.png	Изм. Кол.уч. Лист № док. Подп. Дата
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_003.png	Разраб. Горошко 11.20
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_004.png	Пров. Максименко 11.20
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_005.png	Гл. спец. Иванчик 11.20
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_006.png	Н.контр. Сородер 11.20
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_007.png	Гл.инж.пр. Матейчик 11.20
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_008.png	Здание ОПУ с ЗРУ-10 кВ
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_009.png	План на отм. 0.000. Разрез 1-1. Узлы А, Б
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_010.png	Стадия Лист Листов
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_011.png	С 2
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_012.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+paddle_rec/lines/BNP-1782-1-АР1_L2_stamp_frame_013.png	Республика Беларусь
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_000.png	Таблица длин кабелей
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_001.png	Обозначение кабеля Марка, сечение Длина, м
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_002.png	В1 ВВГнг-LS 3х1,5 25
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_003.png	В2 ВВГнг-LS 3х1,5 30
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_004.png	В3 ВВГнг-LS 3х1,5 15
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_005.png	В4 ВВГнг-LS 3х1,5 40
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_left_006.png	В5 ВВГнг-LS 3х1,5 20
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_001.png	— Диаграмма работы концевых выключателей — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_002.png	— ЦТЩ4. Пульт 7М-1А — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_003.png	— HLG1 Арматура сигнальной лампы с зеленой и красной линзами — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_004.png	— SQ1, SQ2 Выключатель концевой — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_005.png	— SA1 Ключ управления МКВ-2222/МVИ — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_006.png	— YQC1, YQT1 Выключатель муфты ограничения крутящего момента — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_spec_right_007.png	— SBC1, SBQ1 Кнопка управления — — —
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_000.png	Н. контр. Беляев А.М.
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_001.png	Проверил Соловьева В.И.
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_002.png	Выполнил Иванов И.И.
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_003.png	Изм. Кол.уч Лист №док. Подп. Дата
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_004.png	BNP-1828-0-ЭМ1
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_005.png	Электроснабжение здания
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_006.png	Стадия Лист Листов
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_007.png	Р 7
+paddle_rec/lines/BNP-1828-0-ЭМ1Л7_stamp_frame_008.png	ООО "ПроектСтрой"
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_000.png	Ведомость деталей
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_001.png	Поз. Эскиз
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_002.png	1 (эскиз детали 1)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_003.png	2 (эскиз детали 2)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_004.png	3 (эскиз детали 3)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_left_005.png	4 (эскиз детали 4)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_000.png	ГЦОЛУОЦИ |1
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_001.png	7_7 Обозначение Науменование Кое Чроме-
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_002.png	< ОВ
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_003.png	К ь ыа р
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_004.png	О О а О
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_005.png	о зави ва [шов |
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_006.png	к рее |
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_007.png	Ось агрегата
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_008.png	Существующыии пол 1400`
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_009.png	Подлибка
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_010.png	стенка (сущ.)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_011.png	102х3 ГОСТ 10704-91 _
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_012.png	ЕЗЕБНЯЕЫЯ О О ПО АА ПО ООО
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_013.png	О щение Ем
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_014.png	| мы || |
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_015.png	2,35
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_016.png	В в Нобелонкокы Та в во
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_017.png	0,30
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_018.png	Норепенка р фи ГЕ ОНИ
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_019.png	ВЫ О А ПО ПО О ПО
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_020.png	* Поз 6 см. бедомость деталец
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_021.png	-0.800'
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_022.png	Существующая фундаментная х
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_023.png	пла -
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_024.png	[Ма
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_025.png	См. ТГп. 14
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_026.png	-2,500"
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_027.png	Сущестбующии кодбельныч
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_028.png	тоннель 150* Захламление
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_029.png	См. ГГп. 11 1 Настоящим проектом предусмотрена реконструкция сущестбующего фундаменто ПЭНа ст № 6 под
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_030.png	устанобку регулирующец гидромуфты.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_031.png	2 Сущестбвующуци электродвигатель переносится согласно размерам данного чертежа. Питательнычц насос
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_032.png	остаётся на месте с сохранением отметки устанобки и прибязок к строительным осям (на чертеже обозно-
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_033.png	ыы] тя
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_034.png	800 8007 800 800 3 Размеры строутельных конструкции со знаком (*) - даны для спрабки и уточняются по месмц.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_035.png	в в / Сущестбующий фундамент построен 6 1959 году по типобому проекту, чертёж № 945`-с, разработанному
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_036.png	3700 Мокобским Теплопроектом. Обмеры чц одследобание строутельноц части фундамента быполнены РУП
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_037.png	Белнипиэнергопром 6 2014 году, отчёт № 282-1-П3.0Б2.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_038.png	5 Сущестбующии кабельныц тоннель подземнои части РУСН, полы у каналы примыкающие к фундаменту
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_039.png	2 ПЭНа ст № 6 быполнены по чертежам з. л. № 43190`, №№ 43399, 4.34.00 разработанными Минским отделением Пром-
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_040.png	Насос питательныи [13 270-150-3
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_041.png	с электродбиугателем сохраняется
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_042.png	142 200 1 энергопроекм.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_043.png	(в) (5) (А шаг 200 6 За услобную отмегку 0,000 принят уробень чистого пола. машзала., что соотбетстбоует адсолютноц
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_044.png	РЕРЕРЕРЕРЯ метке 152,20. В , , в
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_045.png	_ РЯ осле снятия сущестбующего электродбиугателя для установки гидромуфты с электродбугателем
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_046.png	т быполнить следующие подготобительные работы: 0.48 м
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_047.png	/43/ | и те 48/0 демонтиробать опорные металлические рамы с анкернымиу долтами, массоц М= 025:
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_048.png	0) очистить поберхность существующей фундаментноц плиты до отм. -0,150 6 границах демонтажа от
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_049.png	Д ЕМОНШЦЖ ПО ПЕ О ЕК О ЫШИЮ существующих подлибок и набетонок , объём бетона \=4,8 м’;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_050.png	м 6) Бырубить обнаруженные промасленные участки на поверхности фундаментной плиты до здоробого
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_051.png	бетона с сохранением сущестбующечц арматуры, побреждённую арматуру босстанобить;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_052.png	г) дпя связи нобого бетона со старым 6 границах набетонки установить щетину из арматурных стержней
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_053.png	Граница 5 поз. 3 "Ораспор” 6 предбарительно насберлённые скбажиуны диаметром 10 мм с шогом 200х200 на глудину 200 мм
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_054.png	Металлическая рама (сущ) демонтажа Оголение рабочей арматуры плуты Е 200 | 200 по узлу 1:
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_055.png	См. ТТп. 7 (а) нижней грани см. ТТ п. 10 | | 9) уложить арматурные стержни поз. 1, 2, объединить при помощи бязальной проволоки 6 местах
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_056.png	= пересечения;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_057.png	› бала эл. дбугателя. < [ __ [ е) установить закладные детали М1 строго по уробню таким образом, чтобы прумыкануе подкладок (покетс
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_058.png	Е пластин) к лапам гидромуфты было не менее 85% от их общец площади контакта;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_059.png	ж) пру помощи безусадочной сухой бетонной смеси литого типа с крупным заполнителем (10 мм)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_060.png	"Парад РС 18” Выполнить набетонку с заполнением дефектных участков берхнец поберхности сущестбующечц
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_061.png	плиты фундамента;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_062.png	3) скбозь отберстия 6 закладных М1 под гидромуфтоц и по нобоц разметке отберстии для электродбигателя
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_063.png	250
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_064.png	125425
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_065.png	Бетонная
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_066.png	НИЕ НН
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_067.png	И г
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_068.png	- _ +— _
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_069.png	_ поберхность просверлить 8 скбозных отберстий диаметром 80 мм с вырубкой под плитой 6 существующих стенах ниши для
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_070.png	1 - - | - | - со НАЛ 2 + затяжки анкероб. | | .
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_071.png	Ось агрегата | | | Ш! % = 8 До укладки безусадочночц бетонноц смеси Выполнить подготобку сущестбующечц поберхности фундамента с
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_072.png	ь | | 5 соблюдением требобании технологической карты по её применению.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_073.png	55" ыы — НИ нь _] 9 Монтажную подлибку электродбигателя до проектноци отметки быполнить тоц же бетонноц смесью после
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_074.png	| И —. — устанобки , центробкиу, быберки оборудобания и окончательноц затяжки фундаментных дболтоб.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_075.png	10 Заделать ниши для затяжки болтоб ремонтноц смесью "Парад РС?” с однобременным устранением
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_076.png	М” быябленных дефектоб фундамента по матеруалам обследования, а именно:
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_077.png	2 ош | шо - расчистить участки нижней поверхности плиты с оголённой арматурой (5=2,5 м*) до здорового бетона.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_078.png	+400 1700 200 Отё. $80 Й - очистиуть арматуру от ржабчины механическим способом, обработа6 поберхности стандартными
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_079.png	преобразобалелями ржавчины;
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_080.png	000` - затем проузбести босстанобление бетона очищенных участков ремонтными смесями Парад РСТ (аналог)
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_081.png	на глубуну от 20 90 50 мм.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_082.png	11 Очистить пол на огм. (-2,45) от захламления, площадь $=1,3 м*.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_spec_right_083.png	д, 12 По бсем скорродиробанным сущестбующим металлоконструкциям - анкерным болтам, перемычкам
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_000.png	я Я Уч -е-НИГ РКУ РИА АТК УГ ПГРУАЦ Ч 71 АДА Г Тм т мы У СГ м ИАА гта ща игугюв га
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_001.png	лакокрасочного покрытия 80 мкм.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_002.png	13 Для прокладки электровафельниц трубы поз. 6" и устройства. траншея, пол разобрать, объём демонтажа
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_003.png	\/=0,4.0 м’ с последующим Восстановлением бетоном класса. (16/20 толщиной 150 мм по основанию
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_004.png	утрамбованному щебнем на глубину 60 мм.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_005.png	14 В стене тоннеля пробить отверстие диаметром 150 мм с предбарительноц рассберлобкоц перфоратором
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_006.png	В Я 8 _ по контуру. После прохода трубы поз. 6 зазор за чеканить цементное-песчаным раствором МЛО0.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_007.png	РОСЛОСТЬ етцлечц 15 Стальную пруду поз. 6* 6 земле покрыть усуленноц антикоррозуиуноц изоляция по ГОСТ 9.602-2005 на
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_008.png	Таблица 2 снобе полимерных липких лент.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_009.png	16 Применённые проектом материалы могут быть заменены на другие с аналогичными характеристику
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_010.png	ОЗ. Эскиз пру условии согласования с РУП "Белнупиэнергопром”
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_011.png	И4/ п Верхнюю поверхность плиты под гидромуфтой покрыть 9буя слоями эмали 91-152 ТУ 500021625.140-2008
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_012.png	тля _ по слою грунтовки ЭП-045 ТУ РБ 500021625.106-2005. Площадь окрашиваемой поверхности $=6,2 м2.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_013.png	а +0,260
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_014.png	= 0,000
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_015.png	-0,800 „7
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_016.png	7 ——° 55°
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_017.png	[418] - 49-9 __ 08.15 Витебская ТЭЦ
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_018.png	[3 | — | 3ом 3-9 == |0415| Станочка гидромуфты на питательный электрочасов см № 6.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_019.png	| Изм. Кол. [Лист № бок. | Поп. _] Дата. Корректировка.
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_020.png	Раз раб. __|Миронович| | Главный корпус
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_021.png	Зав 26 >в "КиЗЬмин МИН О ВОВ Фундамент питательного насоса 2 |
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_022.png	Гл. контр. [Крот __ | | | се\бромуфтон
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_023.png	Н контр. [Но бош РУП "БЕЛНИПИЭНЕРГОПРОМ”"
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_024.png	Н. контр. | Но баш | План на отметке -0,150. Армирование (5 Минск Беларусь
+paddle_rec/lines/BNP-282-1-КЖ3__л.2_stamp_frame_025.png	Копировал Формат А1
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_000.png	Ведомость деталей
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_001.png	Поз. Эскиз
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_002.png	1 (эскиз детали 1)
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_003.png	2 (эскиз детали 2)
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_004.png	3 (эскиз детали 3)
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_left_005.png	4 (эскиз детали 4)
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_right_001.png	1 427-9-ГР5.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_right_002.png	2 427-9-ГР5.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_right_003.png	3 427-9-ГР5.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/BNP-427-9-ГР5_L2_spec_right_004.png	4 427-9-ГР5.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_000.png	427-9-ГР5
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_001.png	Гродненская ТЭЦ-2. Реконструкция градирни ст. №2
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_002.png	Корректировка №2
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_003.png	Изм. Кол.уч. Лист № док. Подп. Дата
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_004.png	Разраб. Горошко 02.20
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_005.png	Зав.гр. Максименко 02.20
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_006.png	Гл.спец. Иванчик 02.20
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_007.png	Н.контр. Сородер 02.20
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_008.png	Гл.инж.пр. Матейчик 02.20
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_009.png	Замена оросителя, водоуловителя, решеток, водовыпускной системы и обшивки градирни
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_010.png	План на отм. 0.000. Разрез 1-1. Узлы А, Б
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_011.png	Стадия Лист Листов
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_012.png	С 2
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_013.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+paddle_rec/lines/BNP-427-9-ГР5_L2_stamp_frame_014.png	Республика Беларусь
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_000.png	Ведомость перемычек
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_001.png	Марка, поз. Схема сечения
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_002.png	ПР1 (схема перемычки ПР1)
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_003.png	ПР2 (схема перемычки ПР2)
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_004.png	ПР3 (схема перемычки ПР3)
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_left_005.png	ПР4 (схема перемычки ПР4)
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_001.png	1 121-1-АР5.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_002.png	2 121-1-АР5.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_003.png	3 121-1-АР5.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_004.png	4 121-1-АР5.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/BNP_121-1-АР5_L4_spec_right_005.png	5 121-1-АР5.И5 Изделие крепежное МС5 6 12,0
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_000.png	121-1-АР5
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_001.png	Реконструкция ПС 110 кВ "Камвольный комбинат" с заменой ОД и КЗ 110 кВ на элегазовые выключатели
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_002.png	Изм. Кол.уч. Лист № док. Подп. Дата
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_003.png	Разраб. Горошко 11.20
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_004.png	Пров. Максименко 11.20
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_005.png	Гл. спец. Иванчик 11.20
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_006.png	Н.контр. Сородер 11.20
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_007.png	Гл.инж.пр. Матейчик 11.20
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_008.png	Здание ОПУ с ЗРУ-10 кВ
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_009.png	План кровли
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_010.png	Стадия Лист Листов
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_011.png	С 4
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_012.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+paddle_rec/lines/BNP_121-1-АР5_L4_stamp_frame_013.png	Республика Беларусь
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_000.png	Таблица длин кабелей
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_001.png	Обозначение кабеля Марка, сечение Длина, м
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_002.png	В1 ВВГнг-LS 3х1,5 25
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_003.png	В2 ВВГнг-LS 3х1,5 30
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_004.png	В3 ВВГнг-LS 3х1,5 15
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_005.png	В4 ВВГнг-LS 3х1,5 40
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_left_006.png	В5 ВВГнг-LS 3х1,5 20
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_000.png	Таблица 1
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_001.png	Спецификация
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_002.png	Поз. | Обозначение | Наименование | Кол. | Масса ед., кг | Примечание
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_003.png	1 | 4х40 ГОСТ 103-2006 | Полоса Ст3сп ГОСТ 535-2005 | 20 | 1,26 |
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_004.png	2 | 4х25 ГОСТ 103-2006 | Полоса Ст3сп ГОСТ 535-2005 | 10 | 0,79 |
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_005.png	3 | — | Тяга водогазопроводная | 1,0м | — | —
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_006.png	4 | ТУ 36-1453-82 | Держатель шин заземления К188 | 12 | — | —
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_007.png	Условные обозначения
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_008.png	Таблица 2
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_009.png	Обозначение | Наименование
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_010.png	— | Заземляющие защитные проводники
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_011.png	— | Места сварки заземляющих элементов
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_012.png	1 В соответствии с ПУЭ к сети внутреннего контура заземления должны быть присоединены каркасы шкафов, щитов, металлические кабельные конструкции, металлические рукава и трубы электропроводок.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_013.png	2 С целью выравнивания потенциалов в помещениях должны быть присоединены к сети заземления стационарно проложенные трубопроводы всех назначений, металлические строительные и производственные конструкции.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_014.png	3 Магистраль внутреннего контура заземления выполнить из полосовой стали сеч. 4x40 мм, отпайки от магистрали заземления к оборудованию - сеч. 4x25 мм.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_015.png	4 Магистраль внутреннего контура заземления положить на высоте 400 мм от пола. При пересечении с дверными проемами магистраль прокладывается над проемами.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_016.png	5 Защитное заземление выполнено по системе TN-S.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_017.png	6 Проход полос заземления через стены выполнить в стальной водогазопроводной трубе поз. 3.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_018.png	7 Все соединения контура заземления производить двойным сварным швом.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_spec_right_019.png	8 Отпайки к заземляемым объектам установок 400/230 В на чертеже не показаны и выполняются по месту монтажной организации.
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_000.png	Изм. | Кол. уч. | Описание | Лист | № док. | Подпись | Дата
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_001.png	Заказчик
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_002.png	ОАО «КВАДРА»
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_003.png	Реконструкция Воронежской ТЭЦ-1. Строительство ПГУ - 223 МВт
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_004.png	Разработал | Ковалева | 27.11.2019 | VR-ZOUCL-SAF-ES-01-72-005
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_005.png	Проверил | Масальский | 27.11.2019 | Инв. № подл. 1760-228-ЭМ1
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_006.png	Гл. констр. | Карпович | 27.11.2019 | Файл: VR-ZOUCL-SAF-ES-01-72-005.dwg
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_007.png	Н. контр. | Мультан | 27.11.2019 | Перенос коммерческого узла учета пара на трубопроводы производственного отбора 9530 мм и на трубопроводы подачи пара для пусковых работ ПГУ-223 МВт 97159 мм Воронежской ТЭЦ-1. Электротехнические чертежи. План расположения заземления
+paddle_rec/lines/BNP_1760-228-ЭМ1_л.5_stamp_frame_008.png	Лист | 5 | Листов | 5
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_000.png	Таблица длин кабелей
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_001.png	Обозначение кабеля Марка, сечение Длина, м
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_002.png	В1 ВВГнг-LS 3х1,5 25
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_003.png	В2 ВВГнг-LS 3х1,5 30
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_004.png	В3 ВВГнг-LS 3х1,5 15
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_005.png	В4 ВВГнг-LS 3х1,5 40
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_left_006.png	В5 ВВГнг-LS 3х1,5 20
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_001.png	— Диаграмма работы концевых выключателей — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_002.png	— ЦТЩ4. Пульт 7М-1А — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_003.png	— HLG1 Арматура сигнальной лампы с зеленой и красной линзами — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_004.png	— SQ1, SQ2 Выключатель концевой — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_005.png	— SA1 Ключ управления МКВ-2222/МVИ — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_006.png	— YQC1, YQT1 Выключатель муфты ограничения крутящего момента — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_spec_right_007.png	— SBC1, SBQ1 Кнопка управления — — —
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_000.png	559-1-АТМ7
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_001.png	Модернизация Минской ТЭЦ-3 с заменой выбывающих мощностей 1 очереди. Очередь 1.
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_002.png	Изм. Кол.уч. Лист № док. Подп. Дата
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_003.png	Разраб. Конон 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_004.png	Пров. Волкова 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_005.png	Гл. техн. Волкова 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_006.png	Гл. спец. Иванчик 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_007.png	Н.контр. Сородер 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_008.png	Гл.инж.пр. Матейчик 10.12
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_009.png	Котел ст. № 3.
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_010.png	Схема полная электрическая принципиальная питания сборок задвижек и электроприводов.
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_011.png	Стадия Лист Листов
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_012.png	С 11
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_013.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+paddle_rec/lines/BNP_559-1-АТМ7_Л11_stamp_frame_014.png	Республика Беларусь
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_001.png	1 Блок биологической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_002.png	2 Блок доочистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_003.png	3 Блок обезвоживания осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_004.png	4 Блок физико-химической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_005.png	5 Установка УФ-обеззараживания 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_006.png	6 Резервуар очищенных сточных вод 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_007.png	7 Резервуар усреднитель 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_008.png	8 КНС 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_009.png	9 Воздуходувная станция 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_010.png	10 Иловая насосная станция 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_011.png	11 Здание решеток 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_012.png	12 Здание механической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_013.png	13 Площадка складирования осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_014.png	14 Резервуар аварийный 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_015.png	15 Резервуар сырого осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_016.png	16 Насосная станция опорожнения 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_017.png	17 Здание реагентного хозяйства 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_018.png	18 Блок очистки ливневых стоков 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_left_019.png	19 Резервуар ливневых стоков 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_001.png	1 Блок биологической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_002.png	2 Блок доочистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_003.png	3 Блок обезвоживания осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_004.png	4 Блок физико-химической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_005.png	5 Установка УФ-обеззараживания 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_006.png	6 Резервуар очищенных сточных вод 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_007.png	7 Резервуар усреднитель 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_008.png	8 КНС 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_009.png	9 Воздуходувная станция 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_010.png	10 Иловая насосная станция 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_011.png	11 Здание решеток 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_012.png	12 Здание механической очистки 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_013.png	13 Площадка складирования осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_014.png	14 Резервуар аварийный 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_015.png	15 Резервуар сырого осадка 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_016.png	16 Насосная станция опорожнения 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_017.png	17 Здание реагентного хозяйства 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_018.png	18 Блок очистки ливневых стоков 1
+paddle_rec/lines/GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA_spec_right_019.png	19 Резервуар ливневых стоков 1
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_001.png	1 VR-_____-___-GT-08-74-002.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_002.png	2 VR-_____-___-GT-08-74-002.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_003.png	3 VR-_____-___-GT-08-74-002.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_004.png	4 VR-_____-___-GT-08-74-002.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_left_005.png	5 VR-_____-___-GT-08-74-002.И5 Изделие крепежное МС5 6 12,0
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_000.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_001.png	1 VR-_____-___-GT-08-74-002.И1 Изделие крепежное МС1 6 12,0
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_002.png	2 VR-_____-___-GT-08-74-002.И2 Изделие крепежное МС2 6 10,6
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_003.png	3 VR-_____-___-GT-08-74-002.И3 Изделие крепежное МС3 6 11,8
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_004.png	4 VR-_____-___-GT-08-74-002.И4 Изделие крепежное МС4 6 10,4
+paddle_rec/lines/VR-_____-___-GT-08-74-002_spec_right_005.png	5 VR-_____-___-GT-08-74-002.И5 Изделие крепежное МС5 6 12,0
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_000.png	ООО "ЛУКОЙЛ-Нижневолжскнефть"
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_001.png	ОАО "ЛУКОЙЛ"
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_002.png	Реконструкция объектов
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_003.png	Изм. Кол.уч. Лист №док Подп. Дата
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_004.png	Разраб. Петров
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_005.png	Проверил Сидоров
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_006.png	Н.контр. Смирнов
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_007.png	VR-_____-___-GT-08-74-002
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_008.png	План расположения
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_009.png	Стадия Лист Листов
+paddle_rec/lines/VR-_____-___-GT-08-74-002_stamp_frame_010.png	Р 2

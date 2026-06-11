@@ -72,7 +72,10 @@ def _find_table_blocks(
 ) -> list[fitz.Rect]:
     h, w = gray.shape
     line_mask = _table_line_mask(gray)
-    x_cut = int(w * 0.30)
+    # Не режем левую часть страницы слишком сильно: на части листов таблица
+    # начинается раньше 30% от левого края. Слишком высокий x_cut приводит
+    # к «обрезанным справа» зонам в downstream (spec_right).
+    x_cut = int(w * 0.18)
     roi = line_mask[:, x_cut:]
     inv = cv2.bitwise_not(roi)
     inv = cv2.dilate(inv, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)), iterations=2)
@@ -241,15 +244,54 @@ def _ocr_block_by_cells(
 
     cell_data: list[tuple[float, float, str]] = []
     block_w = rect.width
+    eff_dpi = min(dpi, 520)
+
+    from belener.ocr import _render_clip
+    from belener.paddle_ocr import paddle_batch_size, paddle_ocr_enabled, paddle_zone_match
+
+    cell_meta: list[tuple[fitz.Rect, float, float, Any]] = []
     for cell in cells:
-        wide = cell.width > block_w * 0.42
-        psm = 6 if wide else 7
-        txt = _ocr_rect(doc, cell, page_index, min(dpi, 520), psm=psm, zone="spec_right")
-        if not txt:
+        img = _render_clip(doc, page_index, cell, eff_dpi)
+        if img is None:
             continue
         cx = (cell.x0 + cell.x1) / 2
         cy = (cell.y0 + cell.y1) / 2
-        cell_data.append((cy, cx, txt))
+        cell_meta.append((cell, cy, cx, img))
+
+    texts: list[str] = []
+    use_paddle = paddle_ocr_enabled() and paddle_zone_match("spec_right")
+    if use_paddle and cell_meta:
+        from belener.paddle_ocr import ocr_pil_images_batch
+
+        batch_n = paddle_batch_size()
+        imgs = [m[3] for m in cell_meta]
+        for i in range(0, len(imgs), batch_n):
+            chunk = imgs[i : i + batch_n]
+            texts.extend(ocr_pil_images_batch(chunk, zone="spec_right"))
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _one(meta):
+            cell, cy, cx, img = meta
+            wide = cell.width > block_w * 0.42
+            psm = 6 if wide else 7
+            txt = _ocr_rect(doc, cell, page_index, eff_dpi, psm=psm, zone="spec_right")
+            return (cy, cx, txt) if txt else None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for res in pool.map(_one, cell_meta):
+                if res:
+                    cell_data.append(res)
+
+    if use_paddle and cell_meta:
+        from belener.ocr import finalize_ocr_text
+
+        for (_, cy, cx, _), raw in zip(cell_meta, texts):
+            txt = finalize_ocr_text(raw or "", spell=True)
+            if txt:
+                cell_data.append((cy, cx, txt))
+
+    log.info("cv_cells for block %s returned %d extracted cells from %d candidate rects", rect, len(cell_data), len(cells))
 
     if len(cell_data) < 2:
         return _ocr_block_whole(doc, rect, page_index, dpi)
@@ -282,7 +324,7 @@ def ocr_table_rect_cells(
         return ""
     page = doc[page_index]
     page_rect = page.rect
-    eff_dpi = min(max(dpi, 360), 560)
+    eff_dpi = min(max(dpi, 250), 560)
     gray, scale = _page_to_gray(doc, page_index, dpi=eff_dpi)
     clipped = rect & page_rect
     if clipped.is_empty:
@@ -307,7 +349,7 @@ def extract_cv_tables(
     page = doc[page_index]
     page_rect = page.rect
     t0 = time.monotonic()
-    eff_dpi = min(max(dpi, 360), 560)
+    eff_dpi = min(max(dpi, 250), 560)
     gray, scale = _page_to_gray(doc, page_index, dpi=eff_dpi)
     rects = _find_table_blocks(gray, page_rect, scale, stamp_rect=stamp_rect)
     try:

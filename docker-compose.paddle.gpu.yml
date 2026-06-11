@@ -1,0 +1,22 @@
+# PaddleOCR с NVIDIA GPU (WSL2 / Linux + nvidia-container-toolkit)
+#
+#   docker compose -f docker-compose.yml -f docker-compose.paddle.yml -f docker-compose.paddle.gpu.yml --profile paddle up -d --build
+#
+# Проверка: curl http://localhost:8082/health
+
+services:
+  paddle-ocr:
+    build:
+      context: ./services/paddle_ocr
+      dockerfile: Dockerfile.gpu
+    environment:
+      PADDLE_USE_GPU: "1"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

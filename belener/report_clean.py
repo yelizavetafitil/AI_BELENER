@@ -197,13 +197,23 @@ def _is_bad_table_title(title: str) -> bool:
 def _is_schematic_caption_table(tbl: dict[str, Any]) -> bool:
     """Подписи к элементам схемы, ошибочно собранные в таблицу."""
     kind = str(tbl.get("kind") or "")
-    if kind in ("specification", "explication"):
-        return False
     rows = tbl.get("rows") or []
     if not rows:
         return False
     blob = " ".join(str(v) for r in rows if isinstance(r, dict) for v in r.values())
     blob += " " + str(tbl.get("title") or "")
+    if kind == "specification":
+        from belener.spec_table import is_schematic_caption_row
+        from belener.table_quality import spec_table_header_present
+
+        sch = sum(1 for r in rows if isinstance(r, dict) and is_schematic_caption_row(r))
+        if sch >= max(2, int(len(rows) * 0.5)):
+            return True
+        if len(rows) <= 2 and sch >= 1 and not spec_table_header_present(blob):
+            return True
+        return False
+    if kind in ("explication",):
+        return False
     sch = len(_SCHEMATIC_BLOB_RX.findall(blob))
     bom = len(_BOM_BLOB_RX.findall(blob))
     if sch >= 3 and bom < 2:
@@ -214,7 +224,7 @@ def _is_schematic_caption_table(tbl: dict[str, Any]) -> bool:
             note = str(r.get("note") or "")
             if len(note) > 100 and _SCHEMATIC_BLOB_RX.search(note):
                 return True
-    if kind in ("table", "specification"):
+    if kind == "table":
         for r in rows[:6]:
             if not isinstance(r, dict):
                 continue
@@ -424,6 +434,25 @@ def prune_garbage_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     kept: list[dict[str, Any]] = []
     for tbl in tables:
+        kind = str(tbl.get("kind") or "table")
+        if kind == "legend":
+            from belener.table_quality import legend_ocr_plausible
+
+            if not legend_ocr_plausible("", tbl.get("rows") or []):
+                continue
+        if kind == "specification":
+            from belener.table_quality import spec_table_plausible
+            from belener.normative_spec import normative_bom_plausible
+
+            if not spec_table_plausible("", tbl.get("rows") or []) and not normative_bom_plausible(
+                tbl.get("rows") or []
+            ):
+                continue
+        if kind == "explication":
+            from belener.table_quality import explication_table_plausible
+
+            if not explication_table_plausible("", tbl.get("rows") or []):
+                continue
         if _is_mixed_garbage_table(tbl):
             continue
         tbl = _fix_table_kind_and_rows(tbl)
@@ -477,23 +506,10 @@ def extract_quality_poor(
 
 
 def _clean_signatures(stamp: dict[str, Any]) -> dict[str, Any]:
-    from belener.parse import _is_bad_signature_name
+    from belener.parse import normalize_signatures
 
-    sigs = []
-    for s in stamp.get("signatures") or []:
-        if not isinstance(s, dict):
-            continue
-        name = str(s.get("name") or "").strip()
-        role = str(s.get("role") or "").strip()
-        if _is_bad_signature_name(name):
-            continue
-        if role and len(role.split()) >= 4:
-            continue
-        if role and len(role) > 40:
-            continue
-        sigs.append(s)
     out = dict(stamp)
-    out["signatures"] = sigs
+    out["signatures"] = normalize_signatures(list(stamp.get("signatures") or []))
     return out
 
 
@@ -542,6 +558,8 @@ def clean_drawing_facts(facts: dict[str, Any]) -> dict[str, Any]:
         kind = str(tbl.get("kind") or "table")
         rows = list(tbl.get("rows") or [])
         if kind == "legend":
+            from belener.table_quality import legend_ocr_plausible
+
             kept_leg: list[dict] = []
             for row in rows:
                 note = _clean_legend_note(str(row.get("note") or ""))
@@ -550,6 +568,8 @@ def clean_drawing_facts(facts: dict[str, Any]) -> dict[str, Any]:
                     continue
                 if not _is_garbage_legend_note(note):
                     kept_leg.append({"symbol": row.get("symbol") or "—", "note": note})
+            if not legend_ocr_plausible("", kept_leg):
+                continue
             rows = kept_leg
         rows = _filter_rows(rows, kind)
         if not rows:
@@ -602,6 +622,15 @@ def clean_drawing_facts(facts: dict[str, Any]) -> dict[str, Any]:
     out["tables"] = tables
     out["sheet_notes"] = notes or None
     stamp = _clean_signatures(dict(out.get("stamp") or {}))
+    from belener.parse import _is_garbage_stamp_title, _looks_like_stamp_section_title, _normalize_stamp_title
+
+    titles = [
+        _normalize_stamp_title(str(t))
+        for t in (stamp.get("titles") or [])
+        if _looks_like_stamp_section_title(_normalize_stamp_title(str(t)))
+        and not _is_garbage_stamp_title(str(t))
+    ]
+    stamp["titles"] = titles
     revisions = [
         r
         for r in (stamp.get("revisions") or [])

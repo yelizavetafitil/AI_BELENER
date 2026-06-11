@@ -1,0 +1,11 @@
+{
+  "file": "GCC-IOT-DDD-16230-00-5400-TKM-PLN-00002_AA.pdf",
+  "seconds": 195.3,
+  "pipeline": "belener_text_layer",
+  "ok": true,
+  "spec_ocr_chars": 0,
+  "spec_rows": 0,
+  "ungrounded_count": 0,
+  "ungrounded_sample": [],
+  "faithful_ok": true
+}

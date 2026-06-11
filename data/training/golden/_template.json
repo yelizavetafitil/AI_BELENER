@@ -1,0 +1,19 @@
+{
+  "file": "ИМЯ_ФАЙЛА.pdf",
+  "stem": "ИМЯ_СТЕМ_как_в_crops",
+  "kind": "specification | genplan | em_grounding",
+  "specification": [
+    {"Поз.": "1", "Обозначение": "…", "Наименование": "…", "Кол.": "…", "Масса ед., кг": "—", "Примечание": "—"}
+  ],
+  "explication": [
+    {"plan_number": "3", "name": "…", "grid": "—", "note": "…"}
+  ],
+  "legend": [
+    {"symbol": "—", "note": "…"}
+  ],
+  "notes_min": 0,
+  "stamp_kv": {
+    "Обозначение документа": "…",
+    "Инв. № подл.": "…"
+  }
+}

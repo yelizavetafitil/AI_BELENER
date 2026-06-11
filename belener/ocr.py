@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
 import shutil
@@ -21,6 +22,8 @@ from belener.config import (
     ocr_psm_for_zone,
     ocr_timeout_sec,
 )
+
+log = logging.getLogger("belener.ocr")
 
 _FITZ_LOCK = threading.Lock()
 
@@ -78,10 +81,20 @@ def tesseract_available() -> bool:
     return tessdata_dir() is not None
 
 
+_MATERIAL_OCR_SUBS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"гсталь", re.I), "сталь"),
+    (re.compile(r"гсплав", re.I), "сплав"),
+    (re.compile(r"гссталь", re.I), "сталь"),
+    (re.compile(r"гост\s*(\d)", re.I), r"ГОСТ \1"),
+)
+
+
 def normalize_ocr_text(text: str) -> str:
     """Универсальная пост-обработка OCR русского текста."""
     if not text:
         return ""
+    for pat, repl in _MATERIAL_OCR_SUBS:
+        text = pat.sub(repl, text)
     lines: list[str] = []
     for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         ln = raw.strip()
@@ -206,12 +219,30 @@ def _render_clip(doc: fitz.Document, page_index: int, clip: fitz.Rect, dpi: int)
         return None
 
     eff_dpi = _cap_dpi_for_clip(clip, dpi)
+    try:
+        from belener.zone_cache import cache_key, read_png, write_png
+
+        key = cache_key(doc, page_index, clip, eff_dpi)
+        cached = read_png(key)
+        if cached:
+            return Image.open(io.BytesIO(cached))
+    except Exception:
+        key = None
+
     scale = eff_dpi / 72.0
     mat = fitz.Matrix(scale, scale)
     with _FITZ_LOCK:
         pix = doc[page_index].get_pixmap(matrix=mat, clip=clip, alpha=False)
     try:
-        return Image.open(io.BytesIO(pix.tobytes("png")))
+        png = pix.tobytes("png")
+        if key:
+            try:
+                from belener.zone_cache import write_png
+
+                write_png(key, png)
+            except Exception:
+                pass
+        return Image.open(io.BytesIO(png))
     except Exception:
         return None
 
@@ -326,7 +357,17 @@ def _ocr_with_tesseract(
         img = _render_clip(doc, page_index, clip, dpi)
     text = ""
     if img is not None and shutil.which("tesseract"):
-        text = _tesseract_cli(img, lang=lang, psm=psm_val, dpi=eff_dpi, zone=zone)
+        from belener.config import ocr_multiview_enabled
+
+        if ocr_multiview_enabled() and _is_table_zone(zone):
+            from belener.ocr_multiview import ocr_pil_multiview
+
+            def _one_pass(pil: Image.Image) -> str:
+                return _tesseract_cli(pil, lang=lang, psm=psm_val, dpi=eff_dpi, zone=zone)
+
+            text = ocr_pil_multiview(img, _one_pass)
+        else:
+            text = _tesseract_cli(img, lang=lang, psm=psm_val, dpi=eff_dpi, zone=zone)
     if not text and ocr_fitz_fallback():
         text = _tesseract_fitz(doc, page_index, clip, dpi=eff_dpi, lang=lang)
     return text
@@ -353,30 +394,85 @@ def ocr_region(
     use_spell = _is_table_zone(zone) or (zone or "").casefold().startswith("stamp")
 
     engine = ocr_engine()
-    use_deepseek = engine in ("deepseek", "auto")
 
-    if use_deepseek:
-        from belener.deepseek_ocr import (
-            deepseek_ocr_enabled,
-            normalize_deepseek_table_text,
-            ocr_pil_image,
-        )
+    if img is None:
+        img = _render_clip(doc, page_index, clip, dpi)
 
-        if deepseek_ocr_enabled():
-            if img is None:
-                img = _render_clip(doc, page_index, clip, dpi)
-            if img is not None:
-                raw = ocr_pil_image(img, zone=zone, filename=f"{zone or 'zone'}.png")
+    from belener.paddle_ocr import (
+        ocr_pil_image as paddle_ocr_pil,
+        paddle_ocr_enabled,
+        paddle_zone_match,
+    )
+
+    if img is not None and paddle_ocr_enabled() and paddle_zone_match(zone):
+        from belener.table_quality import table_ocr_quality
+
+        raw = paddle_ocr_pil(img, zone=zone, filename=f"{zone or 'zone'}.png")
+        if raw:
+            # For our fine-tuned PaddleOCR, we trust its output over Tesseract fallback,
+            # especially since table_ocr_quality expects tabs which Paddle might not output exactly right.
+            log.info("paddle zone %s returned %d chars", zone, len(raw))
+            return finalize_ocr_text(raw, spell=use_spell)
+
+    def _remote_ocr_pil(pil_img: Image.Image) -> str:
+        if engine in ("surya", "auto"):
+            from belener.surya_ocr import (
+                normalize_surya_table_text,
+                ocr_pil_image as surya_ocr,
+                surya_ocr_enabled,
+            )
+
+            if surya_ocr_enabled():
+                raw = surya_ocr(pil_img, zone=zone, filename=f"{zone or 'zone'}.png")
+                if raw:
+                    if _is_table_zone(zone):
+                        raw = normalize_surya_table_text(raw)
+                    return finalize_ocr_text(raw, spell=use_spell)
+        if engine in ("deepseek", "auto"):
+            from belener.deepseek_ocr import (
+                deepseek_ocr_enabled,
+                normalize_deepseek_table_text,
+                ocr_pil_image as deepseek_ocr,
+            )
+
+            if deepseek_ocr_enabled():
+                raw = deepseek_ocr(pil_img, zone=zone, filename=f"{zone or 'zone'}.png")
                 if raw:
                     if _is_table_zone(zone):
                         raw = normalize_deepseek_table_text(raw)
                     return finalize_ocr_text(raw, spell=use_spell)
-        if engine == "deepseek" and not ocr_fallback_tesseract():
-            return ""
-        if not tesseract_available():
+        return ""
+
+    if engine in ("surya", "deepseek", "auto"):
+        if img is None:
+            img = _render_clip(doc, page_index, clip, dpi)
+        if img is not None:
+            from belener.config import ocr_multiview_enabled, ocr_multiview_for_surya
+
+            if (
+                ocr_multiview_enabled()
+                and ocr_multiview_for_surya()
+                and engine in ("surya", "auto")
+                and _is_table_zone(zone)
+            ):
+                from belener.ocr_multiview import ocr_pil_multiview
+
+                remote = ocr_pil_multiview(
+                    img,
+                    lambda pil: _remote_ocr_pil(pil) or "",
+                    angles=None,
+                )
+            else:
+                remote = _remote_ocr_pil(img)
+            if remote:
+                return remote
+        if engine in ("surya", "deepseek") and not ocr_fallback_tesseract():
             return ""
 
-    elif not tesseract_available():
+    if engine == "paddle" and not ocr_fallback_tesseract():
+        return ""
+
+    if not tesseract_available() and engine not in ("surya", "deepseek", "auto"):
         return ""
 
     text = _ocr_with_tesseract(
@@ -396,16 +492,25 @@ def ocr_stamp_frame(
     """OCR рамки: DeepSeek (если включён) или два прохода Tesseract."""
     from belener.config import ocr_engine, ocr_fallback_tesseract
 
-    if ocr_engine() in ("deepseek", "auto"):
-        from belener.deepseek_ocr import deepseek_ocr_enabled, ocr_pil_image
+    eng = ocr_engine()
+    if eng in ("surya", "deepseek", "auto"):
+        img = _render_clip(doc, page_index, clip, dpi)
+        if img is not None:
+            if eng in ("surya", "auto"):
+                from belener.surya_ocr import ocr_pil_image as surya_ocr, surya_ocr_enabled
 
-        if deepseek_ocr_enabled():
-            img = _render_clip(doc, page_index, clip, dpi)
-            if img is not None:
-                text = ocr_pil_image(img, zone="stamp_frame", filename="stamp.png")
-                if text:
-                    return finalize_ocr_text(text, spell=True)
-        if ocr_engine() == "deepseek" and not ocr_fallback_tesseract():
+                if surya_ocr_enabled():
+                    text = surya_ocr(img, zone="stamp_frame", filename="stamp.png")
+                    if text:
+                        return finalize_ocr_text(text, spell=True)
+            if eng in ("deepseek", "auto"):
+                from belener.deepseek_ocr import deepseek_ocr_enabled, ocr_pil_image as deepseek_ocr
+
+                if deepseek_ocr_enabled():
+                    text = deepseek_ocr(img, zone="stamp_frame", filename="stamp.png")
+                    if text:
+                        return finalize_ocr_text(text, spell=True)
+        if eng in ("surya", "deepseek") and not ocr_fallback_tesseract():
             return ""
 
     lang = lang or ocr_lang()

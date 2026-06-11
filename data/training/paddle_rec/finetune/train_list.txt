@@ -1,0 +1,397 @@
+/app/data/training/paddle_rec/finetune/images/train/00000.png	5 Защитное заземление выполнено по системе TN-S.
+/app/data/training/paddle_rec/finetune/images/train/00001.png	Зав.гр. Максименко 02.20
+/app/data/training/paddle_rec/finetune/images/train/00002.png	12 Здание механической очистки 1
+/app/data/training/paddle_rec/finetune/images/train/00003.png	Таблица 2
+/app/data/training/paddle_rec/finetune/images/train/00004.png	2 очередь строительства
+/app/data/training/paddle_rec/finetune/images/train/00005.png	О щение Ем
+/app/data/training/paddle_rec/finetune/images/train/00006.png	Разраб. Горошко 11.20
+/app/data/training/paddle_rec/finetune/images/train/00007.png	› бала эл. дбугателя. < [ __ [ е) установить закладные детали М1 строго по уробню таким образом, чтобы прумыкануе подкладок (покетс
+/app/data/training/paddle_rec/finetune/images/train/00008.png	"Парад РС 18” Выполнить набетонку с заполнением дефектных участков берхнец поберхности сущестбующечц
+/app/data/training/paddle_rec/finetune/images/train/00009.png	Нова
+/app/data/training/paddle_rec/finetune/images/train/00010.png	5 Сущестбующии кабельныц тоннель подземнои части РУСН, полы у каналы примыкающие к фундаменту
+/app/data/training/paddle_rec/finetune/images/train/00011.png	6 Резервуар очищенных сточных вод 1
+/app/data/training/paddle_rec/finetune/images/train/00012.png	<b>C41</b>
+/app/data/training/paddle_rec/finetune/images/train/00013.png	Обварить
+/app/data/training/paddle_rec/finetune/images/train/00014.png	Таблица 1
+/app/data/training/paddle_rec/finetune/images/train/00015.png	5 121-1-АР5.И5 Изделие крепежное МС5 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00016.png	2 VR-_____-___-GT-08-74-002.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00017.png	— SBC1, SBQ1 Кнопка управления — — —
+/app/data/training/paddle_rec/finetune/images/train/00018.png	О О а О
+/app/data/training/paddle_rec/finetune/images/train/00019.png	16 Применённые проектом материалы могут быть заменены на другие с аналогичными характеристику
+/app/data/training/paddle_rec/finetune/images/train/00020.png	В4 ВВГнг-LS 3х1,5 40
+/app/data/training/paddle_rec/finetune/images/train/00021.png	Гл.спец. Иванчик 02.20
+/app/data/training/paddle_rec/finetune/images/train/00022.png	МИНСК БЕЛИСЬ
+/app/data/training/paddle_rec/finetune/images/train/00023.png	И г
+/app/data/training/paddle_rec/finetune/images/train/00024.png	Условные обозначения
+/app/data/training/paddle_rec/finetune/images/train/00025.png	В1 ВВГнг-LS 3х1,5 25
+/app/data/training/paddle_rec/finetune/images/train/00026.png	15 Резервуар сырого осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00027.png	3 VR-_____-___-GT-08-74-002.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00028.png	| мы || |
+/app/data/training/paddle_rec/finetune/images/train/00029.png	3 VR-_____-___-GT-08-74-002.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00030.png	ПР1 (схема перемычки ПР1)
+/app/data/training/paddle_rec/finetune/images/train/00031.png	Формат А1
+/app/data/training/paddle_rec/finetune/images/train/00032.png	План на отм. 0.000. Разрез 1-1. Узлы А, Б
+/app/data/training/paddle_rec/finetune/images/train/00033.png	ПР2 (схема перемычки ПР2)
+/app/data/training/paddle_rec/finetune/images/train/00034.png	007-0-KM1
+/app/data/training/paddle_rec/finetune/images/train/00035.png	В Я 8 _ по контуру. После прохода трубы поз. 6 зазор за чеканить цементное-песчаным раствором МЛО0.
+/app/data/training/paddle_rec/finetune/images/train/00036.png	— ЦТЩ4. Пульт 7М-1А — — —
+/app/data/training/paddle_rec/finetune/images/train/00037.png	Пров. Волкова 10.12
+/app/data/training/paddle_rec/finetune/images/train/00038.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00039.png	Лист | 5 | Листов | 5
+/app/data/training/paddle_rec/finetune/images/train/00040.png	9 Воздуходувная станция 1
+/app/data/training/paddle_rec/finetune/images/train/00041.png	1 427-9-ГР5.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00042.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+/app/data/training/paddle_rec/finetune/images/train/00043.png	плиты фундамента;
+/app/data/training/paddle_rec/finetune/images/train/00044.png	Разраб. | Петров | 11.25
+/app/data/training/paddle_rec/finetune/images/train/00045.png	Гродненская ТЭЦ-2. Реконструкция градирни ст. №2
+/app/data/training/paddle_rec/finetune/images/train/00046.png	Поз. Эскиз
+/app/data/training/paddle_rec/finetune/images/train/00047.png	| И —. — устанобки , центробкиу, быберки оборудобания и окончательноц затяжки фундаментных дболтоб.
+/app/data/training/paddle_rec/finetune/images/train/00048.png	Ось Ду 200
+/app/data/training/paddle_rec/finetune/images/train/00049.png	ООО "ПроектСтрой"
+/app/data/training/paddle_rec/finetune/images/train/00050.png	+400 1700 200 Отё. $80 Й - очистиуть арматуру от ржабчины механическим способом, обработа6 поберхности стандартными
+/app/data/training/paddle_rec/finetune/images/train/00051.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00052.png	Замена оросителя, водоуловителя, решеток, водовыпускной системы и обшивки градирни
+/app/data/training/paddle_rec/finetune/images/train/00053.png	Гл. контр. Бакинец
+/app/data/training/paddle_rec/finetune/images/train/00054.png	— | Восстанавливаемый асфальтобетонный проезд Тип 2
+/app/data/training/paddle_rec/finetune/images/train/00055.png	Д ЕМОНШЦЖ ПО ПЕ О ЕК О ЫШИЮ существующих подлибок и набетонок , объём бетона \=4,8 м’;
+/app/data/training/paddle_rec/finetune/images/train/00056.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00057.png	<math>\perp \!\!\! \perp</math>
+/app/data/training/paddle_rec/finetune/images/train/00058.png	на глубуну от 20 90 50 мм.
+/app/data/training/paddle_rec/finetune/images/train/00059.png	1 - - | - | - со НАЛ 2 + затяжки анкероб. | | .
+/app/data/training/paddle_rec/finetune/images/train/00060.png	Е пластин) к лапам гидромуфты было не менее 85% от их общец площади контакта;
+/app/data/training/paddle_rec/finetune/images/train/00061.png	2500*
+/app/data/training/paddle_rec/finetune/images/train/00062.png	- _ +— _
+/app/data/training/paddle_rec/finetune/images/train/00063.png	В5 ВВГнг-LS 3х1,5 20
+/app/data/training/paddle_rec/finetune/images/train/00064.png	Ведомость перемычек
+/app/data/training/paddle_rec/finetune/images/train/00065.png	18 Блок очистки ливневых стоков 1
+/app/data/training/paddle_rec/finetune/images/train/00066.png	Изм. Кол. уч. Лист № док.
+/app/data/training/paddle_rec/finetune/images/train/00067.png	Реконструкция объекта
+/app/data/training/paddle_rec/finetune/images/train/00068.png	κορημςα
+/app/data/training/paddle_rec/finetune/images/train/00069.png	10 Иловая насосная станция 1
+/app/data/training/paddle_rec/finetune/images/train/00070.png	утрамбованному щебнем на глубину 60 мм.
+/app/data/training/paddle_rec/finetune/images/train/00071.png	2 ош | шо - расчистить участки нижней поверхности плиты с оголённой арматурой (5=2,5 м*) до здорового бетона.
+/app/data/training/paddle_rec/finetune/images/train/00072.png	Белнипиэнергопром 6 2014 году, отчёт № 282-1-П3.0Б2.
+/app/data/training/paddle_rec/finetune/images/train/00073.png	См. ТГп. 14
+/app/data/training/paddle_rec/finetune/images/train/00074.png	Таблица длин кабелей
+/app/data/training/paddle_rec/finetune/images/train/00075.png	Дата
+/app/data/training/paddle_rec/finetune/images/train/00076.png	ж) пру помощи безусадочной сухой бетонной смеси литого типа с крупным заполнителем (10 мм)
+/app/data/training/paddle_rec/finetune/images/train/00077.png	тля _ по слою грунтовки ЭП-045 ТУ РБ 500021625.106-2005. Площадь окрашиваемой поверхности $=6,2 м2.
+/app/data/training/paddle_rec/finetune/images/train/00078.png	BNP-1828-0-ЭМ1
+/app/data/training/paddle_rec/finetune/images/train/00079.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00080.png	Таблица длин кабелей
+/app/data/training/paddle_rec/finetune/images/train/00081.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00082.png	Gnd
+/app/data/training/paddle_rec/finetune/images/train/00083.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00084.png	2 (эскиз детали 2)
+/app/data/training/paddle_rec/finetune/images/train/00085.png	Существующыии пол 1400`
+/app/data/training/paddle_rec/finetune/images/train/00086.png	— YQC1, YQT1 Выключатель муфты ограничения крутящего момента — — —
+/app/data/training/paddle_rec/finetune/images/train/00087.png	Изм. | Кол. уч. | Описание | Лист | № док. | Подпись | Дата
+/app/data/training/paddle_rec/finetune/images/train/00088.png	т быполнить следующие подготобительные работы: 0.48 м
+/app/data/training/paddle_rec/finetune/images/train/00089.png	4 1118-0-ГП9.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00090.png	800
+/app/data/training/paddle_rec/finetune/images/train/00091.png	Подп.
+/app/data/training/paddle_rec/finetune/images/train/00092.png	Граница 5 поз. 3 "Ораспор” 6 предбарительно насберлённые скбажиуны диаметром 10 мм с шогом 200х200 на глудину 200 мм
+/app/data/training/paddle_rec/finetune/images/train/00093.png	Пров. | Петров | 11.25
+/app/data/training/paddle_rec/finetune/images/train/00094.png	7_7 Обозначение Науменование Кое Чроме-
+/app/data/training/paddle_rec/finetune/images/train/00095.png	устанобку регулирующец гидромуфты.
+/app/data/training/paddle_rec/finetune/images/train/00096.png	1 | 4х40 ГОСТ 103-2006 | Полоса Ст3сп ГОСТ 535-2005 | 20 | 1,26 |
+/app/data/training/paddle_rec/finetune/images/train/00097.png	Гл. техн. Волкова 10.12
+/app/data/training/paddle_rec/finetune/images/train/00098.png	-0,800 „7
+/app/data/training/paddle_rec/finetune/images/train/00099.png	ПР4 (схема перемычки ПР4)
+/app/data/training/paddle_rec/finetune/images/train/00100.png	4 121-1-АР5.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00101.png	ПР2 (схема перемычки ПР2)
+/app/data/training/paddle_rec/finetune/images/train/00102.png	К ь ыа р
+/app/data/training/paddle_rec/finetune/images/train/00103.png	Сущестбующии кодбельныч
+/app/data/training/paddle_rec/finetune/images/train/00104.png	6 Резервуар очищенных сточных вод 1
+/app/data/training/paddle_rec/finetune/images/train/00105.png	бетона с сохранением сущестбующечц арматуры, побреждённую арматуру босстанобить;
+/app/data/training/paddle_rec/finetune/images/train/00106.png	Поз. Эскиз
+/app/data/training/paddle_rec/finetune/images/train/00107.png	3 | — | Тяга водогазопроводная | 1,0м | — | —
+/app/data/training/paddle_rec/finetune/images/train/00108.png	142 200 1 энергопроекм.
+/app/data/training/paddle_rec/finetune/images/train/00109.png	2 427-9-ГР5.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00110.png	15 Резервуар сырого осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00111.png	Н.контр. Сородер 10.12
+/app/data/training/paddle_rec/finetune/images/train/00112.png	7 Резервуар усреднитель 1
+/app/data/training/paddle_rec/finetune/images/train/00113.png	м 6) Бырубить обнаруженные промасленные участки на поверхности фундаментной плиты до здоробого
+/app/data/training/paddle_rec/finetune/images/train/00114.png	План расположения
+/app/data/training/paddle_rec/finetune/images/train/00115.png	тоннель 150* Захламление
+/app/data/training/paddle_rec/finetune/images/train/00116.png	[418] - 49-9 __ 08.15 Витебская ТЭЦ
+/app/data/training/paddle_rec/finetune/images/train/00117.png	Гл.инж.пр. Матейчик 11.20
+/app/data/training/paddle_rec/finetune/images/train/00118.png	3 | Пускорезервная котельная (ПРК) | — | Существующая
+/app/data/training/paddle_rec/finetune/images/train/00119.png	пла -
+/app/data/training/paddle_rec/finetune/images/train/00120.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+/app/data/training/paddle_rec/finetune/images/train/00121.png	Таблица длин кабелей
+/app/data/training/paddle_rec/finetune/images/train/00122.png	Здание ОПУ с ЗРУ-10 кВ
+/app/data/training/paddle_rec/finetune/images/train/00123.png	0) очистить поберхность существующей фундаментноц плиты до отм. -0,150 6 границах демонтажа от
+/app/data/training/paddle_rec/finetune/images/train/00124.png	Н контр. [Но бош РУП "БЕЛНИПИЭНЕРГОПРОМ”"
+/app/data/training/paddle_rec/finetune/images/train/00125.png	Разраб. Петров
+/app/data/training/paddle_rec/finetune/images/train/00126.png	В2 ВВГнг-LS 3х1,5 30
+/app/data/training/paddle_rec/finetune/images/train/00127.png	ООО "ЛУКОЙЛ-Нижневолжскнефть"
+/app/data/training/paddle_rec/finetune/images/train/00128.png	13 Площадка складирования осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00129.png	М” быябленных дефектоб фундамента по матеруалам обследования, а именно:
+/app/data/training/paddle_rec/finetune/images/train/00130.png	— | Проектируемое ограждение
+/app/data/training/paddle_rec/finetune/images/train/00131.png	а +0,260
+/app/data/training/paddle_rec/finetune/images/train/00132.png	3 1782-1-АР1.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00133.png	3) скбозь отберстия 6 закладных М1 под гидромуфтоц и по нобоц разметке отберстии для электродбигателя
+/app/data/training/paddle_rec/finetune/images/train/00134.png	— | Пониженный БР 100.30.15
+/app/data/training/paddle_rec/finetune/images/train/00135.png	3 427-9-ГР5.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00136.png	0,30
+/app/data/training/paddle_rec/finetune/images/train/00137.png	17 Здание реагентного хозяйства 1
+/app/data/training/paddle_rec/finetune/images/train/00138.png	19 Резервуар ливневых стоков 1
+/app/data/training/paddle_rec/finetune/images/train/00139.png	Изм. Кол.уч. Лист № док. Подп. Дата
+/app/data/training/paddle_rec/finetune/images/train/00140.png	5 1782-1-АР1.И5 Изделие крепежное МС5 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00141.png	И4/ п Верхнюю поверхность плиты под гидромуфтой покрыть 9буя слоями эмали 91-152 ТУ 500021625.140-2008
+/app/data/training/paddle_rec/finetune/images/train/00142.png	Н. контр.
+/app/data/training/paddle_rec/finetune/images/train/00143.png	19 Резервуар ливневых стоков 1
+/app/data/training/paddle_rec/finetune/images/train/00144.png	Раз раб. __|Миронович| | Главный корпус
+/app/data/training/paddle_rec/finetune/images/train/00145.png	Насос питательныи [13 270-150-3
+/app/data/training/paddle_rec/finetune/images/train/00146.png	Гл.инж.пр. Матейчик 11.20
+/app/data/training/paddle_rec/finetune/images/train/00147.png	L 100
+/app/data/training/paddle_rec/finetune/images/train/00148.png	4 1782-1-АР1.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00149.png	Обозначение кабеля Марка, сечение Длина, м
+/app/data/training/paddle_rec/finetune/images/train/00150.png	По уклону
+/app/data/training/paddle_rec/finetune/images/train/00151.png	| Изм. Кол. [Лист № бок. | Поп. _] Дата. Корректировка.
+/app/data/training/paddle_rec/finetune/images/train/00152.png	2 (эскиз детали 2)
+/app/data/training/paddle_rec/finetune/images/train/00153.png	1 (эскиз детали 1)
+/app/data/training/paddle_rec/finetune/images/train/00154.png	4 (эскиз детали 4)
+/app/data/training/paddle_rec/finetune/images/train/00155.png	— | Места сварки заземляющих элементов
+/app/data/training/paddle_rec/finetune/images/train/00156.png	План кровли
+/app/data/training/paddle_rec/finetune/images/train/00157.png	ОЗ. Эскиз пру условии согласования с РУП "Белнупиэнергопром”
+/app/data/training/paddle_rec/finetune/images/train/00158.png	В3 ВВГнг-LS 3х1,5 15
+/app/data/training/paddle_rec/finetune/images/train/00159.png	2 | 4х25 ГОСТ 103-2006 | Полоса Ст3сп ГОСТ 535-2005 | 10 | 0,79 |
+/app/data/training/paddle_rec/finetune/images/train/00160.png	Спецификация
+/app/data/training/paddle_rec/finetune/images/train/00161.png	C245
+/app/data/training/paddle_rec/finetune/images/train/00162.png	— SQ1, SQ2 Выключатель концевой — — —
+/app/data/training/paddle_rec/finetune/images/train/00163.png	Бетонная
+/app/data/training/paddle_rec/finetune/images/train/00164.png	Навесы и площадки обслуживания
+/app/data/training/paddle_rec/finetune/images/train/00165.png	Πopm № 1<br>RS-485
+/app/data/training/paddle_rec/finetune/images/train/00166.png	Таблица 1
+/app/data/training/paddle_rec/finetune/images/train/00167.png	В1 ВВГнг-LS 3х1,5 25
+/app/data/training/paddle_rec/finetune/images/train/00168.png	5 VR-_____-___-GT-08-74-002.И5 Изделие крепежное МС5 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00169.png	Заказчик
+/app/data/training/paddle_rec/finetune/images/train/00170.png	— Диаграмма работы концевых выключателей — — —
+/app/data/training/paddle_rec/finetune/images/train/00171.png	Номер на плане | Наименование | Координаты квадрата сетки | Примечание
+/app/data/training/paddle_rec/finetune/images/train/00172.png	2 121-1-АР5.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00173.png	Н.контр. Сородер 11.20
+/app/data/training/paddle_rec/finetune/images/train/00174.png	Ось агрегата | | | Ш! % = 8 До укладки безусадочночц бетонноц смеси Выполнить подготобку сущестбующечц поберхности фундамента с
+/app/data/training/paddle_rec/finetune/images/train/00175.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00176.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00177.png	В5 ВВГнг-LS 3х1,5 20
+/app/data/training/paddle_rec/finetune/images/train/00178.png	1 121-1-АР5.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00179.png	Схемы расположения металлоконструкций
+/app/data/training/paddle_rec/finetune/images/train/00180.png	4 Магистраль внутреннего контура заземления положить на высоте 400 мм от пола. При пересечении с дверными проемами магистраль прокладывается над проемами.
+/app/data/training/paddle_rec/finetune/images/train/00181.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00182.png	4 Блок физико-химической очистки 1
+/app/data/training/paddle_rec/finetune/images/train/00183.png	ОАО «КВАДРА»
+/app/data/training/paddle_rec/finetune/images/train/00184.png	План на отм. 0.000. Разрез 1-1. Узлы А, Б
+/app/data/training/paddle_rec/finetune/images/train/00185.png	— SA1 Ключ управления МКВ-2222/МVИ — — —
+/app/data/training/paddle_rec/finetune/images/train/00186.png	000` - затем проузбести босстанобление бетона очищенных участков ремонтными смесями Парад РСТ (аналог)
+/app/data/training/paddle_rec/finetune/images/train/00187.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+/app/data/training/paddle_rec/finetune/images/train/00188.png	Марка, поз. Схема сечения
+/app/data/training/paddle_rec/finetune/images/train/00189.png	7 Все соединения контура заземления производить двойным сварным швом.
+/app/data/training/paddle_rec/finetune/images/train/00190.png	-0.800'
+/app/data/training/paddle_rec/finetune/images/train/00191.png	2 1782-1-АР1.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00192.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00193.png	остаётся на месте с сохранением отметки устанобки и прибязок к строительным осям (на чертеже обозно-
+/app/data/training/paddle_rec/finetune/images/train/00194.png	Модернизация Минской ТЭЦ-3 с заменой выбывающих мощностей 1 очереди. Очередь 1.
+/app/data/training/paddle_rec/finetune/images/train/00195.png	11 Здание решеток 1
+/app/data/training/paddle_rec/finetune/images/train/00196.png	14 Резервуар аварийный 1
+/app/data/training/paddle_rec/finetune/images/train/00197.png	3 Блок обезвоживания осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00198.png	ОАО «КВАДРА»
+/app/data/training/paddle_rec/finetune/images/train/00199.png	\/=0,4.0 м’ с последующим Восстановлением бетоном класса. (16/20 толщиной 150 мм по основанию
+/app/data/training/paddle_rec/finetune/images/train/00200.png	Н.контр. Сородер 02.20
+/app/data/training/paddle_rec/finetune/images/train/00201.png	Условные обозначения
+/app/data/training/paddle_rec/finetune/images/train/00202.png	о зави ва [шов |
+/app/data/training/paddle_rec/finetune/images/train/00203.png	55" ыы — НИ нь _] 9 Монтажную подлибку электродбигателя до проектноци отметки быполнить тоц же бетонноц смесью после
+/app/data/training/paddle_rec/finetune/images/train/00204.png	Реконструкция объектов
+/app/data/training/paddle_rec/finetune/images/train/00205.png	Сущ. траверса
+/app/data/training/paddle_rec/finetune/images/train/00206.png	Нач. отд. | Лось | 11.25
+/app/data/training/paddle_rec/finetune/images/train/00207.png	Н.контр. Смирнов
+/app/data/training/paddle_rec/finetune/images/train/00208.png	Таблица 2 снобе полимерных липких лент.
+/app/data/training/paddle_rec/finetune/images/train/00209.png	Обозначение кабеля Марка, сечение Длина, м
+/app/data/training/paddle_rec/finetune/images/train/00210.png	Норепенка р фи ГЕ ОНИ
+/app/data/training/paddle_rec/finetune/images/train/00211.png	201,07*
+/app/data/training/paddle_rec/finetune/images/train/00212.png	1,67
+/app/data/training/paddle_rec/finetune/images/train/00213.png	Гл.инж.пр. Матейчик 10.12
+/app/data/training/paddle_rec/finetune/images/train/00214.png	= 0,000
+/app/data/training/paddle_rec/finetune/images/train/00215.png	Утв. | Сидоров | 11.25
+/app/data/training/paddle_rec/finetune/images/train/00216.png	16 Насосная станция опорожнения 1
+/app/data/training/paddle_rec/finetune/images/train/00217.png	В2 ВВГнг-LS 3х1,5 30
+/app/data/training/paddle_rec/finetune/images/train/00218.png	Заказчик
+/app/data/training/paddle_rec/finetune/images/train/00219.png	В1 ВВГнг-LS 3х1,5 25
+/app/data/training/paddle_rec/finetune/images/train/00220.png	Ось агрегата
+/app/data/training/paddle_rec/finetune/images/train/00221.png	В3 ВВГнг-LS 3х1,5 15
+/app/data/training/paddle_rec/finetune/images/train/00222.png	ПР1 (схема перемычки ПР1)
+/app/data/training/paddle_rec/finetune/images/train/00223.png	<b>C47</b>
+/app/data/training/paddle_rec/finetune/images/train/00224.png	7 ——° 55°
+/app/data/training/paddle_rec/finetune/images/train/00225.png	2,35
+/app/data/training/paddle_rec/finetune/images/train/00226.png	/ | | | | | | | |
+/app/data/training/paddle_rec/finetune/images/train/00227.png	427-9-ГР5
+/app/data/training/paddle_rec/finetune/images/train/00228.png	/lucmob
+/app/data/training/paddle_rec/finetune/images/train/00229.png	с электродбиугателем сохраняется
+/app/data/training/paddle_rec/finetune/images/train/00230.png	Гл. спец. Иванчик 11.20
+/app/data/training/paddle_rec/finetune/images/train/00231.png	17 Здание реагентного хозяйства 1
+/app/data/training/paddle_rec/finetune/images/train/00232.png	13 Площадка складирования осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00233.png	< ОВ
+/app/data/training/paddle_rec/finetune/images/train/00234.png	Б7
+/app/data/training/paddle_rec/finetune/images/train/00235.png	Копировал Формат А1
+/app/data/training/paddle_rec/finetune/images/train/00236.png	отм.203,77; 201,67. Узлы 6-8
+/app/data/training/paddle_rec/finetune/images/train/00237.png	Гл. контр. [Крот __ | | | се\бромуфтон
+/app/data/training/paddle_rec/finetune/images/train/00238.png	РУП "БЕЛНИПИЭНЕРГОПРОМ" г. МИНСК
+/app/data/training/paddle_rec/finetune/images/train/00239.png	<math>-</math>
+/app/data/training/paddle_rec/finetune/images/train/00240.png	— YQC1, YQT1 Выключатель муфты ограничения крутящего момента — — —
+/app/data/training/paddle_rec/finetune/images/train/00241.png	Стадия
+/app/data/training/paddle_rec/finetune/images/train/00242.png	ь | | 5 соблюдением требобании технологической карты по её применению.
+/app/data/training/paddle_rec/finetune/images/train/00243.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00244.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00245.png	2 Блок доочистки 1
+/app/data/training/paddle_rec/finetune/images/train/00246.png	В4 ВВГнг-LS 3х1,5 40
+/app/data/training/paddle_rec/finetune/images/train/00247.png	5 Установка УФ-обеззараживания 1
+/app/data/training/paddle_rec/finetune/images/train/00248.png	Общие технические требования и ведомость элементов смотреть лист 3.
+/app/data/training/paddle_rec/finetune/images/train/00249.png	ПИ-4
+/app/data/training/paddle_rec/finetune/images/train/00250.png	С 2
+/app/data/training/paddle_rec/finetune/images/train/00251.png	— Диаграмма работы концевых выключателей — — —
+/app/data/training/paddle_rec/finetune/images/train/00252.png	4 427-9-ГР5.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00253.png	14 В стене тоннеля пробить отверстие диаметром 150 мм с предбарительноц рассберлобкоц перфоратором
+/app/data/training/paddle_rec/finetune/images/train/00254.png	_ РЯ осле снятия сущестбующего электродбиугателя для установки гидромуфты с электродбугателем
+/app/data/training/paddle_rec/finetune/images/train/00255.png	/43/ | и те 48/0 демонтиробать опорные металлические рамы с анкернымиу долтами, массоц М= 025:
+/app/data/training/paddle_rec/finetune/images/train/00256.png	Обозначение / шифр: 9999-0-ГК1
+/app/data/training/paddle_rec/finetune/images/train/00257.png	3 Блок обезвоживания осадка 1
+/app/data/training/paddle_rec/finetune/images/train/00258.png	5 Установка УФ-обеззараживания 1
+/app/data/training/paddle_rec/finetune/images/train/00259.png	Раз раб.
+/app/data/training/paddle_rec/finetune/images/train/00260.png	J.
+/app/data/training/paddle_rec/finetune/images/train/00261.png	— | Площадка для контейнеров под ТБО Тип 1
+/app/data/training/paddle_rec/finetune/images/train/00262.png	14
+/app/data/training/paddle_rec/finetune/images/train/00263.png	[3 | — | 3ом 3-9 == |0415| Станочка гидромуфты на питательный электрочасов см № 6.
+/app/data/training/paddle_rec/finetune/images/train/00264.png	Ведомость деталей
+/app/data/training/paddle_rec/finetune/images/train/00265.png	Ось главного
+/app/data/training/paddle_rec/finetune/images/train/00266.png	Гл. спец. Иванчик 10.12
+/app/data/training/paddle_rec/finetune/images/train/00267.png	С 11
+/app/data/training/paddle_rec/finetune/images/train/00268.png	Металлическая рама (сущ) демонтажа Оголение рабочей арматуры плуты Е 200 | 200 по узлу 1:
+/app/data/training/paddle_rec/finetune/images/train/00269.png	121-1-АР5
+/app/data/training/paddle_rec/finetune/images/train/00270.png	_ поберхность просверлить 8 скбозных отберстий диаметром 80 мм с вырубкой под плитой 6 существующих стенах ниши для
+/app/data/training/paddle_rec/finetune/images/train/00271.png	Реконструкция ПС 110 кВ "Камвольный комбинат" с заменой ОД и КЗ 110 кВ на элегазовые выключатели
+/app/data/training/paddle_rec/finetune/images/train/00272.png	— SBC1, SBQ1 Кнопка управления — — —
+/app/data/training/paddle_rec/finetune/images/train/00273.png	Разраб. Горошко 02.20
+/app/data/training/paddle_rec/finetune/images/train/00274.png	18 Блок очистки ливневых стоков 1
+/app/data/training/paddle_rec/finetune/images/train/00275.png	В5 ВВГнг-LS 3х1,5 20
+/app/data/training/paddle_rec/finetune/images/train/00276.png	Изм. Кол.уч. Лист №док Подп. Дата
+/app/data/training/paddle_rec/finetune/images/train/00277.png	9 Воздуходувная станция 1
+/app/data/training/paddle_rec/finetune/images/train/00278.png	Молоденьких электрических сетей котлоагрегатов ДЕ-25/14
+/app/data/training/paddle_rec/finetune/images/train/00279.png	я Я Уч -е-НИГ РКУ РИА АТК УГ ПГРУАЦ Ч 71 АДА Г Тм т мы У СГ м ИАА гта ща игугюв га
+/app/data/training/paddle_rec/finetune/images/train/00280.png	г) дпя связи нобого бетона со старым 6 границах набетонки установить щетину из арматурных стержней
+/app/data/training/paddle_rec/finetune/images/train/00281.png	Зав 26 >в "КиЗЬмин МИН О ВОВ Фундамент питательного насоса 2 |
+/app/data/training/paddle_rec/finetune/images/train/00282.png	— | Заземляющие защитные проводники
+/app/data/training/paddle_rec/finetune/images/train/00283.png	3 Магистраль внутреннего контура заземления выполнить из полосовой стали сеч. 4x40 мм, отпайки от магистрали заземления к оборудованию - сеч. 4x25 мм.
+/app/data/training/paddle_rec/finetune/images/train/00284.png	ПР3 (схема перемычки ПР3)
+/app/data/training/paddle_rec/finetune/images/train/00285.png	Изм. Кол.уч. Лист № док. Подп. Дата
+/app/data/training/paddle_rec/finetune/images/train/00286.png	Организация: РУП "БЕЛНИПИЭНЕРГОПРОМ"
+/app/data/training/paddle_rec/finetune/images/train/00287.png	Выполнил Иванов И.И.
+/app/data/training/paddle_rec/finetune/images/train/00288.png	См. ТТп. 7 (а) нижней грани см. ТТ п. 10 | | 9) уложить арматурные стержни поз. 1, 2, объединить при помощи бязальной проволоки 6 местах
+/app/data/training/paddle_rec/finetune/images/train/00289.png	102х3 ГОСТ 10704-91 _
+/app/data/training/paddle_rec/finetune/images/train/00290.png	Поз. Обозначение Наименование Кол. Масса ед. кг Примечание
+/app/data/training/paddle_rec/finetune/images/train/00291.png	С 2
+/app/data/training/paddle_rec/finetune/images/train/00292.png	Изм. | Кол. уч. | Лист | № док. | Подпись | Дата
+/app/data/training/paddle_rec/finetune/images/train/00293.png	В в Нобелонкокы Та в во
+/app/data/training/paddle_rec/finetune/images/train/00294.png	11 Здание решеток 1
+/app/data/training/paddle_rec/finetune/images/train/00295.png	Республика Беларусь
+/app/data/training/paddle_rec/finetune/images/train/00296.png	Р 2
+/app/data/training/paddle_rec/finetune/images/train/00297.png	Изм. Кол.уч Лист №док. Подп. Дата
+/app/data/training/paddle_rec/finetune/images/train/00298.png	559-1-АТМ7
+/app/data/training/paddle_rec/finetune/images/train/00299.png	13 Для прокладки электровафельниц трубы поз. 6" и устройства. траншея, пол разобрать, объём демонтажа
+/app/data/training/paddle_rec/finetune/images/train/00300.png	— HLG1 Арматура сигнальной лампы с зеленой и красной линзами — — —
+/app/data/training/paddle_rec/finetune/images/train/00301.png	Проверил Сидоров
+/app/data/training/paddle_rec/finetune/images/train/00302.png	Корректировка №2
+/app/data/training/paddle_rec/finetune/images/train/00303.png	РУП “БЕЛНИПИЭНЕРГОПРОМ”
+/app/data/training/paddle_rec/finetune/images/train/00304.png	Котел ст. № 3.
+/app/data/training/paddle_rec/finetune/images/train/00305.png	Республика Беларусь
+/app/data/training/paddle_rec/finetune/images/train/00306.png	Очередь строительства: I очередь строительства
+/app/data/training/paddle_rec/finetune/images/train/00307.png	1 В соответствии с ПУЭ к сети внутреннего контура заземления должны быть присоединены каркасы шкафов, щитов, металлические кабельные конструкции, металлические рукава и трубы электропроводок.
+/app/data/training/paddle_rec/finetune/images/train/00308.png	Обозначение кабеля Марка, сечение Длина, м
+/app/data/training/paddle_rec/finetune/images/train/00309.png	Проверил Соловьева В.И.
+/app/data/training/paddle_rec/finetune/images/train/00310.png	Разработал | Ковалева | 27.11.2019 | VR-ZOUCL-SAF-ES-01-72-005
+/app/data/training/paddle_rec/finetune/images/train/00311.png	Реконструкция ПС 110 кВ "Камвольный комбинат" с заменой ОД и КЗ 110 кВ на элегазовые выключатели
+/app/data/training/paddle_rec/finetune/images/train/00312.png	2 Сущестбвующуци электродвигатель переносится согласно размерам данного чертежа. Питательнычц насос
+/app/data/training/paddle_rec/finetune/images/train/00313.png	2 ПЭНа ст № 6 быполнены по чертежам з. л. № 43190`, №№ 43399, 4.34.00 разработанными Минским отделением Пром-
+/app/data/training/paddle_rec/finetune/images/train/00314.png	Общестроительные работы.
+/app/data/training/paddle_rec/finetune/images/train/00315.png	3700 Мокобским Теплопроектом. Обмеры чц одследобание строутельноц части фундамента быполнены РУП
+/app/data/training/paddle_rec/finetune/images/train/00316.png	4 | ТУ 36-1453-82 | Держатель шин заземления К188 | 12 | — | —
+/app/data/training/paddle_rec/finetune/images/train/00317.png	11 Очистить пол на огм. (-2,45) от захламления, площадь $=1,3 м*.
+/app/data/training/paddle_rec/finetune/images/train/00318.png	1 Блок биологической очистки 1
+/app/data/training/paddle_rec/finetune/images/train/00319.png	14 Резервуар аварийный 1
+/app/data/training/paddle_rec/finetune/images/train/00320.png	40
+/app/data/training/paddle_rec/finetune/images/train/00321.png	2 VR-_____-___-GT-08-74-002.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00322.png	2 Блок доочистки 1
+/app/data/training/paddle_rec/finetune/images/train/00323.png	3 (эскиз детали 3)
+/app/data/training/paddle_rec/finetune/images/train/00324.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00325.png	8 Отпайки к заземляемым объектам установок 400/230 В на чертеже не показаны и выполняются по месту монтажной организации.
+/app/data/training/paddle_rec/finetune/images/train/00326.png	— | Граница работ по генеральному плану
+/app/data/training/paddle_rec/finetune/images/train/00327.png	Формат: A4x4
+/app/data/training/paddle_rec/finetune/images/train/00328.png	— SA1 Ключ управления МКВ-2222/МVИ — — —
+/app/data/training/paddle_rec/finetune/images/train/00329.png	ПР3 (схема перемычки ПР3)
+/app/data/training/paddle_rec/finetune/images/train/00330.png	3 121-1-АР5.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00331.png	в в / Сущестбующий фундамент построен 6 1959 году по типобому проекту, чертёж № 945`-с, разработанному
+/app/data/training/paddle_rec/finetune/images/train/00332.png	В3 ВВГнг-LS 3х1,5 15
+/app/data/training/paddle_rec/finetune/images/train/00333.png	Поз. | Обозначение | Наименование | Кол. | Масса ед., кг | Примечание
+/app/data/training/paddle_rec/finetune/images/train/00334.png	ГЦОЛУОЦИ |1
+/app/data/training/paddle_rec/finetune/images/train/00335.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00336.png	Н.контр. | Лось | 11.25
+/app/data/training/paddle_rec/finetune/images/train/00337.png	(в) (5) (А шаг 200 6 За услобную отмегку 0,000 принят уробень чистого пола. машзала., что соотбетстбоует адсолютноц
+/app/data/training/paddle_rec/finetune/images/train/00338.png	по контуру
+/app/data/training/paddle_rec/finetune/images/train/00339.png	Изм. Кол.уч. Лист № док. Подп. Дата
+/app/data/training/paddle_rec/finetune/images/train/00340.png	лакокрасочного покрытия 80 мкм.
+/app/data/training/paddle_rec/finetune/images/train/00341.png	Схема полная электрическая принципиальная питания сборок задвижек и электроприводов.
+/app/data/training/paddle_rec/finetune/images/train/00342.png	Обозначение | Примечание
+/app/data/training/paddle_rec/finetune/images/train/00343.png	Н. контр. Беляев А.М.
+/app/data/training/paddle_rec/finetune/images/train/00344.png	С 4
+/app/data/training/paddle_rec/finetune/images/train/00345.png	-2,500"
+/app/data/training/paddle_rec/finetune/images/train/00346.png	ыы] тя
+/app/data/training/paddle_rec/finetune/images/train/00347.png	κορημςα
+/app/data/training/paddle_rec/finetune/images/train/00348.png	РЕРЕРЕРЕРЯ метке 152,20. В , , в
+/app/data/training/paddle_rec/finetune/images/train/00349.png	4 VR-_____-___-GT-08-74-002.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00350.png	ОАО "ЛУКОЙЛ"
+/app/data/training/paddle_rec/finetune/images/train/00351.png	Существующая фундаментная х
+/app/data/training/paddle_rec/finetune/images/train/00352.png	12 Здание механической очистки 1
+/app/data/training/paddle_rec/finetune/images/train/00353.png	Пров. Максименко 11.20
+/app/data/training/paddle_rec/finetune/images/train/00354.png	Федотович
+/app/data/training/paddle_rec/finetune/images/train/00355.png	8 КНС 1
+/app/data/training/paddle_rec/finetune/images/train/00356.png	[Ма
+/app/data/training/paddle_rec/finetune/images/train/00357.png	1 VR-_____-___-GT-08-74-002.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00358.png	— ЦТЩ4. Пульт 7М-1А — — —
+/app/data/training/paddle_rec/finetune/images/train/00359.png	/lucm
+/app/data/training/paddle_rec/finetune/images/train/00360.png	10 Иловая насосная станция 1
+/app/data/training/paddle_rec/finetune/images/train/00361.png	КВПЭф 2х2х0,52
+/app/data/training/paddle_rec/finetune/images/train/00362.png	Р 7
+/app/data/training/paddle_rec/finetune/images/train/00363.png	Разраб. Горошко 11.20
+/app/data/training/paddle_rec/finetune/images/train/00364.png	преобразобалелями ржавчины;
+/app/data/training/paddle_rec/finetune/images/train/00365.png	Н.контр. Сородер 11.20
+/app/data/training/paddle_rec/finetune/images/train/00366.png	125425
+/app/data/training/paddle_rec/finetune/images/train/00367.png	4 VR-_____-___-GT-08-74-002.И4 Изделие крепежное МС4 6 10,4
+/app/data/training/paddle_rec/finetune/images/train/00368.png	— SQ1, SQ2 Выключатель концевой — — —
+/app/data/training/paddle_rec/finetune/images/train/00369.png	2 С целью выравнивания потенциалов в помещениях должны быть присоединены к сети заземления стационарно проложенные трубопроводы всех назначений, металлические строительные и производственные конструкции.
+/app/data/training/paddle_rec/finetune/images/train/00370.png	Разраб. Конон 10.12
+/app/data/training/paddle_rec/finetune/images/train/00371.png	1 1782-1-АР1.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00372.png	Марка, поз. Схема сечения
+/app/data/training/paddle_rec/finetune/images/train/00373.png	3 1118-0-ГП9.И3 Изделие крепежное МС3 6 11,8
+/app/data/training/paddle_rec/finetune/images/train/00374.png	Стадия Лист Листов
+/app/data/training/paddle_rec/finetune/images/train/00375.png	Н. контр. | Но баш | План на отметке -0,150. Армирование (5 Минск Беларусь
+/app/data/training/paddle_rec/finetune/images/train/00376.png	Республика Беларусь
+/app/data/training/paddle_rec/finetune/images/train/00377.png	Гл. спец. Иванчик 11.20
+/app/data/training/paddle_rec/finetune/images/train/00378.png	Ось главного
+/app/data/training/paddle_rec/finetune/images/train/00379.png	5 1118-0-ГП9.И5 Изделие крепежное МС5 6 12,0
+/app/data/training/paddle_rec/finetune/images/train/00380.png	Экспликация зданий и сооружений
+/app/data/training/paddle_rec/finetune/images/train/00381.png	НИЕ НН
+/app/data/training/paddle_rec/finetune/images/train/00382.png	Пров. Максименко 11.20
+/app/data/training/paddle_rec/finetune/images/train/00383.png	Схема расположения металлоконструкций на отм. 203,77
+/app/data/training/paddle_rec/finetune/images/train/00384.png	Гл.инж.пр. Матейчик 02.20
+/app/data/training/paddle_rec/finetune/images/train/00385.png	VR-_____-___-GT-08-74-002
+/app/data/training/paddle_rec/finetune/images/train/00386.png	Н. контр. | Мультан | 27.11.2019 | Перенос коммерческого узла учета пара на трубопроводы производственного отбора 9530 мм и на трубопроводы подачи пара для пусковых работ ПГУ-223 МВт 97159 мм Воронежской ТЭЦ-1. Электротехнические чертежи. План расположения заземления
+/app/data/training/paddle_rec/finetune/images/train/00387.png	на отм.201,92
+/app/data/training/paddle_rec/finetune/images/train/00388.png	Республика Беларусь
+/app/data/training/paddle_rec/finetune/images/train/00389.png	Реконструкция газораспределительной системы Мини-ТЭЦ г.Молодежно
+/app/data/training/paddle_rec/finetune/images/train/00390.png	Здание ОПУ с ЗРУ-10 кВ
+/app/data/training/paddle_rec/finetune/images/train/00391.png	В4 ВВГнг-LS 3х1,5 40
+/app/data/training/paddle_rec/finetune/images/train/00392.png	Электроснабжение здания
+/app/data/training/paddle_rec/finetune/images/train/00393.png	1 Блок биологической очистки 1
+/app/data/training/paddle_rec/finetune/images/train/00394.png	2 1118-0-ГП9.И2 Изделие крепежное МС2 6 10,6
+/app/data/training/paddle_rec/finetune/images/train/00395.png	1о уклону
+/app/data/training/paddle_rec/finetune/images/train/00396.png	Таблица 2

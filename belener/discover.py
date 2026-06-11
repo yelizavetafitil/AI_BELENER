@@ -14,7 +14,7 @@ from belener.anchors import (
     stamp_score,
 )
 from belener.parse import parse_specification
-from belener.config import discover_zones_fast, stamp_frac, table_search_dpi
+from belener.config import discover_multidpi_enabled, discover_zones_fast, stamp_frac, table_search_dpi
 from belener.ocr import ocr_region
 from belener.parse import parse_explication, parse_legend
 from belener.zones import SheetZones, build_zones
@@ -123,6 +123,36 @@ def _score_candidate(text: str) -> tuple[int, int, int, int]:
     return expl, leg, spec, st
 
 
+def _anchor_ocr(
+    doc: fitz.Document,
+    page_index: int,
+    rect: fitz.Rect,
+    *,
+    zone: str,
+    dpi: int,
+) -> str:
+    """OCR для поиска якорей: при multiscale — два DPI, берём лучший по score."""
+    from belener.config import ocr_psm_for_zone
+    psm = ocr_psm_for_zone(zone)
+    # Используем fake zone, чтобы обойти paddle_zone_match (не грузить PaddleOCR на этапе поиска зон)
+    fake_zone = f"discover_{zone}"
+    
+    if not discover_multidpi_enabled():
+        return (ocr_region(doc, page_index, rect, dpi=dpi, zone=fake_zone, psm=psm) or "").strip()
+    dpi_lo = max(120, int(dpi * 0.55))
+    best_text = ""
+    best_score = -1
+    for d in (dpi_lo, dpi):
+        text = (ocr_region(doc, page_index, rect, dpi=d, zone=fake_zone, psm=psm) or "").strip()
+        if not text:
+            continue
+        expl, leg, spec, st = _score_candidate(text)
+        score = expl + leg + spec + st + min(len(text) // 80, 8)
+        if score > best_score:
+            best_score, best_text = score, text
+    return best_text
+
+
 def discover_sheet_zones(
     doc: fitz.Document,
     page_index: int,
@@ -150,7 +180,7 @@ def discover_sheet_zones(
         zone_jobs = _table_candidates(page_rect)
 
     for name, rect in zone_jobs:
-        text = (ocr_region(doc, page_index, rect, dpi=dpi, zone=name) or "").strip()
+        text = _anchor_ocr(doc, page_index, rect, zone=name, dpi=dpi)
         expl, leg, spec, _ = _score_candidate(text)
         if (
             expl
@@ -166,13 +196,13 @@ def discover_sheet_zones(
     if use_fast:
         rect = base.rects.get("stamp_frame") or base.rects.get("stamp_block")
         if rect is not None:
-            text = (ocr_region(doc, page_index, rect, dpi=dpi, zone="stamp_frame") or "").strip()
+            text = _anchor_ocr(doc, page_index, rect, zone="stamp_frame", dpi=dpi)
             expl, leg, _, st = _score_candidate(text)
             if st > 0:
                 stamp_cands.append(_Cand("stamp_frame", rect, text, expl, leg, 0, st))
     else:
         for name, rect in _stamp_candidates(page_rect):
-            text = (ocr_region(doc, page_index, rect, dpi=dpi, zone="stamp_frame") or "").strip()
+            text = _anchor_ocr(doc, page_index, rect, zone="stamp_frame", dpi=dpi)
             expl, leg, _, st = _score_candidate(text)
             if st > 0:
                 stamp_cands.append(_Cand(name, rect, text, expl, leg, 0, st))

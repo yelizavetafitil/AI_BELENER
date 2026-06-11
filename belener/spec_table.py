@@ -59,6 +59,8 @@ def fix_spec_row_qty(row: dict[str, str]) -> dict[str, str]:
     qty = str(out.get("Кол.") or "").strip()
     if qty_looks_like_panel_number(name, qty):
         out["Кол."] = "—"
+    elif qty and re.fullmatch(r"\d+[,.]\d+\s*м", qty.strip(), re.I):
+        pass
     elif qty and not re.fullmatch(r"\d{1,3}", qty):
         out["Кол."] = "—"
     return out
@@ -81,6 +83,31 @@ def is_schematic_caption_row(row: dict[str, str]) -> bool:
         return True
     if pos in ("—", "") and re.search(r"\bI\s*=\s*\d", name, re.I):
         return True
+    _desig_norm = re.sub(r"\s+", "", desig)
+    if pos in ("—", "") and re.fullmatch(
+        r"(?:[A-Za-zА-ЯЁ]{1,4}\d{1,3})(?:,\s*[A-Za-zА-ЯЁ]{1,4}\d{1,3})*",
+        _desig_norm,
+        re.I,
+    ):
+        return True
+    if pos in ("—", "") and re.fullmatch(r"[A-Za-zА-ЯЁ]{1,4}\d{1,3}", _desig_norm, re.I):
+        if len(name) < 55 or re.search(
+            r":\s*\d|X\d|измерен|переключ|отключ|резер|выключ|капрон|напряж",
+            name,
+            re.I,
+        ):
+            return True
+    try:
+        from belener.table_quality import mixed_script_ocr_glitch, ocr_line_implausible_for_legend
+
+        if pos in ("—", "") and (
+            mixed_script_ocr_glitch(desig)
+            or mixed_script_ocr_glitch(name)
+            or ocr_line_implausible_for_legend(desig)
+        ):
+            return True
+    except ImportError:
+        pass
     if (
         pos in ("—", "")
         and len(desig) <= 8
@@ -210,6 +237,23 @@ _DESIG_TOKEN_RX = re.compile(
     re.I,
 )
 
+# Слова-наименования, ошибочно попавшие в колонку «Обозначение» (OCR/парсер)
+_GENERIC_DESIG_RX = re.compile(
+    r"^(?:выключател\w*|трансформат\w*|реле\w*|ампермет\w*|контактор\w*|"
+    r"блок\w*|антенн\w*|дроссел\w*|предохран\w*|разъедин\w*|"
+    r"автомат\w*|панел\w*|шин\w*|клемм\w*|счетчик\w*|изолятор\w*|"
+    r"разъем\w*|соединител\w*|коробк\w*|щит\w*)$",
+    re.I,
+)
+
+
+def is_generic_equipment_word(text: str) -> bool:
+    """Типовое наименование аппарата — не код SF31 / UCT3.1."""
+    s = _compact(text)
+    if not s or len(s) < 5:
+        return False
+    return bool(_GENERIC_DESIG_RX.fullmatch(s))
+
 
 def position_matches_panel_in_name(pos: str, name: str) -> bool:
     """Позиция совпала с номером панели в заголовке группы — не строка перечня."""
@@ -240,13 +284,21 @@ def is_valid_bom_data_row(row: dict[str, str]) -> bool:
         return False
     if re.match(r"^0\d{2}$", pos):
         return False
+    if desig not in ("—", "") and is_generic_equipment_word(desig):
+        return False
     if desig not in ("—", "") and _DESIG_TOKEN_RX.search(desig.replace(" ", "")):
         return True
+    if re.search(r"гост\s*[\d\-]|ту\s*[\d\-]", desig, re.I):
+        if re.search(r"полос|ст\s*3|сталь|тяга|держатель|водогаз", name, re.I):
+            return True
+        if re.search(r"гост", desig, re.I) and len(name) >= 4:
+            return True
     if re.fullmatch(r"\d{1,3}", pos) and int(pos) >= 40 and desig in ("—", ""):
         return False
     if re.fullmatch(r"\d{1,3}", pos) and len(name) >= 8:
         if re.search(
-            r"выключ|трансформ|реле|блок|антенн|радиомод|гост|ту\s*\d|ампер|контактор",
+            r"выключ|трансформ|реле|блок|антенн|радиомод|гост|ту\s*\d|ампер|контактор"
+            r"|тяга|водогаз|полос|держатель|котельн|труб",
             name,
             re.I,
         ):

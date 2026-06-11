@@ -1,0 +1,97 @@
+# Surya + Paddle + веб (профиль surya).
+#
+#   cp .env.full.example .env
+#   docker compose -f docker-compose.yml -f docker-compose.surya.yml --profile surya up -d --build
+#
+# Surya: volume surya_models (~2–4 GB). Paddle: volume paddle_models (~200 MB+).
+
+services:
+  surya-ocr:
+    profiles: ["surya"]
+    build: ./services/surya_ocr
+    restart: unless-stopped
+    mem_limit: ${SURYA_MEM_LIMIT:-8g}
+    mem_reservation: ${SURYA_MEM_RESERVATION:-2g}
+    environment:
+      SURYA_DEVICE: ${SURYA_DEVICE:-cpu}
+      SURYA_PRELOAD: ${SURYA_PRELOAD:-1}
+      SURYA_MAX_SIDE: ${SURYA_MAX_SIDE:-2048}
+      SURYA_LANGS: ${SURYA_LANGS:-ru,en}
+      HF_HOME: /models/huggingface
+      TRANSFORMERS_CACHE: /models/huggingface
+      TORCH_HOME: /models/torch
+      XDG_CACHE_HOME: /models/cache
+    volumes:
+      - surya_models:/models
+    ports:
+      - "${SURYA_ADAPTER_PORT:-8081}:8081"
+    networks:
+      - belnet
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=8)",
+        ]
+      interval: 45s
+      timeout: 15s
+      retries: 5
+      start_period: 900s
+
+  paddle-ocr:
+    profiles: ["surya"]
+    build: ./services/paddle_ocr
+    restart: unless-stopped
+    mem_limit: ${PADDLE_MEM_LIMIT:-4g}
+    mem_reservation: ${PADDLE_MEM_RESERVATION:-512m}
+    environment:
+      PADDLE_LANG: ${PADDLE_LANG:-ru}
+      PADDLE_PRELOAD: ${PADDLE_PRELOAD:-1}
+      PADDLEOCR_HOME: /models/paddle
+      PADDLE_REC_MODEL_DIR: ${PADDLE_REC_MODEL_DIR:-/models/rec_finetuned}
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+    volumes:
+      - paddle_models:/models
+      - ./data/training/paddle_rec/models/rec_finetuned:/models/rec_finetuned:ro
+    ports:
+      - "${PADDLE_ADAPTER_PORT:-8082}:8082"
+    networks:
+      - belnet
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=15)",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 8
+      start_period: 400s
+
+  web:
+    depends_on:
+      surya-ocr:
+        condition: service_healthy
+        required: false
+      paddle-ocr:
+        condition: service_healthy
+        required: false
+    environment:
+      SURYA_OCR_URL: http://surya-ocr:8081
+      PADDLE_OCR_URL: http://paddle-ocr:8082
+      PDF_OCR_PADDLE_ZONES: ${PDF_OCR_PADDLE_ZONES:-1}
+      PDF_YOLO_ZONES: ${PDF_YOLO_ZONES:-1}
+      PDF_YOLO_MODEL: ${PDF_YOLO_MODEL:-/app/data/training/yolo_zones/runs/train/weights/best.pt}
+      PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
+      PDF_OCR_FALLBACK_TESS: ${PDF_OCR_FALLBACK_TESS:-1}
+      PDF_LOCAL_ONLY: ${PDF_LOCAL_ONLY:-1}
+      PDF_REPORT_LLM: ${PDF_REPORT_LLM:-0}
+      PDF_REPORT_FAITHFUL: ${PDF_REPORT_FAITHFUL:-1}
+
+volumes:
+  surya_models:
+  paddle_models:

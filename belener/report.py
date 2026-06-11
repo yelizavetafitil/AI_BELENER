@@ -6,7 +6,14 @@ import re
 import textwrap
 from typing import Any
 
-from belener.config import report_include_body_text, report_markdown_tables, report_stamp_frame_only
+from belener.config import (
+    report_include_body_text,
+    report_include_full_text_layer,
+    report_include_quality,
+    report_markdown_tables,
+    report_normative_compact,
+    report_stamp_frame_only,
+)
 from belener.notes_filter import is_technical_requirements_notes
 from belener.parse import STAMP_SIGNATURE_ORDER, _is_bad_signature_name, clean_table_title
 
@@ -71,9 +78,9 @@ def _ordered_signatures(sigs: list[dict]) -> list[dict]:
         if not s:
             continue
         name = str(s.get("name") or "—").strip()
-        if name in ("—", "") or _is_bad_signature_name(name):
-            continue
-        out.append(s)
+        if name not in ("—", "") and _is_bad_signature_name(name):
+            name = "—"
+        out.append({**s, "name": name or "—", "date": str(s.get("date") or "—").strip() or "—"})
     for s in sigs:
         role = str(s.get("role") or "").strip()
         if role and role not in {x["role"] for x in out}:
@@ -182,6 +189,16 @@ def _table_heading(tbl: dict, index: int) -> str:
     return title or tn or f"Таблица {index}"
 
 
+def _usable_stamp_title(t: str) -> bool:
+    """Отсечь мусор из текстового слоя PDF (не заголовки раздела)."""
+    from belener.parse import _is_garbage_stamp_title, _looks_like_stamp_section_title, _normalize_stamp_title
+
+    s = _normalize_stamp_title(str(t or ""))
+    if not s or _is_garbage_stamp_title(s):
+        return False
+    return _looks_like_stamp_section_title(s)
+
+
 def _stamp_has_content(stamp: dict[str, Any]) -> bool:
     if not stamp:
         return False
@@ -266,9 +283,12 @@ def _render_universal_stamp(stamp: dict[str, Any]) -> list[str]:
     return lines
 
 
-def facts_to_markdown(facts: dict[str, Any]) -> str:
+def facts_to_markdown(facts: dict[str, Any], *, mode: str = "full") -> str:
+    """mode: full | analysis | text — text без нормативов, analysis с нормативами."""
     if not facts.get("ok"):
         return f"**Ошибка:** {facts.get('error', 'Не удалось разобрать PDF')}\n"
+
+    include_normatives = mode in ("full", "analysis")
 
     stamp = facts.get("stamp") or {}
     if report_stamp_frame_only():
@@ -385,15 +405,21 @@ def facts_to_markdown(facts: dict[str, Any]) -> str:
             (x.get("value") for x in stamp.get("kv") or [] if "организ" in str(x.get("field", "")).casefold()),
             "",
         )
-        if org and str(org).strip() not in ("", "—"):
+        from belener.parse import _is_garbage_kv
+
+        if org and str(org).strip() not in ("", "—") and not _is_garbage_kv("Организация", str(org)):
             lines.append(f"**{org}**")
             lines.append("")
 
-        titles = [str(t).strip() for t in (stamp.get("titles") or []) if str(t).strip()]
+        titles = [
+            str(t).strip()
+            for t in (stamp.get("titles") or [])
+            if _usable_stamp_title(str(t))
+        ]
         if titles:
-            lines.append("**Наименования / разделы (штамп)**")
+            lines.append("**Наименование документа**")
             lines.append("")
-            for t in titles[:12]:
+            for t in titles[:4]:
                 lines.append(f"- {t}")
             lines.append("")
 
@@ -440,14 +466,64 @@ def facts_to_markdown(facts: dict[str, Any]) -> str:
     else:
         lines.append("*(рамка не распознана — сверьте с PDF.)*")
 
-    quality_lines = _render_quality(facts.get("quality") or {})
-    if quality_lines:
+    normative = facts.get("normative_refs") or []
+    if include_normatives and normative:
         lines.append("")
-        lines.extend(quality_lines)
+        lines.append("**Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)**")
+        lines.append("")
+        compact = report_normative_compact()
+        if report_markdown_tables():
+            if compact:
+                lines.extend(
+                    _md_table(
+                        ["Тип", "Обозначение"],
+                        [[str(n.get("kind") or "—"), str(n.get("ref") or "—")] for n in normative],
+                    )
+                )
+            else:
+                lines.extend(
+                    _md_table(
+                        ["Тип", "Обозначение", "Контекст на листе"],
+                        [
+                            [
+                                str(n.get("kind") or "—"),
+                                str(n.get("ref") or "—"),
+                                str(n.get("context") or n.get("ref") or "—"),
+                            ]
+                            for n in normative
+                        ],
+                    )
+                )
+        else:
+            if compact:
+                lines.extend(
+                    _ascii_table(
+                        ["Тип", "Обозначение"],
+                        [[n.get("kind"), n.get("ref")] for n in normative],
+                    )
+                )
+            else:
+                lines.extend(
+                    _ascii_table(
+                        ["Тип", "Обозначение", "Контекст"],
+                        [
+                            [n.get("kind"), n.get("ref"), n.get("context")]
+                            for n in normative
+                        ],
+                    )
+                )
+        lines.append("")
 
-    full_text = full_text_pages_to_markdown(facts.get("full_text_pages") or [])
-    if full_text:
-        lines.append("")
-        lines.append(full_text.rstrip())
+    if report_include_quality():
+        quality_lines = _render_quality(facts.get("quality") or {})
+        if quality_lines:
+            lines.append("")
+            lines.extend(quality_lines)
+
+    if report_include_full_text_layer():
+        full_text = full_text_pages_to_markdown(facts.get("full_text_pages") or [])
+        if full_text:
+            lines.append("")
+            lines.append(full_text.rstrip())
 
     return "\n".join(lines).strip() + "\n"

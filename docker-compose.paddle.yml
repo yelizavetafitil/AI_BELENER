@@ -1,0 +1,55 @@
+# PaddleOCR для зон spec_* / stamp_* (после fine-tune rec).
+#
+#   cp .env.paddle.example .env
+#   docker compose -f docker-compose.yml -f docker-compose.paddle.yml --profile paddle up -d --build
+#
+# Fine-tuned rec: смонтируйте inference-модель в paddle_models/rec_finetuned
+
+services:
+  paddle-ocr:
+    profiles: ["paddle"]
+    build: ./services/paddle_ocr
+    restart: unless-stopped
+    mem_limit: ${PADDLE_MEM_LIMIT:-4g}
+    mem_reservation: ${PADDLE_MEM_RESERVATION:-512m}
+    environment:
+      PADDLE_LANG: ${PADDLE_LANG:-ru}
+      PADDLE_PRELOAD: ${PADDLE_PRELOAD:-1}
+      PADDLE_REC_MODEL_DIR: ${PADDLE_REC_MODEL_DIR:-/models/rec_finetuned}
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+    volumes:
+      - paddle_models:/models
+      - ./data/training/paddle_rec/models:/models/rec_finetuned
+    ports:
+      - "${PADDLE_ADAPTER_PORT:-8082}:8082"
+    networks:
+      - belnet
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=12)",
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 300s
+
+  web:
+    depends_on:
+      paddle-ocr:
+        condition: service_healthy
+        required: false
+    environment:
+      PADDLE_OCR_URL: http://paddle-ocr:8082
+      PDF_OCR_PADDLE_ZONES: "1"
+      PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
+      PDF_OCR_FALLBACK_TESS: "1"
+      PDF_LOCAL_ONLY: "1"
+      PDF_VISION_MODE: "off"
+      PDF_REPORT_FAITHFUL: "1"
+
+volumes:
+  paddle_models:

@@ -1,0 +1,41 @@
+# Fine-tune Paddle rec + (опционально) подготовка датасета
+#
+#   python scripts/rebuild_train_list.py
+#   python scripts/export_paddle_line_dataset.py
+#   docker compose -f docker-compose.train.yml run --rm paddle-train
+#
+# Модель: data/training/paddle_rec/models/rec_finetuned/
+# Затем перезапуск surya-стека с mount (см. docker-compose.surya.yml)
+
+services:
+  paddle-train:
+    build:
+      context: .
+      dockerfile: services/paddle_train/Dockerfile
+    profiles: ["train"]
+    mem_limit: ${PADDLE_TRAIN_MEM:-10g}
+    volumes:
+      - ./data/training:/app/data/training
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/pretrain:/pretrain
+      - ./scripts/train_paddle_rec.py:/app/scripts/train_paddle_rec.py:ro
+      - ./scripts/export_paddle_line_dataset.py:/app/scripts/export_paddle_line_dataset.py:ro
+      - ./scripts/rebuild_train_list.py:/app/scripts/rebuild_train_list.py:ro
+    environment:
+      PADDLEOCR_REPO: /PaddleOCR
+      PADDLE_USE_GPU: ${PADDLE_USE_GPU:-0}
+      PADDLE_REC_MAX_TEXT_LEN: ${PADDLE_REC_MAX_TEXT_LEN:-80}
+      PADDLE_REC_LR: ${PADDLE_REC_LR:-0.0005}
+    command:
+      [
+        "python",
+        "/app/scripts/train_paddle_rec.py",
+        "--training",
+        "/app/data/training",
+        "--min-lines",
+        "40",
+        "--fresh",
+        "--run-train",
+        "--export",
+        "--epochs",
+        "${PADDLE_TRAIN_EPOCHS:-20}",
+      ]

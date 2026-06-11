@@ -40,6 +40,7 @@ STAMP_SIGNATURE_ORDER: tuple[str, ...] = (
     "Разраб.",
     "Пров.",
     "Гл. констр.",
+    "Гл. техн.",
     "Н.контр.",
     "ГИП",
     "Нач. отд.",
@@ -47,6 +48,7 @@ STAMP_SIGNATURE_ORDER: tuple[str, ...] = (
 )
 
 STAMP_KV_ORDER: tuple[str, ...] = (
+    "Обозначение документа",
     "Обозначение / шифр",
     "Организация",
     "Город / адрес",
@@ -64,6 +66,7 @@ _STAMP_ROLES: tuple[tuple[str, str], ...] = (
     ("Разраб.", r"разро[бьёe]|разра[бьёe]"),
     ("Пров.", r"(?<![a-zа-я])пров(?![a-zа-я])"),
     ("Гл. констр.", r"гл\.?\s*констр"),
+    ("Гл. техн.", r"гл\.?\s*техн"),
     ("Н.контр.", r"(?:^|\s|[|])н\.?\s*контр|(?<![a-zа-я])нконтр"),
     ("ГИП", r"\bгип\b"),
     ("Нач. отд.", r"нач\.?\s*отд|ноч\.?\s*отд"),
@@ -85,7 +88,8 @@ _COLUMN_HEADER_RX = re.compile(
     r"номер\s+на\s+плане|"
     r"наименован\w*|"
     r"координат\w*(?:\s+квадрат\w*)?(?:\s+сетк\w*)?|"
-    r"квадрат\w*\s+сетк\w*"
+    r"квадрат\w*\s+сетк\w*|"
+    r"ед\.?\s*к|кол\.?\s*масс|масса\s*ед"
     r")",
     re.I,
 )
@@ -102,6 +106,11 @@ _HEADER_WORDS = frozenset(
         "плане",
         "квадрат",
         "на",
+        "ед",
+        "кол",
+        "масс",
+        "масса",
+        "раме",
     }
 )
 
@@ -219,7 +228,7 @@ def cipher_tokens(text: str, limit: int = 10) -> list[str]:
     out: list[str] = []
     for raw in list(_CIPHER_RX.findall(compact)) + list(_CIPHER_SHORT_RX.findall(compact)):
         t = _normalize_cipher(raw)
-        if len(t) < 7 or t in seen:
+        if len(t) < 7 or t in seen or _is_reference_cipher(t):
             continue
         seen.add(t)
         out.append(t)
@@ -228,20 +237,108 @@ def cipher_tokens(text: str, limit: int = 10) -> list[str]:
     return out
 
 
+def _is_reference_cipher(c: str) -> bool:
+    """ТУ/ГОСТ в примечаниях, не шифр документа (34-43-12515-78)."""
+    s = re.sub(r"\s+", "", c or "")
+    if re.search(r"^\d{2}-\d{2}-\d{4,6}-\d{2,3}$", s, re.I):
+        return True
+    if re.search(r"^\d{2}-\d{2}-\d{5,8}$", s, re.I):
+        return True
+    if re.search(r"^\(?\s*ТУ\s*\)?\s*\d", s, re.I):
+        return True
+    return False
+
+
+def cipher_from_filename(filename: str) -> str:
+    """Шифр BNP/VR из имени файла (чистые сканы без текста в рамке)."""
+    stem = re.sub(r"\s+", " ", (filename or "").replace("_", " ").strip())
+    if not stem:
+        return ""
+    m = re.search(
+        r"(?:BNP|БНП)\s*(\d+\s*-\s*\d+\s*-\s*[А-ЯA-ZЁ]{2,6}\d*)",
+        stem,
+        re.I,
+    )
+    if m:
+        body = re.sub(r"\s+", "", m.group(1))
+        return _normalize_cipher("BNP" + body.replace("БНП", "BNP"))
+    m = re.search(
+        r"(?:VR|УВ|UV)-[\w#\- ]+(?:GT|СТ|CT)[\w#\-]*",
+        stem,
+        re.I,
+    )
+    if m:
+        return _normalize_cipher(re.sub(r"\s+", "", m.group(0)).replace("УВ", "VR").replace("UV", "VR"))
+    return ""
+
+
+def sheet_from_filename(filename: str) -> str:
+    """Номер листа из суффикса «Л11» / «л.4» / «ЭМ1Л7» в имени файла."""
+    stem = (filename or "").rsplit(".", 1)[0]
+    for rx in (
+        r"[_\s]Л[_\s]?(\d{1,3})(?:$|[_\s.])",
+        r"[_\s]л\.?\s*(\d{1,3})(?:$|[_\s.])",
+        r"[_\s]L(\d{1,3})(?:$|[_\s.])",
+        r"Л(\d{1,3})$",
+    ):
+        m = re.search(rx, stem, re.I)
+        if m:
+            n = int(m.group(1))
+            if 1 <= n <= 999:
+                return str(n)
+    return ""
+
+
+def apply_stamp_filename_hints(stamp: dict[str, Any], filename: str) -> dict[str, Any]:
+    """Дополнить рамку шифром/листом из имени PDF, если OCR дал ТУ или номер турбины."""
+    if not stamp or not (filename or "").strip():
+        return stamp
+    kv_map = {
+        str(x.get("field")): str(x.get("value") or "").strip()
+        for x in stamp.get("kv") or []
+        if x.get("field")
+    }
+    doc = cipher_from_filename(filename)
+    if doc:
+        cur = kv_map.get("Обозначение / шифр") or kv_map.get("Обозначение документа") or ""
+        if not cur or _is_reference_cipher(cur):
+            kv_map["Обозначение документа"] = doc
+            if _is_reference_cipher(kv_map.get("Обозначение / шифр", "")):
+                kv_map.pop("Обозначение / шифр", None)
+    sh = sheet_from_filename(filename)
+    if sh:
+        kv_map["Лист"] = sh
+    if doc or sh:
+        out = dict(stamp)
+        out["kv"] = [{"field": f, "value": kv_map[f]} for f in STAMP_KV_ORDER if kv_map.get(f)]
+        return out
+    return stamp
+
+
 def best_cipher(ciphers: list[str]) -> str:
     if not ciphers:
         return ""
 
     def score(c: str) -> tuple[int, int, int]:
+        if _is_reference_cipher(c):
+            return -100, 0, 0
         bonus = 12 if re.search(r"[А-Яа-яЁё]\d$", c) else (4 if re.search(r"\d$", c) else 0)
+        if re.match(r"^VR-", c, re.I):
+            bonus += 28
+        if re.search(r"(?:BNP|БНП)\d", c, re.I):
+            bonus += 22
+        if re.search(r"-(?:АТМ|ATM|ЭМ|EM|ГП|GP)\d", c, re.I):
+            bonus += 14
         if re.search(r"\d+-\d+-", c):
             bonus += 6
-        if re.search(r"-(?:ГП|GP|СП|SP|АР|AR|КР|KR|ПЗ|PZ|ВК|VK|ОВ|OV)\d", c, re.I):
+        if re.search(r"-(?:ГП|GP|СП|SP|АР|AR|КР|KR|ПЗ|PZ|ВК|VK|ОВ|OV|ГТ|GT)\d", c, re.I):
             bonus += 10
         if re.search(r"(\d)\1{3,}", c):
             bonus -= 14
         if re.search(r"(?:^|-)9999(?:-|$)", c):
             bonus -= 20
+        if re.search(r"^1760-0-ГТ", c, re.I):
+            bonus -= 8
         m0 = re.match(r"^(\d{3,6})-", c)
         if m0 and int(m0.group(1)) >= 8000:
             bonus -= 10
@@ -462,17 +559,26 @@ def _extract_signatures(lines: list[str]) -> list[dict[str, str]]:
         if _is_bad_signature_date(date):
             date = ""
         prev = found.get(role)
-        if prev and name and prev.get("name") not in ("—", "", None):
-            if not _is_bad_signature_name(str(prev.get("name"))):
-                if _readability_score(name) <= _readability_score(str(prev.get("name"))):
-                    name = ""
-        if prev and prev["name"] != "—" and name in ("", "—"):
-            return
+        if prev and name in ("", "—"):
+            prev_name = str(prev.get("name") or "").strip()
+            if prev_name and prev_name != "—" and not _is_bad_signature_name(prev_name):
+                name = prev_name
+        if prev and name not in ("", "—"):
+            prev_name = str(prev.get("name") or "—")
+            if prev_name not in ("—", "", None) and not _is_bad_signature_name(prev_name):
+                if _readability_score(name) <= _readability_score(prev_name):
+                    name = prev_name
         nd = _norm_date(date) if date else "—"
         if nd == "—" and date:
             nd = date
+        if prev and nd in ("—", ""):
+            prev_date = str(prev.get("date") or "").strip()
+            if prev_date and prev_date != "—" and not _is_bad_signature_date(prev_date):
+                nd = prev_date
         if not name and nd in ("—", ""):
-            return
+            if not prev:
+                return
+            name = str(prev.get("name") or "—")
         found[role] = {
             "role": role,
             "name": name or "—",
@@ -498,7 +604,7 @@ def _extract_signatures(lines: list[str]) -> list[dict[str, str]]:
         if matched_role:
             name = ""
             date = ""
-            for j in range(i, min(i + 6, len(work_lines))):
+            for j in range(i, min(i + 8, len(work_lines))):
                 chunk = work_lines[j]
                 if not name:
                     cand = _person_token(chunk)
@@ -533,7 +639,9 @@ def _extract_signatures(lines: list[str]) -> list[dict[str, str]]:
     # Вторая проходка: роли и фамилии в одной строке OCR без |
     compact = _compact("\n".join(work_lines))
     for role, rx in _STAMP_ROLES:
-        if found.get(role, {}).get("name") not in (None, "—", ""):
+        cur = found.get(role, {})
+        cur_name = str(cur.get("name") or "")
+        if cur_name and cur_name != "—" and not _is_bad_signature_name(cur_name):
             continue
         for m in re.finditer(
             rf"(?:^|[\s|]){rx}\.?\s*[_\.\s|]*([А-ЯA-Z][а-яA-Za-z]{{3,}})(?:[^\d]{{0,20}}(\d{{1,2}}[./]\d{{1,2}}|\[\d{{4}}))?",
@@ -558,7 +666,7 @@ def _extract_signatures(lines: list[str]) -> list[dict[str, str]]:
                 role_hits.append((i, role))
                 break
     for idx, (i, role) in enumerate(role_hits):
-        end_i = role_hits[idx + 1][0] if idx + 1 < len(role_hits) else min(i + 6, len(work_lines))
+        end_i = role_hits[idx + 1][0] if idx + 1 < len(role_hits) else min(i + 8, len(work_lines))
         name = ""
         date = ""
         for chunk in work_lines[i:end_i]:
@@ -599,6 +707,10 @@ def _extract_sheet_kv(compact: str) -> list[tuple[str, str]]:
             continue
         stage_letter = m.group(1).upper()
         if m.lastindex and m.lastindex >= 2:
+            pos = m.start(2)
+            before = compact[max(0, pos - 2) : pos]
+            if before.endswith(("-", "–", "−")):
+                continue
             num = int(m.group(2))
             if 1 <= num <= 999:
                 out.append(("Стадия (обозначение)", stage_letter))
@@ -632,6 +744,7 @@ def _extract_org(compact: str) -> str:
     candidates: list[str] = []
     for rx in (
         r'РУП\s*["«][^"»\n]{4,80}["»]',
+        r'РУП\s*["«]?\s*[А-ЯA-ZЁ][\wА-Яа-яЁё\-]{4,50}',
         r'ООО\s+["«][^"»\n]{4,80}["»]',
         r'ООО\s+[«"]?[\wА-Яа-яЁё\s\-]{4,60}',
     ):
@@ -640,12 +753,30 @@ def _extract_org(compact: str) -> str:
         return ""
 
     def score(s: str) -> tuple[int, int, int, int]:
+        if re.search(r"поза\s+щита|по\s+месту\s+защиты|входит\s+\d+\s+комплект", s, re.I):
+            return -50, 0, 0, 0
         pref = 200 if re.match(r'РУП\s*["«]', s, re.I) else (100 if re.match(r'ООО\s+["«]', s, re.I) else 0)
+        if re.search(r"белнипи|энергопром|геоцентр", s, re.I):
+            pref += 40
         cyr = len(re.findall(r"[А-Яа-яЁё]", s))
         noise = len(re.findall(r"[|©\[\]_`]", s))
         return pref, cyr, -noise, len(s)
 
-    return re.sub(r"\s+", " ", max(candidates, key=score)).strip()
+    org = re.sub(r"\s+", " ", max(candidates, key=score)).strip()
+    org = re.sub(r"бейнипи", "БЕЛНИПИ", org, flags=re.I)
+    org = re.sub(r"энергопром", "ЭНЕРГОПРОМ", org, flags=re.I)
+    return org
+
+
+def _extract_city_stamp(compact: str) -> str:
+    m = re.search(r"(минск)\s*(белорус\w*)", compact, re.I)
+    if m:
+        city = m.group(1).strip().capitalize()
+        country = m.group(2).strip().capitalize()
+        if country.casefold().startswith("белорус"):
+            country = "Беларусь"
+        return f"{city} {country}"
+    return ""
 
 
 def _extract_scale(compact: str) -> str:
@@ -685,7 +816,46 @@ def _is_garbage_kv(field: str, value: str) -> bool:
         return True
     if f == "Формат" and re.search(r"1\s*:\s*\d", v):
         return True
+    if "город" in f.casefold() or "адрес" in f.casefold():
+        if re.search(r"месту\s+защиты|щита\s+и\s+по|поза\s+щита|формат\s+a\d", v, re.I):
+            return True
+    if f == "Организация":
+        if re.search(r"\d{3,}\s*-\s*\d+\s*-\s*[А-ЯA-Z]", v, re.I):
+            return True
+        if re.search(r'["«][^"»]{4,60}["»]', v):
+            return False
+        if _readability_score(v) < 8.0:
+            return True
+        words = v.split()
+        if len(words) >= 3 and sum(1 for w in words if len(w) <= 2) / len(words) > 0.45:
+            return True
     return False
+
+
+def stamp_parse_usable(stamp: dict[str, Any]) -> bool:
+    """Штамп достаточно чистый — не нужен повторный OCR по сетке."""
+    kv = stamp.get("kv") or []
+    good_kv = sum(
+        1
+        for x in kv
+        if not _is_garbage_kv(str(x.get("field") or ""), str(x.get("value") or ""))
+    )
+    sigs = [
+        s
+        for s in stamp.get("signatures") or []
+        if str(s.get("name") or "").strip() not in ("", "—")
+        and not _is_bad_signature_name(str(s.get("name") or ""))
+    ]
+    titles = [t for t in stamp.get("titles") or [] if not _is_garbage_stamp_title(t)]
+    good_titles = [t for t in titles if _looks_like_stamp_section_title(t)]
+    cipher = next(
+        (str(x.get("value") or "") for x in kv if "шифр" in str(x.get("field") or "").casefold()),
+        "",
+    )
+    if cipher and _is_reference_cipher(cipher):
+        good_kv = max(0, good_kv - 1)
+    titles_ok = not titles or len(good_titles) >= 1
+    return good_kv >= 2 and len(sigs) >= 1 and len(titles) <= 3 and titles_ok
 
 
 def _normalize_stamp_kv_map(kv_map: dict[str, str]) -> dict[str, str]:
@@ -744,7 +914,11 @@ def _is_garbage_stamp_title(raw: str) -> bool:
     s = re.sub(r"\s+", " ", (raw or "").strip())
     if not s:
         return True
-    if re.search(r"разраб\.?|пров\.?|гип\b|н\.?\s*контр|нач\.?\s*отд|копиров|утв\b", s, re.I):
+    if re.search(
+        r"разраб\.?|раз\s*раб|пров\.?|гип\b|н\.?\s*контр|нач\.?\s*отд|копиров|утв\b",
+        s,
+        re.I,
+    ):
         return True
     if re.search(r'ру\s*["«]|ооо\s*["«]', s, re.I):
         return True
@@ -781,6 +955,45 @@ def _is_garbage_stamp_title(raw: str) -> bool:
     if re.fullmatch(r'[«"][A-ZА-ЯЁ][^"»]{3,40}[»"]\.?', s):
         return True
     if re.search(r"^реконструк\w+", s, re.I) and not re.search(r"\bплан\b", s, re.I):
+        return True
+    if re.search(
+        r"плодородн|озеленен|используемый\s+для|элементов\s+озеленен|ведомость\s+"
+        r"|тротуар|покрыти[яе]\s|газон\s|посадк",
+        s,
+        re.I,
+    ):
+        return True
+    if re.search(r"[\(（]\s*\d\s*[,.\-]\s*\d\s*[\)）]", s):
+        return True
+    if re.match(r"^[\s‚\.\"«»\)\(]+[а-яa-z]\s*[\)\]]", s, re.I):
+        return True
+    if re.search(r"^(?:короб|корд|кабель|шкаф|панель|блок|устройство)\s", s, re.I) and not re.search(
+        r"(?:план|схем|черт|раздел|комплект|марк|изыскан|расположен|генеральн)",
+        s,
+        re.I,
+    ):
+        return True
+    if re.match(r"^(?:рунт|зм\.|лестн|асштаб)", s, re.I):
+        return True
+    if re.search(
+        r"электродвигател|выключател|концевых\s+выключ|комплект\s+б\d|цеп[ией].*обеспеч|"
+        r"^\d{1,2}\s+выключател|гр\.\s+банбык|импульсного\s+клапана|"
+        r"арматур|защиты\s+пвд|поза\s+щита|^\d+\s+\d+\s+т\b|входит\s+\d+\s+комплект",
+        s,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"см\.\s*тгп|тгп\.\s*\d+\s+щита|"
+        r"^главный\s+корпус|метлу\s+защиты|защиты\s+пв\b|что\s+метлу",
+        s,
+        re.I,
+    ):
+        return True
+    if re.search(r"[а-яё][А-ЯЁ][а-яё][А-ЯЁ]", s):
+        return True
+    words = s.split()
+    if any(len(w) >= 6 and sum(1 for c in w if c.isupper()) >= 3 for w in words):
         return True
     return False
 
@@ -842,9 +1055,33 @@ def parse_stamp(text: str) -> dict[str, Any]:
     compact = _compact(raw)
     kv: list[dict[str, str]] = []
 
+    vr_doc = re.search(
+        r"(?:VR|УВ|UV)-[\w#\- ]+(?:GT|СТ|CT)[\w#\-]*",
+        compact,
+        re.I,
+    )
+    if vr_doc:
+        doc_id = re.sub(r"\s+", "", vr_doc.group(0)).replace("УВ", "VR").replace("UV", "VR")
+        kv.append({"field": "Обозначение документа", "value": _normalize_cipher(doc_id)})
+    m_bnp = re.search(r"(?:BNP|БНП)\s*[\d\-]+[А-ЯA-ZЁ]{2,6}\d*", compact, re.I)
+    if m_bnp:
+        kv.append(
+            {
+                "field": "Обозначение документа",
+                "value": _normalize_cipher(m_bnp.group(0).replace(" ", "")),
+            }
+        )
+    inv = re.search(r"(?:инв\.?\s*№\s*подл\.?\s*)?(\d{3,6}-\d+-[А-ЯA-ZЁ]{1,4}\d*)", compact, re.I)
+    if inv:
+        kv.append({"field": "Инв. № подл.", "value": _normalize_cipher(inv.group(1))})
     ciphers = cipher_tokens(compact)
     if ciphers:
-        kv.append({"field": "Обозначение / шифр", "value": best_cipher(ciphers)})
+        pick = best_cipher(ciphers)
+        if pick and not _is_reference_cipher(pick):
+            if not (vr_doc and re.search(r"^1760-0-ГТ", pick, re.I)):
+                kv.append({"field": "Обозначение / шифр", "value": pick})
+            elif not vr_doc:
+                kv.append({"field": "Обозначение / шифр", "value": pick})
 
     org = _extract_org(compact)
     if org:
@@ -856,6 +1093,10 @@ def parse_stamp(text: str) -> dict[str, Any]:
 
     for label, val in _extract_sheet_kv(compact):
         kv.append({"field": label, "value": val})
+
+    city = _extract_city_stamp(compact)
+    if city:
+        kv.append({"field": "Город / адрес", "value": city})
 
     for label, rx in (
         (
@@ -918,6 +1159,8 @@ def parse_stamp(text: str) -> dict[str, Any]:
     for t in _scan_stamp_section_phrases(compact):
         if t not in titles:
             titles.append(t)
+
+    titles = [t for t in titles if not _is_garbage_stamp_title(t)]
 
     kv_map = _normalize_stamp_kv_map({x["field"]: x["value"] for x in kv})
     revisions = parse_revision_table(raw)
@@ -1113,6 +1356,8 @@ def _legend_body(text: str) -> str:
 
 def _clean_legend_note(note: str) -> str:
     s = polish_readable_russian(re.sub(r"\s+", " ", (note or "").strip()))
+    s = re.sub(r"повелительн\w*\s+насосн\w*", "повысительная насосная", s, flags=re.I)
+    s = re.sub(r"^В\.трубы\b", "в.трубы", s, flags=re.I)
     s = re.sub(r"^(?:[A-ZА-ЯЁ]{2,6}\)|\([A-ZА-ЯЁ]{2,6}\))\s*", "", s)
     s = re.sub(r"^[)\]}>\.]+\s*", "", s)
     s = re.sub(r"^[=+\-–•|/\\]+\s*", "", s)
@@ -1195,13 +1440,13 @@ def _is_garbage_legend_note(note: str) -> bool:
         note,
     ):
         return True
-    if re.search(
-        r"устробст|сетебого|аскмитт|неуспраб|абарибн|"
-        r"трансформатор\s+трансформатор|напряженуя|разделительн\s+разделительн|"
-        r"релейн\w*\s+зал[^.]{0,40}релейн",
-        note,
-        re.I,
-    ):
+    if _is_column_header_line(note):
+        return True
+    from belener.table_quality import mixed_script_ocr_glitch, ocr_line_implausible_for_legend
+
+    if mixed_script_ocr_glitch(note):
+        return True
+    if ocr_line_implausible_for_legend(note):
         return True
     words = note.split()
     if len(words) >= 2 and words[0].casefold() == words[-1].casefold():
@@ -1228,13 +1473,6 @@ def _is_garbage_legend_note(note: str) -> bool:
     if re.search(r"[бвгджзклмнпрстфхцчшщ]{5,}", note, re.I):
         return True
     if re.search(r"(.)\1{3,}", note, re.I):
-        return True
-    if len(note) > 40 and re.search(
-        r"тороб|бтт|истз|упд|i\s*=\s*\d|m\s*=\s*\d|устроуст|"
-        r"напряжен\w*\s+трансформатор|трансформатор\s+тока",
-        note,
-        re.I,
-    ):
         return True
     if len(note) > 70 and len(re.findall(r"[A-ZА-Я]{2,}\d", note)) >= 3:
         return True
@@ -2221,17 +2459,37 @@ def parse_specification(block: str, *, max_rows: int = 80) -> list[dict[str, str
             rows.append({col: row.get(col, "—") for col in _SPEC_COLS})
         if len(rows) >= max_rows:
             break
-    if rows:
-        return _filter_specification_rows(rows)
+    strict = _filter_specification_rows(rows)
+    if strict:
+        return strict
     loose = _filter_specification_rows(_parse_specification_loose(block, max_rows=max_rows))
-    if len(loose) >= 3:
-        return loose
+    from belener.spec_gost_materials import parse_gost_material_spec_rows
+
+    gost = _filter_specification_rows(parse_gost_material_spec_rows(block, max_rows=max_rows))
+    best = loose
+    if len(gost) > len(best):
+        best = gost
+    gost_hits = sum(
+        1 for r in gost if re.search(r"гост|ту\s*[\d\-]", str(r.get("Обозначение") or ""), re.I)
+    )
+    if gost_hits >= 2:
+        return gost
+    if len(best) >= 3:
+        return best
     from belener.spec_extract import extract_spec_rows_from_messy_ocr
 
     salvage = extract_spec_rows_from_messy_ocr(block, max_rows=max_rows)
-    if len(salvage) > len(loose):
-        return _filter_specification_rows(salvage)
-    return loose
+    salvage = _filter_specification_rows(salvage)
+    if len(salvage) > len(best):
+        best = salvage
+    from belener.normative_spec import parse_normative_bom_rows
+
+    norm = _filter_specification_rows(parse_normative_bom_rows(block, max_rows=max_rows))
+    if len(norm) > len(best):
+        best = norm
+    elif norm and not best:
+        best = norm
+    return best
 
 
 def parse_numbered_notes(text: str, *, max_notes: int = 40) -> list[str]:
@@ -2243,6 +2501,8 @@ def parse_numbered_notes(text: str, *, max_notes: int = 40) -> list[str]:
         if not m:
             continue
         tail = m.group(2).strip()
+        if re.search(r"\b(?:гост|ту\s*[\d\-]|держатель\s+шин|\d+[xх×]\d+)\b", s, re.I):
+            continue
         if _HEADER_RX.search(tail) or re.search(r"^таблица\s", tail, re.I):
             continue
         if re.search(r"разро[бь]|пров\.|гип\b|изм\.|кол\.?\s*уч", tail, re.I):
@@ -2970,12 +3230,12 @@ def _collapse_duplicate_signature_names(sigs: list[dict[str, str]]) -> list[dict
         if str(s.get("name") or "").strip() not in ("", "—")
         and not _is_bad_signature_name(str(s.get("name")))
     ]
-    if len(names) < 3:
+    if len(names) < 4:
         return sigs
     from collections import Counter
 
     top, count = Counter(names).most_common(1)[0]
-    if count >= max(3, int(len(names) * 0.75)):
+    if count >= max(4, int(len(names) * 0.85)):
         out = []
         for s in sigs:
             row = dict(s)
@@ -3270,6 +3530,8 @@ def _is_bad_signature_name(name: str) -> bool:
     for role, rx in _STAMP_ROLES:
         if re.fullmatch(rf"{rx}\.?", s, re.I):
             return True
+    if re.fullmatch(r"подп\.?|подпись|дата", s, re.I):
+        return True
     if not _looks_like_person_name(name):
         return True
     if s.endswith(".") and len(s) <= 10:

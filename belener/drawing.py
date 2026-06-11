@@ -67,7 +67,7 @@ from belener.sheet_read import (
     _parse_table_zone_text,
     _table_zone_jobs,
 )
-from belener.stamp_read import finalize_stamp, merge_stamp_sources, read_stamp_frame
+from belener.stamp_read import finalize_stamp, merge_stamp_sources, read_stamp_frame, enrich_stamp_from_table_text
 from belener.vision_zones import extract_layout_blocks_vision, extract_zones_vision, vision_postprocess_sheet
 from belener.zones import build_zones
 
@@ -320,11 +320,21 @@ def analyze_pdf_document(
 
     page = doc[0]
     if discover_zones_enabled() and tess_ok:
-        zones = discover_sheet_zones(doc, 0, page.rect, fast=False)
+        zones = discover_sheet_zones(
+            doc, 0, page.rect, fast=discover_zones_fast() or not accuracy_mode()
+        )
     elif discover_zones_fast() and tess_ok:
         zones = discover_sheet_zones(doc, 0, page.rect, fast=True)
     else:
         zones = build_zones(page.rect)
+    from belener.zone_refine import refine_sheet_zones
+
+    zones = refine_sheet_zones(doc, zones, 0, classify_with_ocr=tess_ok)
+    from belener.config import yolo_zones_enabled
+    from belener.yolo_zones import apply_yolo_zones
+
+    if yolo_zones_enabled():
+        zones = apply_yolo_zones(doc, 0, page.rect, zones)
     use_layout = scanned and (layout_ocr_enabled() or layout_vision_enabled()) and not accuracy_mode()
     layout_blocks = detect_layout_blocks(doc, 0) if use_layout else []
     pipeline = "belener_vision_scan" if vision_only else "belener_ocr"
@@ -336,9 +346,12 @@ def analyze_pdf_document(
     s_dpi = stamp_block_dpi()
     t_dpi = table_dpi()
     t0 = time.monotonic()
+    cad_export = not scanned and _doc_use_text_layer(doc)
+    sheet_kind = "cad_export" if cad_export else ("scan" if scanned else "hybrid")
     log.info(
-        "sheet start %s scanned=%s vision_only=%s stamp_dpi=%s table_dpi=%s",
+        "sheet start %s kind=%s scanned=%s vision_only=%s stamp_dpi=%s table_dpi=%s",
         filename,
+        sheet_kind,
         scanned,
         vision_only,
         s_dpi,
@@ -355,6 +368,7 @@ def analyze_pdf_document(
     ocr_legend: list[dict] = []
     ocr_sections: list[dict[str, Any]] = []
     zoned_sheet_notes: dict[str, Any] | None = None
+    zone_ocr_texts: dict[str, str] = {}
 
     if vision_only:
         if not stamp_from_universal:
@@ -417,6 +431,13 @@ def analyze_pdf_document(
         ocr_sections = list(zoned["table_sections"])
         zoned_sheet_notes = zoned.get("sheet_notes")
         ocr.update({str(k): int(v) for k, v in (zoned.get("ocr_zones") or {}).items()})
+        zone_ocr_texts = dict(zoned.get("zone_texts") or {})
+        if not stamp_from_universal:
+            stamp = enrich_stamp_from_table_text(
+                stamp,
+                table_text,
+                *(zone_ocr_texts.get(k) or "" for k in ("spec_left", "spec_right")),
+            )
         pipeline = "belener_zoned_ocr"
         if sheet_text_ocr:
             ocr["sheet_notes"] = sheet_text_ocr
@@ -427,6 +448,16 @@ def analyze_pdf_document(
             len(sheet_text_ocr or ""),
             filename,
         )
+
+    if scanned and tess_ok and not vision_only:
+        from belener.config import normative_scan_enabled
+        from belener.normative_scan import ocr_normative_scan
+
+        if normative_scan_enabled():
+            ns = ocr_normative_scan(doc, 0, page.rect, zones)
+            if ns:
+                zone_ocr_texts["normative_scan"] = ns
+                ocr["normative_scan"] = len(ns)
 
     if scanned and sheet_text_enabled():
         from belener.config import body_ocr_enabled
@@ -800,8 +831,21 @@ def analyze_pdf_document(
 
     discovered = discover_table_sections(table_parse_text) if table_parse_text else []
     combined = merge_table_sections(tables, discovered)
+    spec_blob_parts = [
+        zone_ocr_texts[k]
+        for k in sorted(zone_ocr_texts)
+        if k.startswith("spec_") and zone_ocr_texts.get(k)
+    ]
     ocr_blob = "\n".join(
-        x for x in (table_text or "", table_parse_text or "", sheet_text_ocr or "") if x.strip()
+        x
+        for x in (
+            *spec_blob_parts,
+            table_text or "",
+            table_parse_text or "",
+            sheet_text_ocr or "",
+            *zone_ocr_texts.values(),
+        )
+        if x.strip()
     )
     from belener.grounding import filter_tables_by_ocr_grounding
 
@@ -850,7 +894,13 @@ def analyze_pdf_document(
         log.exception("finalize_table_sections failed %s", filename)
         tables = combined
     expl_title, expl, leg_title, legend = tables_to_legacy(tables)
-    if _stamp_incomplete(stamp) and stamp_rect and not stamp_rect.is_empty and tess_ok:
+    if (
+        _stamp_incomplete(stamp)
+        and stamp_rect
+        and not stamp_rect.is_empty
+        and tess_ok
+        and str(stamp.get("ocr_source") or "") != "stamp_grid"
+    ):
         try:
             ocr_stamp = read_stamp_frame(doc, stamp_rect, dpi=s_dpi, page_index=0)
             if ocr_stamp:
@@ -882,7 +932,9 @@ def analyze_pdf_document(
             log.exception("stamp universal retry failed %s", filename)
 
     if not stamp_from_universal:
-        stamp = finalize_stamp(stamp)
+        from belener.parse import apply_stamp_filename_hints
+
+        stamp = finalize_stamp(apply_stamp_filename_hints(stamp, filename))
 
     from belener.notes_filter import filter_notes_to_tt
 
@@ -935,6 +987,25 @@ def analyze_pdf_document(
         vision_model or "-",
         filename,
     )
+    from belener.normative_refs import collect_normative_refs
+
+    full_ocr_text = ocr_blob
+
+    normative_refs = collect_normative_refs(
+        {
+            "tables": tables,
+            "stamp": stamp,
+            "sheet_notes": sheet_notes,
+            "zone_ocr_texts": zone_ocr_texts,
+            "full_text_pages": full_text_pages,
+            "text_blocks": [*ocr_text_blocks, *vision_text_blocks],
+            "table_text": table_text,
+            "body_text": sheet_text_ocr or "",
+            "normative_scan_text": zone_ocr_texts.get("normative_scan") or "",
+            "full_ocr_text": full_ocr_text,
+        }
+    )
+
     return {
         "ok": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -943,6 +1014,10 @@ def analyze_pdf_document(
         "page_count": doc.page_count,
         "wide_sheet": zones.wide,
         "ocr_zones": _ocr_zone_lengths(ocr),
+        "zone_ocr_texts": zone_ocr_texts,
+        "normative_refs": normative_refs,
+        "normative_scan_text": zone_ocr_texts.get("normative_scan") or "",
+        "full_ocr_text": full_ocr_text,
         "vision_model": vision_model or None,
         "stamp": stamp,
         "full_text_pages": full_text_pages,
@@ -960,6 +1035,8 @@ def analyze_pdf_document(
         "explication": {"title": expl_title, "rows": expl},
         "legend": {"title": leg_title, "rows": legend, "row_count": len(legend)},
         "sheet_notes": sheet_notes,
+        "body_text": sheet_text_ocr or "",
+        "table_text": table_text or "",
         "warnings": warnings,
     }
 

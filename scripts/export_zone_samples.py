@@ -33,7 +33,7 @@ def _export_pdf(path: Path) -> list[dict]:
     doc = fitz.open(path)
     try:
         page = doc[0]
-        zones = discover_sheet_zones(page) or build_zones(page.rect)
+        zones = discover_sheet_zones(doc, 0, page.rect, fast=True) or build_zones(page.rect)
         samples: list[dict] = []
         for key, rect in (zones.rects or {}).items():
             if key.startswith("stamp"):

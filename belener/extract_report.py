@@ -26,14 +26,47 @@ def _drawing_has_reportable_content(drawing: dict[str, Any]) -> bool:
     return False
 
 
-def extraction_to_markdown(facts: dict[str, Any]) -> str:
+def _report_mode_for_question(question: str) -> str:
+    s = (question or "").strip().casefold().replace("ё", "е")
+    if any(k in s for k in ("разбор", "анализ")):
+        return "analysis"
+    if any(
+        k in s
+        for k in (
+            "извлеки текст",
+            "извлечь текст",
+            "весь текст",
+            "прочитай лист",
+            "прочитай скан",
+            "текст с листа",
+        )
+    ):
+        return "text"
+    return "full"
+
+
+def _report_intro(mode: str) -> str:
+    if mode == "text":
+        return "**Извлечённое содержимое листа** (таблицы, указания, штамп).\n"
+    if mode == "analysis":
+        return "**Разбор документа** (структура листа + нормативы).\n"
+    return ""
+
+
+def extraction_to_markdown(facts: dict[str, Any], *, question: str = "") -> str:
     if not facts.get("ok"):
         return f"**Ошибка:** {facts.get('error', 'Не удалось извлечь текст')}\n"
 
     drawing = facts.get("drawing")
     if drawing and drawing.get("ok"):
+        from belener.normative_refs import collect_normative_refs, merge_normative_refs
+
+        refs_raw = collect_normative_refs(drawing)
         drawing = clean_drawing_facts(drawing)
-        base_md = facts_to_markdown(drawing)
+        refs_clean = collect_normative_refs(drawing)
+        drawing["normative_refs"] = merge_normative_refs(refs_raw, refs_clean)
+        mode = _report_mode_for_question(question)
+        base_md = _report_intro(mode) + facts_to_markdown(drawing, mode=mode)
         stamp_src = (drawing.get("stamp") or {}).get("source")
 
         if (

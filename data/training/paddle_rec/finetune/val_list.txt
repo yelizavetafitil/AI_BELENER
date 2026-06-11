@@ -1,0 +1,44 @@
+/app/data/training/paddle_rec/finetune/images/val/00000.png	ВЫ О А ПО ПО О ПО
+/app/data/training/paddle_rec/finetune/images/val/00001.png	10 Заделать ниши для затяжки болтоб ремонтноц смесью "Парад РС?” с однобременным устранением
+/app/data/training/paddle_rec/finetune/images/val/00002.png	= пересечения;
+/app/data/training/paddle_rec/finetune/images/val/00003.png	Проверил | Масальский | 27.11.2019 | Инв. № подл. 1760-228-ЭМ1
+/app/data/training/paddle_rec/finetune/images/val/00004.png	6 Проход полос заземления через стены выполнить в стальной водогазопроводной трубе поз. 3.
+/app/data/training/paddle_rec/finetune/images/val/00005.png	1782-1-АР1
+/app/data/training/paddle_rec/finetune/images/val/00006.png	800 8007 800 800 3 Размеры строутельных конструкции со знаком (*) - даны для спрабки и уточняются по месмц.
+/app/data/training/paddle_rec/finetune/images/val/00007.png	В2 ВВГнг-LS 3х1,5 30
+/app/data/training/paddle_rec/finetune/images/val/00008.png	7 Резервуар усреднитель 1
+/app/data/training/paddle_rec/finetune/images/val/00009.png	ЕЗЕБНЯЕЫЯ О О ПО АА ПО ООО
+/app/data/training/paddle_rec/finetune/images/val/00010.png	250
+/app/data/training/paddle_rec/finetune/images/val/00011.png	Ведомость перемычек
+/app/data/training/paddle_rec/finetune/images/val/00012.png	ГИП | Лось | 11.25
+/app/data/training/paddle_rec/finetune/images/val/00013.png	1 (эскиз детали 1)
+/app/data/training/paddle_rec/finetune/images/val/00014.png	1 VR-_____-___-GT-08-74-002.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/val/00015.png	Подлибка
+/app/data/training/paddle_rec/finetune/images/val/00016.png	ПР4 (схема перемычки ПР4)
+/app/data/training/paddle_rec/finetune/images/val/00017.png	1 1118-0-ГП9.И1 Изделие крепежное МС1 6 12,0
+/app/data/training/paddle_rec/finetune/images/val/00018.png	3 (эскиз детали 3)
+/app/data/training/paddle_rec/finetune/images/val/00019.png	4 Блок физико-химической очистки 1
+/app/data/training/paddle_rec/finetune/images/val/00020.png	Gnd
+/app/data/training/paddle_rec/finetune/images/val/00021.png	4 (эскиз детали 4)
+/app/data/training/paddle_rec/finetune/images/val/00022.png	* Поз 6 см. бедомость деталец
+/app/data/training/paddle_rec/finetune/images/val/00023.png	Масштаб: 1:500
+/app/data/training/paddle_rec/finetune/images/val/00024.png	Разделы на листе: Генеральный план; План благоустройства
+/app/data/training/paddle_rec/finetune/images/val/00025.png	д, 12 По бсем скорродиробанным сущестбующим металлоконструкциям - анкерным болтам, перемычкам
+/app/data/training/paddle_rec/finetune/images/val/00026.png	8 КНС 1
+/app/data/training/paddle_rec/finetune/images/val/00027.png	2500*
+/app/data/training/paddle_rec/finetune/images/val/00028.png	— HLG1 Арматура сигнальной лампы с зеленой и красной линзами — — —
+/app/data/training/paddle_rec/finetune/images/val/00029.png	РОСЛОСТЬ етцлечц 15 Стальную пруду поз. 6* 6 земле покрыть усуленноц антикоррозуиуноц изоляция по ГОСТ 9.602-2005 на
+/app/data/training/paddle_rec/finetune/images/val/00030.png	Копировал
+/app/data/training/paddle_rec/finetune/images/val/00031.png	стенка (сущ.)
+/app/data/training/paddle_rec/finetune/images/val/00032.png	Реконструкция Воронежской ТЭЦ-1. Строительство ПГУ - 223 МВт
+/app/data/training/paddle_rec/finetune/images/val/00033.png	5 VR-_____-___-GT-08-74-002.И5 Изделие крепежное МС5 6 12,0
+/app/data/training/paddle_rec/finetune/images/val/00034.png	Ведомость деталей
+/app/data/training/paddle_rec/finetune/images/val/00035.png	Шкаф телемеханики ШТМ
+/app/data/training/paddle_rec/finetune/images/val/00036.png	16 Насосная станция опорожнения 1
+/app/data/training/paddle_rec/finetune/images/val/00037.png	cm.№10,11; ПЭВМ-50 cm.№6,7,8; КВГМ-100 cm.№9; ДКВР 10/13 cm.№1,2
+/app/data/training/paddle_rec/finetune/images/val/00038.png	Гл. констр. | Карпович | 27.11.2019 | Файл: VR-ZOUCL-SAF-ES-01-72-005.dwg
+/app/data/training/paddle_rec/finetune/images/val/00039.png	к рее |
+/app/data/training/paddle_rec/finetune/images/val/00040.png	Обозначение | Наименование
+/app/data/training/paddle_rec/finetune/images/val/00041.png	См. ГГп. 11 1 Настоящим проектом предусмотрена реконструкция сущестбующего фундаменто ПЭНа ст № 6 под
+/app/data/training/paddle_rec/finetune/images/val/00042.png	Изм. Кол.уч. Лист № док. Подп. Дата
+/app/data/training/paddle_rec/finetune/images/val/00043.png	Заглушка †4

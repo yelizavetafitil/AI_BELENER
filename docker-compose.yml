@@ -1,9 +1,12 @@
 # БелнипиAI — http://localhost:8090
+# Память: лимиты + резерв через переменные в .env (см. .env.example)
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    mem_limit: ${DB_MEM_LIMIT:-1024m}
+    mem_reservation: ${DB_MEM_RESERVATION:-256m}
     environment:
       POSTGRES_USER: belener
       POSTGRES_PASSWORD: belener
@@ -18,10 +21,13 @@ services:
       timeout: 5s
       retries: 10
 
+  # Vision/LLM — только с профилем: docker compose --profile ollama up -d
   ollama:
+    profiles: ["ollama"]
     image: ollama/ollama:latest
     restart: unless-stopped
-    mem_limit: ${OLLAMA_MEM_LIMIT:-24g}
+    mem_limit: ${OLLAMA_MEM_LIMIT:-8g}
+    mem_reservation: ${OLLAMA_MEM_RESERVATION:-2g}
     environment:
       OLLAMA_MAX_LOADED_MODELS: "1"
       OLLAMA_NUM_PARALLEL: "1"
@@ -33,6 +39,8 @@ services:
   web:
     build: .
     restart: unless-stopped
+    mem_limit: ${WEB_MEM_LIMIT:-6g}
+    mem_reservation: ${WEB_MEM_RESERVATION:-1536m}
     env_file:
       - .env
     ports:
@@ -42,24 +50,31 @@ services:
       OLLAMA_HOST: http://ollama:11434
       EDOCR_URL: ${EDOCR_URL:-}
       DEEPSEEK_OCR_URL: ${DEEPSEEK_OCR_URL:-}
+      SURYA_OCR_URL: ${SURYA_OCR_URL:-}
+      PADDLE_OCR_URL: ${PADDLE_OCR_URL:-}
+      PDF_OCR_PADDLE_ZONES: ${PDF_OCR_PADDLE_ZONES:-0}
+      PDF_YOLO_ZONES: ${PDF_YOLO_ZONES:-0}
+      PDF_YOLO_MODEL: ${PDF_YOLO_MODEL:-}
       PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
     volumes:
       - ./:/workspace:ro
+      - ./scripts:/app/scripts:ro
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy
       ollama:
         condition: service_started
+        required: false
     networks:
       - belnet
 
-  # Опционально: eDOCr (keras-ocr для мех. чертежей). ~3–4 ГБ RAM при работе.
-  # docker compose --profile edocr up -d --build
   edocr:
     profiles: ["edocr"]
     build: ./services/edocr
     restart: unless-stopped
     mem_limit: ${EDOCR_MEM_LIMIT:-4g}
+    mem_reservation: ${EDOCR_MEM_RESERVATION:-512m}
     ports:
       - "${EDOCR_PORT:-5001}:5001"
     networks:

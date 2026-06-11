@@ -1,0 +1,11 @@
+{
+  "file": "BNP_007-1-ГСВ1_L4.pdf",
+  "seconds": 250.2,
+  "pipeline": "belener_zoned_ocr",
+  "ok": true,
+  "spec_ocr_chars": 444,
+  "spec_rows": 0,
+  "ungrounded_count": 0,
+  "ungrounded_sample": [],
+  "faithful_ok": true
+}

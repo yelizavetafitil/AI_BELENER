@@ -1,0 +1,39 @@
+# Финальный стек: быстрый OCR + vision (qwen2.5vl) на SSD G:
+#
+#   .\scripts\setup_ssd_cache.ps1
+#   .\scripts\up_fast_stack.ps1
+#
+# Compose: docker-compose.yml + surya + ssd + этот файл
+
+services:
+  ollama:
+    profiles: ["ollama"]
+    mem_limit: ${OLLAMA_MEM_LIMIT:-10g}
+    mem_reservation: ${OLLAMA_MEM_RESERVATION:-3g}
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_HOST: "0.0.0.0"
+
+  surya-ocr:
+    profiles: ["surya"]
+    mem_limit: ${SURYA_MEM_LIMIT:-8g}
+
+  web:
+    depends_on:
+      ollama:
+        condition: service_started
+        required: false
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      PDF_NORMATIVE_VISION: ${PDF_NORMATIVE_VISION:-1}
+      PDF_VISION_MODEL: ${PDF_VISION_MODEL:-qwen2.5vl:7b}
+      PDF_NORMATIVE_VISION_DPI: ${PDF_NORMATIVE_VISION_DPI:-180}
+      PDF_NORMATIVE_VISION_MAX_SIDE: ${PDF_NORMATIVE_VISION_MAX_SIDE:-1536}
+      PDF_VISION_TIMEOUT: ${PDF_VISION_TIMEOUT:-300}
+      YOLO_CONFIG_DIR: /ssd/yolo_cache
+      BELENER_SSD_ROOT: /ssd
+      PDF_ZONE_CACHE: ${PDF_ZONE_CACHE:-1}

@@ -115,10 +115,12 @@ def ocr_stamp_grid(
     sig_lines: list[str] = []
     sig_x_max = rect.x0 + rect.width * 0.48
 
-    for row in rows:
-        parts: list[str] = []
-        sig_parts: list[str] = []
-        for x, y, bw, bh in row:
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Собираем все ячейки в плоский список для параллельной обработки
+    cell_jobs = []
+    for row_idx, row in enumerate(rows):
+        for col_idx, (x, y, bw, bh) in enumerate(row):
             pad = 1
             cell_rect = fitz.Rect(
                 rect.x0 + (x + pad) / scale,
@@ -127,12 +129,58 @@ def ocr_stamp_grid(
                 rect.y0 + (y + bh - pad) / scale,
             )
             cell_rect = cell_rect & page.rect
-            if cell_rect.width < 4 or cell_rect.height < 4:
-                continue
-            txt = (ocr_region(doc, page_index, cell_rect, dpi=min(dpi, 500), zone="stamp_cell", psm=7) or "").strip()
+            if cell_rect.width >= 4 and cell_rect.height >= 4:
+                cell_jobs.append((row_idx, col_idx, cell_rect))
+
+    from belener.ocr import _render_clip, finalize_ocr_text
+    from belener.paddle_ocr import paddle_batch_size, paddle_ocr_enabled, paddle_zone_match
+
+    eff_dpi = min(dpi, 500)
+    rendered_jobs: list[tuple[int, int, fitz.Rect, Any]] = []
+    for r_idx, c_idx, crect in cell_jobs:
+        img = _render_clip(doc, page_index, crect, eff_dpi)
+        if img is not None:
+            rendered_jobs.append((r_idx, c_idx, crect, img))
+
+    results: list[tuple[int, int, fitz.Rect, str]] = []
+    if paddle_ocr_enabled() and paddle_zone_match("stamp_cell") and rendered_jobs:
+        from belener.paddle_ocr import ocr_pil_images_batch
+
+        batch_n = paddle_batch_size()
+        imgs = [j[3] for j in rendered_jobs]
+        all_texts: list[str] = []
+        for i in range(0, len(imgs), batch_n):
+            all_texts.extend(ocr_pil_images_batch(imgs[i : i + batch_n], zone="stamp_cell"))
+        for (r_idx, c_idx, crect, _), raw in zip(rendered_jobs, all_texts):
+            txt = " ".join(finalize_ocr_text(raw or "", spell=True).split())
+            results.append((r_idx, c_idx, crect, txt))
+    else:
+
+        def _process_cell(job):
+            r_idx, c_idx, crect = job
+            txt = (ocr_region(doc, page_index, crect, dpi=eff_dpi, zone="stamp_cell", psm=7) or "").strip()
             txt = " ".join(txt.split())
+            return (r_idx, c_idx, crect, txt)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(_process_cell, cell_jobs))
+
+    # Раскладываем результаты обратно по строкам
+    processed_rows = {}
+    for r_idx, c_idx, crect, txt in results:
+        if r_idx not in processed_rows:
+            processed_rows[r_idx] = []
+        processed_rows[r_idx].append((c_idx, crect, txt))
+
+    for row_idx in range(len(rows)):
+        if row_idx not in processed_rows:
+            continue
+        row_cells = sorted(processed_rows[row_idx], key=lambda x: x[0])
+        parts: list[str] = []
+        sig_parts: list[str] = []
+        for c_idx, crect, txt in row_cells:
             parts.append(txt)
-            if cell_rect.x1 <= sig_x_max + rect.width * 0.05:
+            if crect.x1 <= sig_x_max + rect.width * 0.05:
                 sig_parts.append(txt)
         if parts:
             line = " | ".join(parts)

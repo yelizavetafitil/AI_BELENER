@@ -1,0 +1,30 @@
+# Все тяжёлые модели и кэши на SSD (G:/BelenerCache).
+#
+#   .\scripts\setup_ssd_cache.ps1
+#   docker compose -f docker-compose.yml -f docker-compose.surya.yml -f docker-compose.ssd.yml -f docker-compose.fast.yml --profile surya --profile ollama up -d
+
+services:
+  surya-ocr:
+    profiles: ["surya"]
+    volumes:
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/surya_models:/models
+
+  paddle-ocr:
+    profiles: ["surya", "paddle"]
+    volumes:
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/paddle_models:/models
+      - ./data/training/paddle_rec/models/rec_finetuned:/models/rec_finetuned:ro
+
+  ollama:
+    profiles: ["ollama"]
+    volumes:
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/ollama:/root/.ollama
+
+  web:
+    environment:
+      BELENER_SSD_ROOT: /ssd
+      PDF_ZONE_CACHE: ${PDF_ZONE_CACHE:-1}
+    volumes:
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/zone_render:/ssd/zone_render
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/tmp:/ssd/tmp
+      - ${BELENER_SSD_ROOT:-G:/BelenerCache}/yolo_cache:/ssd/yolo_cache

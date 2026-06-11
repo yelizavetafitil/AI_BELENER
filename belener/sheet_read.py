@@ -28,6 +28,7 @@ from belener.parse import (
 )
 from belener.sheet_text import build_sheet_notes_payload
 from belener.stamp_read import read_stamp_frame
+from belener.zones import stamp_ocr_rect
 
 log = logging.getLogger("belener.sheet_read")
 
@@ -51,24 +52,66 @@ def _tables_column_rect(zones) -> tuple[str, fitz.Rect | None]:
     return _best_table_rect(zones)
 
 
-def _legend_table_usable(zones) -> bool:
-    """Маленькая legend_table часто попадает на поле схемы — не использовать."""
+def _legend_table_usable(zones, page_rect: fitz.Rect | None = None) -> bool:
+    """Зона легенды: достаточный размер и не плоская полоса подписей схемы."""
     rect = zones.rects.get("legend_table")
-    return rect is not None and rect.height >= 55.0
+    if rect is None or rect.height < 55.0:
+        return False
+    pr = page_rect
+    if pr is None:
+        for r in zones.rects.values():
+            if r is not None and not r.is_empty:
+                pr = r
+                break
+    if pr is None or pr.is_empty:
+        return True
+    aspect = rect.width / max(rect.height, 1.0)
+    if aspect > 2.8 and rect.height < pr.height * 0.18:
+        return False
+    return True
+
+
+def _legend_zone_for_tables(zones) -> tuple[str, fitz.Rect] | tuple[None, None]:
+    """Левая legend_table приоритетнее правой «legend» из right_column (там часто схема)."""
+    leg_tbl = zones.rects.get("legend_table")
+    leg = zones.rects.get("legend")
+    if leg_tbl is not None and _legend_table_usable(zones):
+        if leg is None or leg_tbl.x1 <= leg.x0 + 2:
+            return "legend_table", leg_tbl
+    if leg is not None and leg.height >= 80.0:
+        return "legend", leg
+    if leg_tbl is not None and _legend_table_usable(zones):
+        return "legend_table", leg_tbl
+    return None, None
 
 
 def _table_zone_jobs(zones) -> list[tuple[str, fitz.Rect]]:
-    """Отдельный OCR на каждую табличную зону (перечень аппаратуры, легенда, экспликация)."""
+    """OCR табличных зон: unified — одна правая колонка; иначе — по YOLO-зонам."""
+    from belener.config import unified_sheet_ocr_enabled
+
     jobs: list[tuple[str, fitz.Rect]] = []
     seen: set[str] = set()
+
+    if unified_sheet_ocr_enabled():
+        for key in ("tables_block", "right_column", "explication"):
+            rect = zones.rects.get(key)
+            if rect is None or rect.is_empty:
+                continue
+            sig = f"{key}:{round(rect.x0)}:{round(rect.y0)}:{round(rect.x1)}:{round(rect.y1)}"
+            if sig in seen:
+                continue
+            seen.add(sig)
+            jobs.append((key, rect))
+            return jobs
+
     has_bom = bool(zones.rects.get("spec_right") or zones.rects.get("spec_left"))
     if has_bom:
-        zone_keys = ("spec_right",)
-        leg_rect = zones.rects.get("legend")
-        if leg_rect is not None and leg_rect.height >= 80.0:
-            zone_keys = ("spec_right", "legend")
-        elif _legend_table_usable(zones):
-            zone_keys = ("spec_right", "legend_table")
+        zone_keys = tuple(
+            k for k in ("spec_right", "spec_left") if zones.rects.get(k) is not None
+        ) or ("spec_right",)
+        leg_key, leg_rect = _legend_zone_for_tables(zones)
+        if leg_key and leg_rect is not None:
+            zone_keys = (*zone_keys, leg_key)
     else:
         zone_keys = ("tables_block", "explication", "legend", "right_column")
     for key in zone_keys:
@@ -80,12 +123,7 @@ def _table_zone_jobs(zones) -> list[tuple[str, fitz.Rect]]:
             continue
         seen.add(sig)
         jobs.append((key, rect))
-    if not has_bom:
-        rect = zones.rects.get("right_column")
-        if rect is not None:
-            sig = f"right_column:{round(rect.x0)}:{round(rect.y0)}:{round(rect.x1)}:{round(rect.y1)}"
-            if sig not in seen:
-                jobs.append(("right_column", rect))
+    # tables_block не OCR-им при отдельных spec-зонах — дублирует схему и замедляет пайплайн.
     if not jobs:
         k, r = _best_table_rect(zones)
         if r is not None:
@@ -107,6 +145,46 @@ def _section_from_block(kind: str, block: str, zone_key: str = "") -> dict[str, 
     return {"kind": parsed_kind, "title": title, "rows": rows}
 
 
+def _accept_table_section(sec: dict[str, Any], zone_key: str, zone_text: str) -> bool:
+    from belener.config import unified_sheet_ocr_enabled
+
+    kind = str(sec.get("kind") or "table")
+    rows = sec.get("rows") or []
+    if not rows:
+        return False
+    if unified_sheet_ocr_enabled() and zone_key in ("tables_block", "right_column", "explication"):
+        if kind == "legend":
+            from belener.table_quality import legend_ocr_plausible
+
+            return legend_ocr_plausible(zone_text, rows)
+        if kind == "specification":
+            from belener.table_quality import spec_table_header_present, spec_table_plausible
+            from belener.normative_spec import normative_bom_plausible
+
+            if spec_table_plausible(zone_text, rows) or normative_bom_plausible(rows):
+                return True
+            return spec_table_header_present(zone_text) and len(rows) >= 1
+        return True
+    if kind == "legend":
+        if zone_key in ("spec_right", "spec_left", "tables_block"):
+            return False
+        from belener.table_quality import legend_ocr_plausible
+
+        return legend_ocr_plausible(zone_text, rows)
+    if kind == "specification":
+        from belener.table_quality import spec_table_plausible
+        from belener.normative_spec import normative_bom_plausible
+
+        if spec_table_plausible(zone_text, rows):
+            return True
+        return normative_bom_plausible(rows)
+    if kind == "explication":
+        from belener.table_quality import explication_table_plausible
+
+        return explication_table_plausible(zone_text, rows)
+    return True
+
+
 def _parse_table_zone_text(
     text: str,
     zone_key: str = "",
@@ -118,9 +196,62 @@ def _parse_table_zone_text(
     sections: list[dict[str, Any]] = []
     leg_rows: list[dict] = []
 
-    if zone_key in ("spec_right", "spec_left", "tables_block"):
+    if zone_key in ("tables_block", "right_column", "explication"):
+        from belener.config import unified_sheet_ocr_enabled
+        from belener.normative_spec import parse_normative_bom_rows
+
+        for sec in discover_table_sections(t):
+            kind = str(sec.get("kind") or "table")
+            rows = sec.get("rows") or []
+            if not rows:
+                continue
+            item = {
+                "kind": kind,
+                "title": sec.get("title") or _spec_title_from_text(t, zone_key),
+                "rows": rows,
+                "zone": zone_key,
+            }
+            if not _accept_table_section(item, zone_key, t):
+                continue
+            sections.append(item)
         spec = parse_specification(t)
-        if spec:
+        if spec and _accept_table_section(
+            {"kind": "specification", "rows": spec, "title": ""}, zone_key, t
+        ):
+            if not any(s.get("kind") == "specification" for s in sections):
+                sections.append(
+                    {
+                        "kind": "specification",
+                        "title": _spec_title_from_text(t, zone_key),
+                        "rows": spec,
+                        "zone": zone_key,
+                    }
+                )
+        norm = parse_normative_bom_rows(t)
+        if norm and not any(s.get("kind") == "specification" for s in sections):
+            sections.append(
+                {
+                    "kind": "specification",
+                    "title": "Перечень аппаратуры",
+                    "rows": norm,
+                    "zone": zone_key,
+                }
+            )
+        elif norm and unified_sheet_ocr_enabled():
+            for sec in sections:
+                if sec.get("kind") == "specification":
+                    from belener.spec_table import dedupe_spec_rows
+
+                    sec["rows"] = dedupe_spec_rows(list(sec.get("rows") or []) + norm)
+                    break
+        if sections:
+            return [], [], sections
+
+    if zone_key in ("spec_right", "spec_left"):
+        from belener.table_quality import spec_table_plausible
+
+        spec = parse_specification(t)
+        if spec and spec_table_plausible(t, spec):
             sections.append(
                 {
                     "kind": "specification",
@@ -130,16 +261,21 @@ def _parse_table_zone_text(
                 }
             )
             return [], [], sections
+        if spec:
+            log.info("zone %s spec dropped (schematic/no header OCR)", zone_key)
+            return [], [], sections
 
     blocks = split_text_by_section_anchors(t)
     if blocks:
         for kind, block in blocks:
             if zone_key in ("legend_table", "legend") and kind != "legend":
                 continue
-            if zone_key in ("spec_right", "spec_left") and kind == "explication":
+            if zone_key in ("spec_right", "spec_left") and kind in ("explication", "legend"):
                 continue
             sec = _section_from_block(kind, block, zone_key)
             if not sec:
+                continue
+            if not _accept_table_section(sec, zone_key, block):
                 continue
             if sec["kind"] == "legend":
                 leg_rows = sec["rows"]
@@ -150,28 +286,37 @@ def _parse_table_zone_text(
             return [], leg_rows, sections
 
     if zone_key in ("spec_right", "spec_left", "tables_block"):
+        from belener.table_quality import spec_table_plausible
+
         spec = parse_specification(t)
-        if spec:
+        if spec and spec_table_plausible(t, spec):
             sections.append(
                 {
                     "kind": "specification",
                     "title": _spec_title_from_text(t, zone_key),
                     "rows": spec,
+                    "zone": zone_key,
                 }
             )
             return [], [], sections
 
     if zone_key in ("legend_table", "legend"):
+        from belener.table_quality import legend_ocr_plausible
+
         leg_src = _legend_body(t) if zone_key == "legend" else t
         leg = parse_legend(leg_src)
-        if leg:
+        if leg and legend_ocr_plausible(t, leg):
             sections.append({"kind": "legend", "title": "Условные обозначения", "rows": leg})
             return [], leg, sections
+        if leg:
+            log.info("zone %s legend dropped (schematic/noise OCR)", zone_key)
         return [], [], sections
 
     for sec in discover_table_sections(t):
         kind = str(sec.get("kind") or "table")
         if kind == "legend" and any(s.get("kind") == "legend" for s in sections):
+            continue
+        if not _accept_table_section(sec, zone_key, t):
             continue
         sections.append(sec)
 
@@ -207,7 +352,8 @@ def ocr_sheet_by_zones(
     page_index: int = 0,
 ) -> dict[str, Any]:
     """OCR: штамп + одна правая колонка таблиц + ТТ — без дублирующих тяжёлых проходов."""
-    stamp_rect = zones.rects.get("stamp_tight") or zones.rects.get("stamp")
+    page_rect = doc[page_index].rect
+    stamp_rect = stamp_ocr_rect(zones, page_rect)
     stamp_grid_rect = zones.rects.get("stamp_frame") or zones.rects.get("stamp_block")
     table_jobs = _table_zone_jobs(zones)
     notes_rect = zones.rects.get("sheet_notes")
@@ -236,7 +382,13 @@ def ocr_sheet_by_zones(
         from belener.table_quality import table_ocr_quality, table_ocr_weak
 
         spec_zone = key in ("spec_right", "spec_left", "tables_block")
-        if spec_zone and img2table_spec_primary():
+        from belener.config import ocr_engine
+        from belener.paddle_ocr import paddle_ocr_enabled, paddle_zone_match
+
+        is_paddle = paddle_ocr_enabled() and paddle_zone_match(key)
+        ocr_label = "paddle" if is_paddle else (ocr_engine() if ocr_engine() in ("surya", "deepseek") else "tesseract")
+
+        if spec_zone and img2table_spec_primary() and not is_paddle:
             try:
                 from belener.img2table_extract import extract_img2table_rect, img2table_available
 
@@ -246,8 +398,7 @@ def ocr_sheet_by_zones(
                     )
                     i2_text = str(i2.get("table_text") or "").strip()
                     if i2_text and table_ocr_quality(i2_text) >= 0.28:
-                        log.info("zone %s img2table primary q=%.2f", key, table_ocr_quality(i2_text))
-                        return i2_text
+                        _add("img2table", i2_text)
             except Exception:
                 log.debug("img2table primary %s failed", key, exc_info=True)
 
@@ -261,11 +412,24 @@ def ocr_sheet_by_zones(
                     )
                     _add("cv_cells", cell_text)
             except Exception:
-                log.debug("cell OCR for %s skipped", key, exc_info=True)
+                log.warning("cell OCR for %s skipped", key, exc_info=True)
 
         hi_dpi = min(eff_table_dpi + 60, 600) if spec_zone else eff_table_dpi
-        block_text = ocr_region(doc, page_index, rect, dpi=hi_dpi, zone=key, psm=6 if spec_zone else 4)
-        _add("tesseract", block_text)
+        
+        # Если cv_cells дал текст — не дублировать тяжёлым OCR всего блока
+        run_full = True
+        cv_ok = any(
+            lbl == "cv_cells" and len(txt) > 15 and table_ocr_quality(txt) >= 0.22
+            for lbl, txt in candidates
+        )
+        if cv_ok or (is_paddle and any(lbl == "cv_cells" for lbl, txt in candidates if len(txt) > 15)):
+            run_full = False
+            
+        block_text = ""
+        if run_full:
+            log.info("Starting run_full block for %s", key)
+            block_text = ocr_region(doc, page_index, rect, dpi=hi_dpi, zone=key, psm=6 if spec_zone else 4)
+            _add(ocr_label, block_text)
 
         best_label, best_text = "", ""
         best_q = -1.0
@@ -274,7 +438,10 @@ def ocr_sheet_by_zones(
             if q > best_q:
                 best_q, best_label, best_text = q, label, text
 
-        if img2table_zone_enabled() and table_ocr_weak(best_text):
+        if best_text and best_label:
+            log.info("zone %s OCR via %s q=%.2f chars=%s", key, best_label, best_q, len(best_text))
+
+        if not is_paddle and img2table_zone_enabled() and table_ocr_weak(best_text or block_text):
             try:
                 from belener.img2table_extract import extract_img2table_rect, img2table_available
 
@@ -308,6 +475,8 @@ def ocr_sheet_by_zones(
         text = _ocr_table_zone(key, rect)
         log.info("OCR table zone %s %.1fs chars=%s", key, time.monotonic() - t0, len(text or ""))
         _, _, sections = _parse_table_zone_text(text, key)
+        for sec in sections:
+            sec.setdefault("zone", key)
         return key, text, sections
 
     def _notes() -> str:
@@ -328,20 +497,27 @@ def ocr_sheet_by_zones(
     table_text_parts: list[str] = []
     table_sections: list[dict[str, Any]] = []
     table_key = table_jobs[0][0] if table_jobs else ""
+    zone_texts: dict[str, str] = {}
 
-    with ThreadPoolExecutor(max_workers=min(6, 1 + len(table_jobs))) as pool:
+    from belener.config import ocr_engine as _ocr_engine
+
+    # Surya/DeepSeek — последовательно: меньше RAM и стабильнее на CPU.
+    _parallel = 1 if _ocr_engine() in ("surya", "deepseek") else min(6, 1 + len(table_jobs))
+
+    with ThreadPoolExecutor(max_workers=_parallel) as pool:
+        f_stamp = pool.submit(_stamp)
         f_notes = pool.submit(_notes)
         f_tables = [pool.submit(_one_table, job) for job in table_jobs]
         notes_text = f_notes.result()
         for fut in f_tables:
             key, text, sections = fut.result()
             if text:
+                zone_texts[key] = text
                 table_text_parts.append(text)
                 table_sections.extend(sections)
                 if not table_key:
                     table_key = key
-
-    stamp = _stamp()
+        stamp = f_stamp.result()
 
     table_text = "\n\n".join(table_text_parts)
     _, _, parsed = _parse_table_zone_text(table_text, table_key or "")
@@ -349,6 +525,32 @@ def ocr_sheet_by_zones(
         from belener.parse import merge_table_sections
 
         table_sections = merge_table_sections(table_sections, parsed)
+
+    from belener.table_quality import spec_table_header_present, table_ocr_quality
+
+    def _spec_score(sec: dict[str, Any]) -> tuple[int, float, int]:
+        ztxt = str(zone_texts.get(str(sec.get("zone") or ""), ""))
+        return (
+            1 if spec_table_header_present(ztxt) else 0,
+            table_ocr_quality(ztxt),
+            len(sec.get("rows") or []),
+        )
+
+    spec_secs = [s for s in table_sections if s.get("kind") == "specification"]
+    if len(spec_secs) > 1:
+        by_zone: dict[str, dict[str, Any]] = {}
+        for sec in spec_secs:
+            z = str(sec.get("zone") or "_")
+            if z not in by_zone or _spec_score(sec) > _spec_score(by_zone[z]):
+                by_zone[z] = sec
+        tb = by_zone.get("tables_block")
+        if tb and _spec_score(tb)[0]:
+            for weak in ("spec_right", "spec_left"):
+                w = by_zone.get(weak)
+                if w and not _spec_score(w)[0]:
+                    by_zone.pop(weak, None)
+        table_sections = [s for s in table_sections if s.get("kind") != "specification"]
+        table_sections.extend(by_zone.values())
     expl: list[dict] = []
     legend_rows: list[dict] = []
     for sec in table_sections:
@@ -376,6 +578,7 @@ def ocr_sheet_by_zones(
         "legend_rows": legend_rows,
         "table_sections": table_sections,
         "ocr_zones": ocr_zones,
+        "zone_texts": zone_texts,
     }
 
 

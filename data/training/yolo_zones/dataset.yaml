@@ -1,0 +1,8 @@
+# Belener zone detector (pseudo-labels from geometry; refine manually in CVAT)
+path: D:/AI_BELENER/data/training/yolo_zones
+train: images/train
+val: images/val
+names:
+  0: spec_table
+  1: stamp
+  2: legend

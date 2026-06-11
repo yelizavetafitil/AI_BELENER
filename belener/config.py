@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 
 def extract_mode() -> str:
-    """accuracy — макс. точность (OCR+CV+vision); fast — только быстрый OCR."""
-    return (os.environ.get("PDF_EXTRACT_MODE") or "accuracy").strip().lower()
+    """accuracy — медленно (multiview, CV-ячейки); fast — зоны + OCR, рекомендуется в вебе."""
+    return (os.environ.get("PDF_EXTRACT_MODE") or "fast").strip().lower()
 
 
 def accuracy_mode() -> bool:
@@ -82,9 +83,11 @@ def stamp_dpi() -> int:
 
 
 def stamp_grid_enabled() -> bool:
-    """OCR штампа по ячейкам сетки ГОСТ (точнее, чем целый блок)."""
-    default = "1" if accuracy_mode() else "0"
-    return (os.environ.get("PDF_STAMP_GRID") or default).strip().lower() in ("1", "true", "yes", "on")
+    """OCR штампа по ячейкам сетки ГОСТ (fallback если блок OCR «грязный»)."""
+    raw = os.environ.get("PDF_STAMP_GRID")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    return accuracy_mode()
 
 
 def stamp_block_dpi() -> int:
@@ -130,15 +133,57 @@ def local_only_mode() -> bool:
 
 
 def ocr_engine() -> str:
-    """tesseract | deepseek | auto (deepseek + fallback tesseract)."""
+    """tesseract | surya | deepseek | paddle | auto (surya → deepseek → tesseract)."""
     raw = (os.environ.get("PDF_OCR_ENGINE") or "tesseract").strip().casefold()
-    if raw in ("deepseek", "auto", "tesseract"):
+    if raw in ("deepseek", "auto", "tesseract", "surya", "paddle"):
         return raw
     return "tesseract"
 
 
+def paddle_ocr_url() -> str:
+    return (os.environ.get("PADDLE_OCR_URL") or "").strip().rstrip("/")
+
+
+def paddle_ocr_zones_enabled() -> bool:
+    """Paddle HTTP только для spec_* / stamp_* (остальное — Tesseract/Surya)."""
+    if not paddle_ocr_url():
+        return False
+    return (os.environ.get("PDF_OCR_PADDLE_ZONES") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def yolo_zones_enabled() -> bool:
+    return (os.environ.get("PDF_YOLO_ZONES") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def yolo_zones_model_path() -> str:
+    raw = (os.environ.get("PDF_YOLO_MODEL") or "").strip()
+    if raw:
+        return raw
+    for p in (
+        Path("/app/data/training/yolo_zones/runs/train/weights/best.pt"),
+        Path("data/training/yolo_zones/runs/train/weights/best.pt"),
+        Path("/app/data/training/yolo_zones/runs/detect/train/weights/best.pt"),
+        Path("data/training/yolo_zones/runs/detect/train/weights/best.pt"),
+    ):
+        if p.is_file():
+            return str(p)
+    return ""
+
+
+def yolo_zones_conf() -> float:
+    try:
+        return max(0.1, min(float(os.environ.get("PDF_YOLO_CONF", "0.25").strip()), 0.95))
+    except ValueError:
+        return 0.25
+
+
 def ocr_fallback_tesseract() -> bool:
-    """При PDF_OCR_ENGINE=deepseek — дозаполнение Tesseract, если сервис не ответил."""
+    """При surya/deepseek — дозаполнение Tesseract, если сервис не ответил."""
     return (os.environ.get("PDF_OCR_FALLBACK_TESS") or "1").strip().lower() in (
         "1",
         "true",
@@ -301,7 +346,10 @@ def cv_tables_always() -> bool:
 
 def cv_cells_enabled() -> bool:
     """OCR по ячейкам внутри каждой таблицы (точнее, медленнее)."""
-    default = "1" if accuracy_mode() else "0"
+    if unified_sheet_ocr_enabled() and not accuracy_mode():
+        default = "0"
+    else:
+        default = "1" if accuracy_mode() else "0"
     return (os.environ.get("PDF_CV_CELLS") or default).strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -388,11 +436,33 @@ def vision_table_max_side() -> int:
         return 1400
 
 
+def unified_sheet_ocr_enabled() -> bool:
+    """Один OCR правой колонки (все таблицы) — быстрее и полнее."""
+    default = "1" if not accuracy_mode() else "0"
+    return (os.environ.get("PDF_UNIFIED_OCR") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def report_normative_compact() -> bool:
+    """Таблица нормативов без колонки «контекст»."""
+    return (os.environ.get("PDF_REPORT_NORMATIVE_COMPACT") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def body_dpi() -> int:
+    default = "420" if accuracy_mode() else "220"
     try:
-        return max(280, min(int(os.environ.get("PDF_BODY_DPI", "420").strip()), 720))
+        return max(160, min(int(os.environ.get("PDF_BODY_DPI", default).strip()), 720))
     except ValueError:
-        return 420
+        return int(default)
 
 
 def img2table_enabled() -> bool:
@@ -439,6 +509,59 @@ def ocr_deskew_enabled() -> bool:
     return (os.environ.get("PDF_OCR_DESKEW") or default).strip().lower() in ("1", "true", "yes", "on")
 
 
+def ocr_multiview_enabled() -> bool:
+    """Несколько углов поворота кропа перед OCR (0°/90°/270° или полный набор)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_OCR_MULTIVIEW") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def ocr_multiview_fast() -> bool:
+    """Только 3 угла — быстрее на CPU (Surya/Tesseract)."""
+    return (os.environ.get("PDF_OCR_MULTIVIEW_FAST") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def ocr_multiview_for_surya() -> bool:
+    """Многоракурсный OCR и для Surya (медленно; по умолчанию выкл.)."""
+    return (os.environ.get("PDF_OCR_MULTIVIEW_SURYA") or "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def discover_multidpi_enabled() -> bool:
+    """Поиск зон по якорям на двух DPI (грубо + точно)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_DISCOVER_MULTIDPI") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def cv_zone_refine_enabled() -> bool:
+    """Подогнать spec/legend/explication по контурам таблиц OpenCV (разные размеры на листах)."""
+    default = "1" if accuracy_mode() else "0"
+    return (os.environ.get("PDF_CV_ZONE_REFINE") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def report_faithful() -> bool:
     """Только OCR/парсер, без LLM-полировки отчёта (нет подгонки текста)."""
     return (os.environ.get("PDF_REPORT_FAITHFUL") or "0").strip().lower() in ("1", "true", "yes", "on")
@@ -446,17 +569,87 @@ def report_faithful() -> bool:
 
 def report_include_body_text() -> bool:
     """Сырой OCR поля чертежа в отчёт (на схемах часто нечитаем)."""
-    return (os.environ.get("PDF_REPORT_BODY") or "0").strip().lower() in ("1", "true", "yes", "on")
+    default = "1" if unified_sheet_ocr_enabled() else "0"
+    return (os.environ.get("PDF_REPORT_BODY") or default).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def report_include_full_text_layer() -> bool:
+    """Дамп всего текстового слоя PDF в конец отчёта (обычно не нужен)."""
+    raw = os.environ.get("PDF_REPORT_FULL_TEXT")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    return not report_faithful() and not local_only_mode()
+
+
+def report_include_quality() -> bool:
+    """Блок «Проверка чертежа» и таблица шрифтов."""
+    raw = os.environ.get("PDF_REPORT_QUALITY")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    return not report_faithful()
 
 
 def body_ocr_enabled() -> bool:
-    """OCR поля чертежа вне таблиц (подписи, ТТ на листе) — плитками, без облака."""
-    default = "1" if accuracy_mode() else "0"
+    """OCR поля чертежа (схема, подписи, нормативы на поле) — один проход."""
+    default = "1" if not accuracy_mode() else "0"
     return (os.environ.get("PDF_BODY_OCR") or default).strip().lower() in ("1", "true", "yes", "on")
 
 
 def body_ocr_tiled() -> bool:
     return (os.environ.get("PDF_BODY_OCR_TILED") or "1").strip().lower() in ("1", "true", "yes", "on")
+
+
+def normative_scan_enabled() -> bool:
+    """Лёгкий OCR поля схемы — только если body OCR выключен."""
+    if body_ocr_enabled():
+        return (os.environ.get("PDF_NORMATIVE_SCAN") or "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+    return (os.environ.get("PDF_NORMATIVE_SCAN") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_scan_dpi() -> int:
+    try:
+        return max(72, min(int(os.environ.get("PDF_NORMATIVE_SCAN_DPI", "120").strip()), 220))
+    except ValueError:
+        return 120
+
+
+def normative_vision_enabled() -> bool:
+    """Vision (локальный Ollama) для «все gost» — точность как PNG, без облака."""
+    return (os.environ.get("PDF_NORMATIVE_VISION") or "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_vision_dpi() -> int:
+    try:
+        return max(96, min(int(os.environ.get("PDF_NORMATIVE_VISION_DPI", "160").strip()), 320))
+    except ValueError:
+        return 160
+
+
+def normative_vision_max_side() -> int:
+    try:
+        return max(768, min(int(os.environ.get("PDF_NORMATIVE_VISION_MAX_SIDE", "1280").strip()), 2048))
+    except ValueError:
+        return 1280
 
 
 def body_min_chars() -> int:
@@ -521,7 +714,10 @@ def extract_text_layer_min() -> int:
 def extract_text_layer_fast_min() -> int:
     """Экспорт nanoCAD: достаточно текстового слоя — без полностраничного OCR."""
     try:
-        return max(80, min(int(os.environ.get("PDF_TEXT_LAYER_FAST_MIN", "280").strip()), 5000))
+        v = int(os.environ.get("PDF_TEXT_LAYER_FAST_MIN", "280").strip())
+        if v <= 0:
+            return 99999999
+        return max(80, min(v, 99999999))
     except ValueError:
         return 280
 
@@ -578,7 +774,11 @@ def vision_stamp_enabled() -> bool:
 
 
 def img2table_spec_primary() -> bool:
-    """Сначала img2table для зон перечня (на crop часто хуже CV; вкл. при необходимости)."""
+    """Сначала img2table для зон перечня. Выкл. при Surya/DeepSeek — они точнее на сканах."""
+    from belener.config import ocr_engine
+
+    if ocr_engine() in ("surya", "deepseek"):
+        return False
     default = "0"
     return (os.environ.get("PDF_IMG2TABLE_SPEC") or default).strip().lower() in (
         "1",

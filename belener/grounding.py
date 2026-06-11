@@ -10,8 +10,22 @@ def _norm_blob(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").casefold())
 
 
+_DESIGNATION_RE = re.compile(
+    r"^[A-Za-zА-Яа-яЁё]{1,6}\d{1,4}(?:[.\-]\d+)?[*]?$",
+    re.IGNORECASE,
+)
+
+
 def _tokens(text: str, min_len: int = 4) -> set[str]:
     return {w for w in re.findall(r"[\wА-Яа-яЁё]{2,}", (text or "").casefold()) if len(w) >= min_len}
+
+
+def _designation_tokens(text: str) -> set[str]:
+    out: set[str] = set()
+    for w in re.findall(r"[\wА-Яа-яЁё.\-]+", text or ""):
+        if _DESIGNATION_RE.match(w):
+            out.add(w.casefold())
+    return out
 
 
 def row_grounded_in_ocr(row: dict, blob: str, *, min_hits: int = 1) -> bool:
@@ -34,6 +48,15 @@ def row_grounded_in_ocr(row: dict, blob: str, *, min_hits: int = 1) -> bool:
     desig = str(row.get("Обозначение") or "").strip()
     if len(desig) >= 2 and desig.casefold() in blob_n:
         return True
+    if desig and _DESIGNATION_RE.match(desig):
+        for dt in _designation_tokens(blob):
+            if desig.casefold() == dt or desig.casefold() in dt:
+                return True
+    pos = str(row.get("Поз.") or "").strip()
+    if pos.isdigit() and len(pos) <= 4:
+        if re.search(rf"\b{re.escape(pos)}\b", blob_n):
+            if desig and desig.casefold() in blob_n:
+                return True
     name = str(row.get("Наименование") or row.get("name") or row.get("note") or "").strip()
     hits = 0
     for tok in _tokens(name, min_len=4):
@@ -77,10 +100,17 @@ def _looks_like_template_hallucination(rows: list[dict]) -> bool:
     return False
 
 
-def filter_table_rows_by_ocr(rows: list[dict], blob: str) -> list[dict]:
+def filter_table_rows_by_ocr(
+    rows: list[dict],
+    blob: str,
+    *,
+    strict: bool = False,
+) -> list[dict]:
     if not blob.strip() or not rows:
-        return list(rows or [])
+        return [] if strict else list(rows or [])
     kept = [r for r in rows if isinstance(r, dict) and row_grounded_in_ocr(r, blob)]
+    if strict:
+        return kept
     if kept:
         return kept
     if _looks_like_template_hallucination(rows):
@@ -93,10 +123,15 @@ def filter_tables_by_ocr_grounding(
     ocr_blob: str,
     *,
     min_grounded_ratio: float = 0.34,
+    strict: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Убрать таблицы/строки, которых нет в OCR листа."""
     if not (ocr_blob or "").strip():
         return tables
+    if strict is None:
+        from belener.config import report_faithful
+
+        strict = report_faithful()
     out: list[dict[str, Any]] = []
     for tbl in tables or []:
         if not isinstance(tbl, dict):
@@ -105,16 +140,21 @@ def filter_tables_by_ocr_grounding(
         rows = list(tbl.get("rows") or [])
         if not rows:
             continue
-        if src == "vision" and str(tbl.get("kind") or "") in ("specification", "table"):
-            filtered = filter_table_rows_by_ocr(rows, ocr_blob)
+        kind = str(tbl.get("kind") or "")
+        if src == "vision" and kind in ("specification", "table"):
+            filtered = filter_table_rows_by_ocr(rows, ocr_blob, strict=True)
             if not filtered:
                 continue
             rows = filtered
-        elif str(tbl.get("kind") or "") in ("specification", "explication", "legend", "table"):
-            filtered = filter_table_rows_by_ocr(rows, ocr_blob)
+        elif kind in ("specification", "explication", "legend", "table"):
+            filtered = filter_table_rows_by_ocr(rows, ocr_blob, strict=strict)
             if _looks_like_template_hallucination(rows) and not filtered:
                 continue
-            if filtered:
+            if strict:
+                if not filtered:
+                    continue
+                rows = filtered
+            elif filtered:
                 ratio = len(filtered) / max(len(rows), 1)
                 if ratio < min_grounded_ratio and len(rows) >= 4:
                     continue

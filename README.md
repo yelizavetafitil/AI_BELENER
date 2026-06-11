@@ -2,6 +2,21 @@
 
 Локальное веб-приложение для чтения инженерных чертежей (PDF): OCR, таблицы перечня/легенды, основная надпись. **Без отправки чертежей в облако** при локальном режиме.
 
+## Рекомендуемый старт (Windows / AMD, без NVIDIA)
+
+**Точный вывод** (5 этапов: эталоны, зоны, Surya, парсер, без vision): [docs/ACCURACY_PIPELINE.md](docs/ACCURACY_PIPELINE.md)
+
+```powershell
+cd AI_BELENER
+copy .env.accuracy.example .env
+docker compose -f docker-compose.yml -f docker-compose.surya.yml --profile surya up -d --build
+python scripts/check_accuracy_setup.py
+```
+
+Альтернатива: [`.env.surya.example`](.env.surya.example) — то же + Surya, см. [LOCAL_OCR_PIPELINE.md](docs/LOCAL_OCR_PIPELINE.md)
+
+Проверка корпуса PDF: `docker compose exec web python scripts/validate_faithful.py --dir /workspace`
+
 ## Быстрый старт (Linux + DeepSeek-OCR, GPU)
 
 ```bash
@@ -12,7 +27,8 @@ cp .env.deepseek.example .env
 docker compose -f docker-compose.yml -f docker-compose.deepseek.yml --profile deepseek up -d --build
 ```
 
-Подробно: [docs/DEPLOY_LINUX_DEEPSEEK.md](docs/DEPLOY_LINUX_DEEPSEEK.md)
+- С нуля (все команды): [docs/INSTALL_UBUNTU_FROM_ZERO.md](docs/INSTALL_UBUNTU_FROM_ZERO.md)  
+- Кратко: [docs/DEPLOY_LINUX_DEEPSEEK.md](docs/DEPLOY_LINUX_DEEPSEEK.md)
 
 Или: `bash scripts/setup-linux-deepseek.sh`
 

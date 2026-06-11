@@ -16,6 +16,8 @@ services:
     profiles: ["deepseek"]
     build: ./services/deepseek_ocr
     restart: unless-stopped
+    mem_limit: ${DEEPSEEK_ADAPTER_MEM_LIMIT:-512m}
+    mem_reservation: ${DEEPSEEK_ADAPTER_MEM_RESERVATION:-128m}
     environment:
       DEEPSEEK_BACKEND_URL: ${DEEPSEEK_BACKEND_URL:-http://host.docker.internal:8000}
       DEEPSEEK_BACKEND_TIMEOUT: ${DEEPSEEK_BACKEND_TIMEOUT:-300}

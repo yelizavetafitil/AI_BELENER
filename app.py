@@ -197,13 +197,62 @@ def _is_default_drawing_question(q: str) -> bool:
         "разбор листа",
         "извлечь весь текст",
         "извлечь текст",
+        "извлеки текст",
+        "извлеки текст с листа",
+        "извлечь текст с листа",
+        "текст с листа",
         "прочитай скан",
         "прочитай лист",
         "разбор документа и анализ текста",
     }
 
 
+def _is_normative_question(q: str) -> bool:
+    """Запрос только на перечень ГОСТ/ОСТ/ТУ — быстрый OCR, без полного разбора чертежа."""
+    s = (q or "").strip().casefold().replace("ё", "е")
+    if not s:
+        return False
+    keys = (
+        "все гост",
+        "все gost",
+        "все ost",
+        "все ост",
+        "все норматив",
+        "найди гост",
+        "найти гост",
+        "найди gost",
+        "список гост",
+        "список gost",
+        "какие гост",
+        "перечень гост",
+        "нормативн",
+    )
+    return any(k in s for k in keys)
+
+
+def _is_analysis_question(q: str) -> bool:
+    s = (q or "").strip().casefold().replace("ё", "е")
+    return any(k in s for k in ("разбор", "анализ"))
+
+
+def _is_text_extract_question(q: str) -> bool:
+    s = (q or "").strip().casefold().replace("ё", "е")
+    return any(
+        k in s
+        for k in (
+            "извлеки текст",
+            "извлечь текст",
+            "весь текст",
+            "прочитай лист",
+            "прочитай скан",
+            "текст с листа",
+        )
+    )
+
+
 def _is_full_extract_question(q: str) -> bool:
+    if _is_normative_question(q):
+        return True
     return _is_default_drawing_question(q) or not (q or "").strip()
 
 
@@ -239,9 +288,74 @@ def _sse_status(text: str):
     yield f"data: {json.dumps({'status': text}, ensure_ascii=False)}\n\n"
 
 
+def stream_extract_pdf_normative(path: str, filename: str, question: str):
+    """PDF → OCR страниц (плитки) → таблица всех ГОСТ/ОСТ."""
+    from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
+
+    from belener.config import normative_vision_enabled
+
+    yield from _sse_status(
+        "Читаю PDF: vision (Ollama) или OCR, поиск ГОСТ/ОСТ/ТУ…"
+        if normative_vision_enabled()
+        else "Читаю PDF: OCR страниц, поиск ГОСТ/ОСТ/ТУ…"
+    )
+
+    box: dict = {"result": None, "err": None}
+    done = threading.Event()
+
+    def _run():
+        try:
+            box["result"] = extract_normatives_pdf_path(path, filename)
+        except Exception as e:
+            app.logger.exception("normative PDF extract failed file=%s", filename)
+            box["err"] = e
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    tick = 0
+    while not done.wait(timeout=12):
+        yield from _sse_status(
+            ("OCR страницы (Tesseract, плитки)…", "Поиск ГОСТ, ОСТ, СТП, ТУ…")[tick % 2]
+        )
+        tick += 1
+
+    if box["err"] is not None:
+        yield from _sse_error(f"Ошибка: {_ollama_user_message(box['err'])}")
+        return
+
+    result = box["result"] or {}
+    if not result.get("ok"):
+        yield from _sse_error(str(result.get("error") or "Не удалось прочитать PDF"))
+        return
+
+    include_ctx = "контекст" in (question or "").casefold()
+    report = normative_result_to_markdown(result, include_context=include_ctx)
+    yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
+    yield "data: [DONE]\n\n"
+
+
+def stream_extract_image_normative(path: str, filename: str, question: str):
+    """Изображение → OCR (как внутренняя «страница» PDF) → таблица нормативов."""
+    from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
+
+    yield from _sse_status("OCR изображения, поиск ГОСТ/ОСТ/ТУ…")
+    try:
+        result = extract_normatives_from_image_path(path, filename)
+    except Exception as e:
+        app.logger.exception("normative image OCR failed file=%s", filename)
+        yield from _sse_error(f"Ошибка OCR: {_ollama_user_message(e)}")
+        return
+
+    include_ctx = "контекст" in (question or "").casefold()
+    report = normative_result_to_markdown(result, include_context=include_ctx)
+    yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
+    yield "data: [DONE]\n\n"
+
+
 def stream_extract_pdf(path: str, filename: str, question: str, model: str, history=None):
     """Извлечение чертежа: зонный OCR, финальная полировка gemma (без vision)."""
-    yield from _sse_status("Обрабатываю чертёж (режим accuracy): OCR по зонам…")
+    yield from _sse_status("Обрабатываю чертёж: зоны, OCR (Surya/Paddle), таблицы…")
 
     box: dict = {"facts": None, "err": None}
     done = threading.Event()
@@ -257,7 +371,7 @@ def stream_extract_pdf(path: str, filename: str, question: str, model: str, hist
 
     threading.Thread(target=_run, daemon=True).start()
     status_msgs = (
-        "OCR: штамп и таблицы (высокий DPI)…\n",
+        "OCR: штамп и таблицы (Paddle, по ячейкам)…\n",
         "OpenCV: таблицы по блокам и ячейкам…\n",
         "Vision: дозаполнение штампа и таблиц (локально)…\n",
         "Сборка структурированного отчёта…\n",
@@ -276,11 +390,11 @@ def stream_extract_pdf(path: str, filename: str, question: str, model: str, hist
         yield from _sse_error(str((facts or {}).get("error") or "Не удалось извлечь текст"))
         return
 
-    body = extraction_to_markdown(facts)
-    report = f"Файл: {filename}\n\n{body}"
+    body = extraction_to_markdown(facts, question=question)
+    report = f"**Файл:** {filename}\n\n{body}"
     yield from _chunk_sse_text(report)
 
-    if _is_full_extract_question(question):
+    if _is_full_extract_question(question) or _is_text_extract_question(question) or _is_analysis_question(question):
         yield "data: [DONE]\n\n"
         return
 
@@ -825,7 +939,7 @@ def api_chat(conv_id):
 
     if not question:
         if tmp_path and ext == ".pdf":
-            question = DRAWING_DEFAULT_QUESTION
+            question = EXTRACT_DEFAULT_QUESTION
         else:
             return {"error": "Вопрос не может быть пустым"}, 400
 
@@ -882,9 +996,13 @@ def api_chat(conv_id):
                 elif ext == ".pdf":
                     ext_model = model_for_task("drawing", model, user_override=user_override)
                     app.logger.info("PDF extract file=%s model=%s", file_name, ext_model)
-                    for chunk in stream_extract_pdf(
-                        tmp_path, file_name or "document.pdf", question, ext_model, history
-                    ):
+                    if _is_normative_question(question):
+                        gen = stream_extract_pdf_normative(tmp_path, file_name or "document.pdf", question)
+                    else:
+                        gen = stream_extract_pdf(
+                            tmp_path, file_name or "document.pdf", question, ext_model, history
+                        )
+                    for chunk in gen:
                         if chunk.startswith("data: ") and chunk.strip() != "data: [DONE]":
                             try:
                                 payload = json.loads(chunk[6:].strip())
@@ -937,15 +1055,26 @@ def api_chat(conv_id):
                         yield chunk
 
                 elif ext in (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"):
-                    with open(tmp_path, "rb") as f:
-                        b64 = base64.b64encode(f.read()).decode("utf-8")
-                        for chunk in stream_image_response([b64], question, model, history):
+                    if _is_normative_question(question):
+                        for chunk in stream_extract_image_normative(
+                            tmp_path, file_name or "image.png", question
+                        ):
                             if chunk.startswith("data: ") and chunk != "data: [DONE]\n\n":
                                 try:
                                     full_response.append(json.loads(chunk[6:]).get("text", ""))
                                 except Exception:
                                     pass
                             yield chunk
+                    else:
+                        with open(tmp_path, "rb") as f:
+                            b64 = base64.b64encode(f.read()).decode("utf-8")
+                            for chunk in stream_image_response([b64], question, model, history):
+                                if chunk.startswith("data: ") and chunk != "data: [DONE]\n\n":
+                                    try:
+                                        full_response.append(json.loads(chunk[6:]).get("text", ""))
+                                    except Exception:
+                                        pass
+                                yield chunk
                 else:
                     yield f"data: {json.dumps({'error': f'Формат {ext} не поддерживается'})}\n\n"
 
@@ -1101,5 +1230,15 @@ def api_suggest_model():
 
 if __name__ == "__main__":
     init_db()
+
+    def _warmup():
+        try:
+            from belener.yolo_zones import preload_yolo_model
+
+            preload_yolo_model()
+        except Exception:
+            logging.getLogger("app").warning("warmup skipped", exc_info=True)
+
+    threading.Thread(target=_warmup, daemon=True).start()
     print("🚀 Запуск на http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

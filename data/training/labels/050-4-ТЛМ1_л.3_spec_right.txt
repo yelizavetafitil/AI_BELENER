@@ -1,0 +1,27 @@
+.СКЦОЛ Т
+<math>/1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math> <math>1</math>
+Ввод 2
+ep 2
+Ввод 1
+Счетчик
+Счетчик
+ПЧЦК
+<math>CC - 301</math>
+<math>CC - 301</math>
+-301
+X1
+В
+Gnd
+Gnd
+В
+В
+Α
+C45
+C43
+C44
+Секция 3
+Яч. № 12 Секция 2
+Яч. N° 11 Секция 2
+Фидер 4
+Фидер 3
+ep 5

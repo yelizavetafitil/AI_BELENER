@@ -8,11 +8,13 @@
 |-----------|---------|
 | ОС | Ubuntu 22.04+ / Debian 12 |
 | GPU | NVIDIA 8–12 GB VRAM (DeepSeek-OCR) |
-| RAM | 16 GB+ (32 GB комфортно) |
-| Диск | ~25 GB (модель + Docker) |
+| RAM | **24 GB на ВМ** (32 GB с запасом; см. [VM_MEMORY.md](VM_MEMORY.md)) |
+| Диск | ~40–60 GB (модель + Docker) |
 | ПО | Docker, Docker Compose, NVIDIA Container Toolkit |
 
-## Быстрый старт (5 команд)
+Полная пошаговая инструкция с нуля: **[INSTALL_UBUNTU_FROM_ZERO.md](INSTALL_UBUNTU_FROM_ZERO.md)**
+
+## Быстрый старт (если Docker и GPU уже стоят)
 
 ```bash
 # 1. Клонировать проект
@@ -38,6 +40,16 @@ curl -s http://127.0.0.1:8090/ | head
 ```
 
 Веб-интерфейс: **http://SERVER_IP:8090**
+
+### Память ВМ (кратко)
+
+| ВМ Ubuntu | Когда |
+|-----------|--------|
+| **24 GB RAM** | DeepSeek + Belener (рекомендуется) |
+| **32 GB RAM** | если на хосте мало свободной памяти |
+| **8 GB RAM** | только Tesseract, без GPU-модели |
+
+Подробно: [docs/VM_MEMORY.md](VM_MEMORY.md)
 
 ## Архитектура (всё локально)
 
