@@ -1,49 +1,14 @@
-# Финальный стек: быстрый OCR + vision (qwen2.5vl) на SSD G:
-#
-#   .\scripts\setup_ssd_cache.ps1
-#   .\scripts\up_fast_stack.ps1
-#
-# Compose: docker-compose.yml + surya + ssd + этот файл
+# Production: tile OCR + локальная текстовая модель для отчёта.
+#   docker compose -f docker-compose.yml -f docker-compose.fast.yml up -d --force-recreate web
+#   docker compose exec ollama ollama pull gemma3:4b
 
 services:
-  ollama:
-    profiles: ["ollama"]
-    mem_limit: ${OLLAMA_MEM_LIMIT:-10g}
-    mem_reservation: ${OLLAMA_MEM_RESERVATION:-3g}
-    ports:
-      - "11434:11434"
-    environment:
-      OLLAMA_MAX_LOADED_MODELS: "1"
-      OLLAMA_NUM_PARALLEL: "1"
-      OLLAMA_KEEP_ALIVE: "30m"
-      OLLAMA_HOST: "0.0.0.0"
-
-  surya-ocr:
-    profiles: ["surya"]
-    mem_limit: ${SURYA_MEM_LIMIT:-8g}
-
   web:
-    depends_on:
-      ollama:
-        condition: service_started
-        required: false
     environment:
-      OLLAMA_HOST: http://ollama:11434
-      PDF_NORMATIVE_VISION: ${PDF_NORMATIVE_VISION:-0}
-      PDF_VISION_MODEL: ${PDF_VISION_MODEL:-qwen2.5vl:7b}
-      PDF_NORMATIVE_VISION_DPI: ${PDF_NORMATIVE_VISION_DPI:-180}
-      PDF_NORMATIVE_VISION_MAX_SIDE: ${PDF_NORMATIVE_VISION_MAX_SIDE:-1536}
-      PDF_NORMATIVE_PAGE_OCR: ${PDF_NORMATIVE_PAGE_OCR:-0}
-      PDF_NORMATIVE_DRAWING_FALLBACK: ${PDF_NORMATIVE_DRAWING_FALLBACK:-0}
-      PDF_NORMATIVE_CROPS: ${PDF_NORMATIVE_CROPS:-1}
-      PDF_NORMATIVE_PAGE_CROP_DPI: ${PDF_NORMATIVE_PAGE_CROP_DPI:-180}
-      PDF_NORMATIVE_TABLE_DPI: ${PDF_NORMATIVE_TABLE_DPI:-320}
-      PDF_NORMATIVE_TIME_BUDGET: ${PDF_NORMATIVE_TIME_BUDGET:-150}
-      PDF_NORMATIVE_ZONE_MAX: ${PDF_NORMATIVE_ZONE_MAX:-22}
-      PDF_NORMATIVE_TILE_OVERLAP: ${PDF_NORMATIVE_TILE_OVERLAP:-0.12}
-      PDF_NORMATIVE_SCAN: ${PDF_NORMATIVE_SCAN:-1}
-      PDF_NORMATIVE_SCAN_DPI: ${PDF_NORMATIVE_SCAN_DPI:-120}
-      PDF_VISION_TIMEOUT: ${PDF_VISION_TIMEOUT:-300}
-      YOLO_CONFIG_DIR: /ssd/yolo_cache
-      BELENER_SSD_ROOT: /ssd
-      PDF_ZONE_CACHE: ${PDF_ZONE_CACHE:-1}
+      PDF_TILE_OCR_DPI: ${PDF_TILE_OCR_DPI:-320}
+      PDF_TILE_OCR_TIME_BUDGET: ${PDF_TILE_OCR_TIME_BUDGET:-150}
+      PDF_TILE_OCR_OVERLAP: ${PDF_TILE_OCR_OVERLAP:-0.12}
+      PDF_REPORT_LLM: ${PDF_REPORT_LLM:-1}
+      PDF_REPORT_LLM_MODEL: ${PDF_REPORT_LLM_MODEL:-qwen2.5vl:7b}
+      PDF_REPORT_LLM_TIMEOUT: ${PDF_REPORT_LLM_TIMEOUT:-180}
+      MODEL_DEFAULT: ${MODEL_DEFAULT:-qwen2.5vl:7b}

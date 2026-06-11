@@ -26,7 +26,8 @@ _TYPE_SPECS: list[tuple[str, str, str]] = [
     ("ГОСТ", rf"{_WB_L}(?:ГОСТ|GOST){_WB_R}(?:\s*(?:Р|R)\.?)?", ""),
     ("СТБ", rf"{_WB_L}(?:СТБ|STB){_WB_R}", ""),
     ("ТУ", rf"{_PAREN}{_WB_L}(?:ТУ|TU){_WB_R}", ""),
-    ("СНиП", rf"{_WB_L}(?:СНиП|SNIP){_WB_R}", ""),
+    ("СНиП", rf"{_WB_L}(?:СНиП|SNIP|СН\s*И\s*П){_WB_R}", ""),
+    ("ТКП", rf"{_WB_L}(?:ТКП|TKP|Т\s*К\s*П){_WB_R}", ""),
     ("СП", rf"{_WB_L}(?:СП|SP){_WB_R}", ""),
     ("ISO", rf"{_WB_L}ISO{_WB_R}", ""),
     ("IEC", rf"{_WB_L}IEC{_WB_R}", ""),
@@ -42,7 +43,7 @@ _TYPE_SPECS: list[tuple[str, str, str]] = [
 _CLIP: dict[str, re.Pattern[str]] = {
     "ГОСТ": re.compile(
         r"^("
-        r"(?:\d+\s*)?\d[\d\s.]*-\d{2,4}"  # 5264-80, 9.602-2016, 19903-74
+        r"\d[\d\s.]*-\d{2,4}"  # 5264-80, 9.602-2016, 8969-75
         r")",
         re.I,
     ),
@@ -59,8 +60,9 @@ _CLIP: dict[str, re.Pattern[str]] = {
     "СТП": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
     "РД": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
     "СО": re.compile(r"^(\d+(?:-\d+(?:\.\d+)+)+)", re.I),
-    "СНиП": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
-    "СП": re.compile(r"^(\d+(?:\.\d+)+-\d{2,4})", re.I),
+    "СНиП": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
+    "ТКП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
+    "СП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "ISO": re.compile(r"^(\d+(?:-\d+)+)", re.I),
     "IEC": re.compile(r"^(\d+(?:-\d+)+)", re.I),
     "DIN": re.compile(r"^([\d\s.\-–—]+)", re.I),
@@ -138,7 +140,7 @@ def _num_complete(num: str, kind: str) -> bool:
         return bool(re.search(r"-\d{2,4}$", n))
     if kind == "ОСТ":
         return bool(re.search(r"-\d{2}$", n)) and _digits_count(n) >= 7
-    if kind in ("СТП", "РД", "СНиП"):
+    if kind in ("СТП", "РД", "СНиП", "ТКП", "СП"):
         return bool(re.search(r"\d", n)) and len(n) >= 5
     if kind == "СО":
         return "." in n and len(n) >= 8
@@ -176,7 +178,8 @@ def _digit_prefix_before_type(text: str, type_start: int) -> int | None:
 
 def _ref_has_one_type(ref: str) -> bool:
     hits = re.findall(
-        r"(?i)(?<![a-zа-яё])(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)",
+        r"(?i)(?<![a-zа-яё])(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp|всн|нпб|iso|iec|din|en|api|astm)",
         ref,
     )
     return len(hits) == 1
@@ -202,7 +205,8 @@ def _canonical_number(kind: str, ref: str) -> str:
             return d
     s = _light_clean(ref).casefold()
     num_m = re.search(
-        r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
         s,
         re.I,
     )
@@ -228,7 +232,8 @@ def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
     if ref_s.casefold() in blob.casefold():
         return True
     num_m = re.search(
-        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
         ref_s,
     )
     if not num_m:
@@ -241,6 +246,9 @@ def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
         "ОСТ": r"ост|oct|ost",
         "ТУ": r"ту|tu",
         "СТП": r"стп|stp",
+        "СНиП": r"снип|snip",
+        "ТКП": r"ткп|tkp",
+        "СП": r"сп|sp",
     }
     hint = hints.get(kind, kind.casefold())
     low = blob.casefold()
@@ -464,18 +472,19 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
 def _canonical_key(kind: str, ref: str) -> str:
     """Ключ дедупликации: тип + номер."""
     s = _light_clean(ref).casefold()
-    s = re.sub(r"^\d{1}\s+(?=гост|gost)", "", s)
+    s = re.sub(r"^\d{1,3}\s+(?=гост|gost)", "", s)
     s = re.sub(r"^\(\s*", "", s)
     if kind == "ОСТ":
         digits = _ost_key_digits(ref)
         if digits:
             return f"{kind.casefold()}:{digits}"
-    if kind in ("ГОСТ", "ТУ", "СТБ"):
+    if kind in ("ГОСТ", "ТУ", "СТБ", "СНиП", "ТКП", "СП"):
         digits = _canonical_number(kind, ref)
         if digits:
             return f"{kind.casefold()}:{digits}"
     num_m = re.search(
-        r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        r"(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
         s,
         re.I,
     )
@@ -492,7 +501,8 @@ def _polish_normative_ref(ref: str) -> str:
     if not s:
         return s
     m = re.search(
-        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb)\s",
+        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp)\s",
         s,
     )
     if not m:
@@ -510,7 +520,9 @@ def _polish_normative_ref(ref: str) -> str:
         start = max(0, start - 24) + mat.start()
     out = s[start:].strip()
     out = re.sub(
-        r"^(?!(?:0[1-9]|1[0-9]|20)\s)\d{2}\s+(?=(?:ОСТ|OST|OCT)\b)",
+        r"^(?!(?:0[1-9]|1[0-9]|20)\s)\d{1,3}\s+(?="
+        r"(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СП|SP|"
+        r"ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
         "",
         out,
         flags=re.I,
@@ -560,8 +572,11 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
         flags=re.I,
     )
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
+    s = re.sub(r"(?i)с\s*н\s*и\s*п", "СНиП", s)
+    s = re.sub(r"(?i)т\s*к\s*п", "ТКП", s)
     s = re.sub(
-        r"((?:ОСТ|OST|OCT|ГОСТ|GOST|СТБ|STB|ТУ|СТП|РД|СО|DIN|EN|ISO|IEC))\s*\n+\s*([\d\+])",
+        r"((?:ОСТ|OST|OCT|ГОСТ|GOST|СТБ|STB|ТУ|СТП|STP|РД|RD|СО|CO|SO|"
+        r"СНиП|SNIP|ТКП|TKP|СП|SP|DIN|EN|ISO|IEC))\s*\n+\s*([\d\+])",
         r"\1 \2",
         s,
         flags=re.I,
@@ -593,9 +608,6 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
         span_start = m.start("lead")
     elif kind == "ГОСТ":
         span_start = _material_start(text, type_start)
-        dp = _digit_prefix_before_type(text, type_start)
-        if dp is not None:
-            span_start = min(span_start, dp)
 
     num_in_raw = num_raw[: len(num)] if num_raw.startswith(num.replace(" ", "")) else num
     for i in range(len(num_raw), 0, -1):
@@ -608,8 +620,8 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     if not ref:
         ref = _light_clean(f"{m.group('type')} {num}")
 
-    if kind == "ГОСТ" and re.match(r"^\d{1}\s+ГОСТ", ref, re.I):
-        ref = ref.split(None, 1)[1] if " " in ref else ref
+    if kind == "ГОСТ" and re.match(r"^\d{1,3}\s+(?:ГОСТ|GOST)", ref, re.I):
+        ref = re.sub(r"^\d{1,3}\s+", "", ref, count=1)
 
     ref = re.sub(r"[.,;:]+$", "", ref).rstrip()
     ref = re.sub(r"^\(\s*", "", ref)

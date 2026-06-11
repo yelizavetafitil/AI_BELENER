@@ -156,3 +156,28 @@ def test_prune_drops_ocr_only_when_pdf_has_base():
     assert any("11371-78" in r for r in refs)
     assert not any("11371-71" in r for r in refs)
     assert not any("33259" in r for r in refs)
+
+
+def test_strip_pos_before_gost():
+    text = "13 ГОСТ 8969-75 кабелю"
+    refs = extract_normative_refs(text)
+    gost = [r for r in refs if r["kind"] == "ГОСТ"]
+    assert gost
+    assert not any(r["ref"].startswith("13 ") for r in gost)
+    assert any("8969-75" in r["ref"] for r in gost)
+
+
+def test_tkp_snip_from_notes():
+    text = (
+        'с Правилами промышленной безопасности ТКП 45-4.03-267-2012 " '
+        'СНиП 3.05.02-88 " Газоснабжение'
+    )
+    refs = extract_normative_refs(text)
+    assert any(r["kind"] == "ТКП" and "267-2012" in r["ref"] for r in refs)
+    assert any(r["kind"] == "СНиП" and "3.05.02-88" in r["ref"] for r in refs)
+
+
+def test_tkp_ocr_spaced_letters():
+    text = "Т К П 45-4.03-267-2012"
+    refs = extract_normative_refs(text)
+    assert any(r["kind"] == "ТКП" and "267-2012" in r["ref"] for r in refs)

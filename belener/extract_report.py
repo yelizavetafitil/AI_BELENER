@@ -1,29 +1,10 @@
-"""Markdown-отчёт: быстрый OCR → фильтр Python → финальная полировка gemma."""
+"""Markdown-отчёт из tile OCR — только структурированный вывод."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from belener.config import report_faithful, report_llm_enabled
-from belener.report import facts_to_markdown, full_text_pages_to_markdown
-from belener.report_clean import clean_drawing_facts
-from belener.report_llm import format_report_llm
-
-
-def _drawing_has_reportable_content(drawing: dict[str, Any]) -> bool:
-    """Есть ли в фактах данные для отчёта (не вызывать gemma на пустом JSON)."""
-    stamp = drawing.get("stamp") or {}
-    if stamp.get("kv") or stamp.get("signatures") or stamp.get("revisions"):
-        return True
-    if stamp.get("titles") or stamp.get("other_lines") or stamp.get("raw_frame"):
-        return True
-    for t in drawing.get("tables") or []:
-        if t.get("rows"):
-            return True
-    notes = drawing.get("sheet_notes") or {}
-    if notes.get("sections") or notes.get("full_text"):
-        return True
-    return False
+from belener.config import report_llm_enabled, report_markdown_tables, report_normative_compact
 
 
 def _report_mode_for_question(question: str) -> str:
@@ -45,74 +26,105 @@ def _report_mode_for_question(question: str) -> str:
     return "full"
 
 
-def _report_intro(mode: str) -> str:
+def _report_intro(mode: str, *, polished: bool = False) -> str:
+    if polished:
+        if mode == "text":
+            return "**Извлечённый текст листа**\n"
+        if mode == "analysis":
+            return "**Разбор документа**\n"
+        return "**Содержимое листа**\n"
     if mode == "text":
-        return "**Извлечённое содержимое листа** (таблицы, указания, штамп).\n"
+        return "**Извлечённый текст листа**\n"
     if mode == "analysis":
-        return "**Разбор документа** (структура листа + нормативы).\n"
-    return ""
+        return "**Разбор документа**\n"
+    return "**Содержимое листа**\n"
 
 
-def extraction_to_markdown(facts: dict[str, Any], *, question: str = "") -> str:
+def _esc_md_cell(val: str) -> str:
+    import re
+
+    return re.sub(r"\s+", " ", str(val or "—").strip() or "—").replace("|", "\\|")
+
+
+def _normative_table_md(refs: list[dict[str, str]]) -> list[str]:
+    if not refs:
+        return []
+    lines = ["## Нормативные документы", ""]
+    compact = report_normative_compact()
+    if report_markdown_tables():
+        if compact:
+            lines.append("| Тип | Обозначение |")
+            lines.append("| --- | --- |")
+            for n in refs:
+                lines.append(f"| {_esc_md_cell(n.get('kind'))} | {_esc_md_cell(n.get('ref'))} |")
+        else:
+            lines.append("| Тип | Обозначение | Контекст |")
+            lines.append("| --- | --- | --- |")
+            for n in refs:
+                lines.append(
+                    f"| {_esc_md_cell(n.get('kind'))} | {_esc_md_cell(n.get('ref'))} | "
+                    f"{_esc_md_cell(n.get('context') or '—')} |"
+                )
+    else:
+        for n in refs:
+            lines.append(f"- **{n.get('kind') or '—'}** {n.get('ref') or '—'}")
+    lines.append("")
+    lines.append(f"*Найдено: {len(refs)}*")
+    lines.append("")
+    return lines
+
+
+def _structured_fallback(drawing: dict[str, Any], *, mode: str, filename: str) -> str:
+    from belener.report_structure import structured_report_from_drawing
+
+    body = structured_report_from_drawing(drawing, mode=mode, filename=filename)
+    note = ""
+    if report_llm_enabled():
+        note = (
+            "\n\n*Форматирование ИИ недоступно — показан автоматический разбор. "
+            "Проверьте Ollama и модель (`PDF_REPORT_LLM_MODEL`, напр. gemma3:4b).*"
+        )
+    return body.rstrip() + note + "\n"
+
+
+def _tile_drawing_markdown(
+    drawing: dict[str, Any],
+    *,
+    mode: str = "full",
+    filename: str = "",
+    polish_llm: bool = False,
+) -> str:
+    use_llm = polish_llm and report_llm_enabled()
+
+    if use_llm:
+        from belener.report_llm import format_ocr_report_llm
+
+        polished = format_ocr_report_llm(drawing, mode=mode, filename=filename)
+        if polished:
+            intro = _report_intro(mode, polished=True).rstrip()
+            return intro + "\n\n" + polished.strip() + "\n"
+        return _report_intro(mode).rstrip() + "\n\n" + _structured_fallback(drawing, mode=mode, filename=filename)
+
+    return _report_intro(mode).rstrip() + "\n\n" + _structured_fallback(drawing, mode=mode, filename=filename)
+
+
+def extraction_to_markdown(
+    facts: dict[str, Any],
+    *,
+    question: str = "",
+    polish_llm: bool = True,
+) -> str:
     if not facts.get("ok"):
         return f"**Ошибка:** {facts.get('error', 'Не удалось извлечь текст')}\n"
 
     drawing = facts.get("drawing")
     if drawing and drawing.get("ok"):
-        from belener.normative_refs import collect_normative_refs, merge_normative_refs
-
-        refs_raw = collect_normative_refs(drawing)
-        drawing = clean_drawing_facts(drawing)
-        refs_clean = collect_normative_refs(drawing)
-        drawing["normative_refs"] = merge_normative_refs(refs_raw, refs_clean)
         mode = _report_mode_for_question(question)
-        base_md = _report_intro(mode) + facts_to_markdown(drawing, mode=mode)
-        stamp_src = (drawing.get("stamp") or {}).get("source")
+        return _tile_drawing_markdown(
+            drawing,
+            mode=mode,
+            filename=str(facts.get("filename") or ""),
+            polish_llm=polish_llm,
+        )
 
-        if (
-            report_llm_enabled()
-            and not report_faithful()
-            and stamp_src != "stamp_universal"
-            and _drawing_has_reportable_content(drawing)
-        ):
-            polished = format_report_llm(drawing, base_markdown=base_md)
-            if polished:
-                full_text = full_text_pages_to_markdown(drawing.get("full_text_pages") or [])
-                if full_text and "Полный текст листа" not in polished:
-                    return polished.rstrip() + "\n\n" + full_text
-                return polished
-
-        if not _drawing_has_reportable_content(drawing):
-            warns = [str(w) for w in (drawing.get("warnings") or []) if str(w).strip()]
-            if warns:
-                base_md = (
-                    base_md.rstrip()
-                    + "\n\n**Извлечение неполное — сверьте с PDF:**\n"
-                    + "\n".join(f"- {w}" for w in warns)
-                    + "\n"
-                )
-
-        return base_md
-
-    lines = ["# Извлечённый текст", ""]
-    lines.append(f"**Файл:** {facts.get('filename', 'document.pdf')}")
-    lines.append(f"**Страниц:** {facts.get('page_count', 0)}")
-    lines.append("")
-
-    for page in facts.get("pages") or []:
-        idx = page.get("index", "?")
-        text = str(page.get("text") or "").strip()
-        lines.append(f"## Страница {idx}")
-        lines.append("")
-        if text:
-            lines.append("```text")
-            lines.append(text)
-            lines.append("```")
-        else:
-            lines.append("*(текст не распознан)*")
-        lines.append("")
-
-    for w in facts.get("warnings") or []:
-        lines.append(f"- {w}")
-
-    return "\n".join(lines)
+    return "*Не удалось извлечь текст.*\n"

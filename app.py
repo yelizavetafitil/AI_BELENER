@@ -16,7 +16,7 @@ import psycopg2
 import psycopg2.extras
 import ollama
 
-from belener.config import model_drawing, model_scan
+from belener.config import model_drawing, model_scan, report_llm_enabled
 from belener.extract import extract_pdf_path
 from belener.extract_report import extraction_to_markdown
 from belener.scanned import is_scanned_pdf
@@ -292,13 +292,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str):
     """PDF → OCR страниц (плитки) → таблица всех ГОСТ/ОСТ."""
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
 
-    from belener.config import normative_vision_enabled
-
-    yield from _sse_status(
-        "Читаю PDF: vision (Ollama) или OCR, поиск ГОСТ/ОСТ/ТУ…"
-        if normative_vision_enabled()
-        else "Читаю PDF: OCR страниц, поиск ГОСТ/ОСТ/ТУ…"
-    )
+    yield from _sse_status("Читаю PDF: OCR по тайлам листа, поиск ГОСТ/ОСТ/ТУ…")
 
     box: dict = {"result": None, "err": None}
     done = threading.Event()
@@ -353,33 +347,59 @@ def stream_extract_image_normative(path: str, filename: str, question: str):
     yield "data: [DONE]\n\n"
 
 
+def _skip_extract_followup(question: str) -> bool:
+    """Не дублировать отчёт в «Ответ по вопросу»."""
+    if _is_full_extract_question(question) or _is_text_extract_question(question) or _is_analysis_question(question):
+        return True
+    q = (question or "").strip()
+    if len(q) < 30:
+        return True
+    low = q.casefold()
+    if low in ("copy", "копия", "скопируй", "вывод", "отчёт", "отчет"):
+        return True
+    return False
+
+
 def stream_extract_pdf(path: str, filename: str, question: str, model: str, history=None):
-    """Извлечение чертежа: зонный OCR, финальная полировка gemma (без vision)."""
-    yield from _sse_status("Обрабатываю чертёж: зоны, OCR (Surya/Paddle), таблицы…")
+    """Извлечение листа: tile OCR (тот же путь, что для ГОСТ)."""
+    yield from _sse_status("Читаю лист: OCR по тайлам (Tesseract)…")
 
-    box: dict = {"facts": None, "err": None}
-    done = threading.Event()
+    box: dict = {"facts": None, "body": None, "err": None}
+    ocr_done = threading.Event()
+    fmt_done = threading.Event()
 
-    def _run():
+    def _run_ocr():
         try:
             box["facts"] = extract_pdf_path(path, filename)
         except Exception as e:
             app.logger.exception("PDF extract failed file=%s", filename)
             box["err"] = e
         finally:
-            done.set()
+            ocr_done.set()
 
-    threading.Thread(target=_run, daemon=True).start()
+    def _run_format():
+        ocr_done.wait()
+        if box["err"] is not None or not (box["facts"] or {}).get("ok"):
+            fmt_done.set()
+            return
+        try:
+            box["body"] = extraction_to_markdown(box["facts"], question=question, polish_llm=True)
+        except Exception as e:
+            app.logger.exception("report format failed file=%s", filename)
+            box["err"] = e
+        finally:
+            fmt_done.set()
+
+    threading.Thread(target=_run_ocr, daemon=True).start()
+    threading.Thread(target=_run_format, daemon=True).start()
     status_msgs = (
-        "OCR: штамп и таблицы (Paddle, по ячейкам)…\n",
-        "OpenCV: таблицы по блокам и ячейкам…\n",
-        "Vision: дозаполнение штампа и таблиц (локально)…\n",
-        "Сборка структурированного отчёта…\n",
-        "Полировка отчёта (gemma)…\n",
+        "OCR по тайлам листа (Tesseract)…",
+        "Сборка текста и нормативов…",
+        "Форматирование читаемого отчёта (ИИ)…",
     )
     tick = 0
-    while not done.wait(timeout=15):
-        yield from _sse_status(status_msgs[tick % len(status_msgs)].strip())
+    while not fmt_done.wait(timeout=12):
+        yield from _sse_status(status_msgs[min(tick, len(status_msgs) - 1)])
         tick += 1
 
     if box["err"] is not None:
@@ -390,11 +410,11 @@ def stream_extract_pdf(path: str, filename: str, question: str, model: str, hist
         yield from _sse_error(str((facts or {}).get("error") or "Не удалось извлечь текст"))
         return
 
-    body = extraction_to_markdown(facts, question=question)
+    body = box["body"] or extraction_to_markdown(facts, question=question, polish_llm=True)
     report = f"**Файл:** {filename}\n\n{body}"
     yield from _chunk_sse_text(report)
 
-    if _is_full_extract_question(question) or _is_text_extract_question(question) or _is_analysis_question(question):
+    if _skip_extract_followup(question):
         yield "data: [DONE]\n\n"
         return
 
@@ -1230,15 +1250,5 @@ def api_suggest_model():
 
 if __name__ == "__main__":
     init_db()
-
-    def _warmup():
-        try:
-            from belener.yolo_zones import preload_yolo_model
-
-            preload_yolo_model()
-        except Exception:
-            logging.getLogger("app").warning("warmup skipped", exc_info=True)
-
-    threading.Thread(target=_warmup, daemon=True).start()
     print("🚀 Запуск на http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

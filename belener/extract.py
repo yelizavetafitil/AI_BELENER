@@ -1,4 +1,4 @@
-"""Извлечение PDF-чертежей САПР: зонный OCR + vision → структурированный отчёт."""
+"""Извлечение PDF: tile OCR (тот же путь, что и для нормативов)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 import fitz
 
-from belener.drawing import analyze_pdf_document
+from belener.tile_ocr import extract_document
 
 log = logging.getLogger("belener.extract")
 
@@ -27,24 +27,24 @@ def extract_pdf_bytes(
             return {"ok": False, "error": "PDF без страниц", "filename": filename}
 
         t0 = time.monotonic()
-        log.info("drawing pipeline %s", filename)
-        drawing = analyze_pdf_document(doc, filename, pdf_path=source_path)
-        log.info("drawing done %.1fs ok=%s", time.monotonic() - t0, drawing.get("ok"))
+        log.info("tile extract %s", filename)
+        result = extract_document(doc, filename)
+        log.info("tile extract done %.1fs ok=%s", time.monotonic() - t0, result.get("ok"))
 
-        if not drawing.get("ok"):
-            return drawing
+        if not result.get("ok"):
+            return result
 
         return {
             "ok": True,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "pipeline": drawing.get("pipeline") or "belener_hybrid",
+            "pipeline": result.get("pipeline") or "tile_ocr",
             "filename": filename,
             "page_count": doc.page_count,
-            "pages": [],
-            "total_chars": 0,
-            "drawing": drawing,
-            "vision_model": drawing.get("vision_model"),
-            "warnings": drawing.get("warnings") or [],
+            "pages": result.get("full_text_pages") or [],
+            "total_chars": result.get("source_text_chars") or 0,
+            "drawing": result.get("drawing"),
+            "normative_refs": result.get("normative_refs") or [],
+            "warnings": [],
         }
     finally:
         doc.close()
