@@ -9,6 +9,8 @@ from belener.normative_context import accept_by_context, fuzzy_normative_text, i
 
 _WB_L = r"(?<![A-Za-zА-Яа-яёЁ])"
 _WB_R = r"(?![A-Za-zА-Яа-яёЁ])"
+# После аббревиатуры может идти сразу цифра: ГОСТ10705-80, OCT34…
+_TYPE_END = _WB_R
 
 _NUM_BODY = r"[\d\s.\-–—\+]+"
 
@@ -19,32 +21,32 @@ _LEAD_OST = r"(?:(?<![\d.\-xх×])(?P<lead>0[1-9]|1[0-9]|20)\s+)?"
 _PAREN = r"(?:\(\s*)?"
 
 _TYPE_SPECS: list[tuple[str, str, str]] = [
-    ("ОСТ", rf"{_WB_L}(?:ОСТ|OST|OCT){_WB_R}", _LEAD_OST),
-    ("СТП", rf"{_PAREN}{_WB_L}(?:СТП|STP){_WB_R}", ""),
-    ("РД", rf"{_PAREN}{_WB_L}(?:РД|RD){_WB_R}", ""),
-    ("СО", rf"{_PAREN}{_WB_L}(?:СО|CO|SO){_WB_R}", ""),
-    ("ГОСТ", rf"{_WB_L}(?:ГОСТ|GOST){_WB_R}(?:\s*(?:Р|R)\.?)?", ""),
-    ("СТБ", rf"{_WB_L}(?:СТБ|STB){_WB_R}", ""),
-    ("ТУ", rf"{_PAREN}{_WB_L}(?:ТУ|TU){_WB_R}", ""),
-    ("СНиП", rf"{_WB_L}(?:СНиП|SNIP|СН\s*И\s*П){_WB_R}", ""),
-    ("ТКП", rf"{_WB_L}(?:ТКП|TKP|Т\s*К\s*П){_WB_R}", ""),
-    ("СП", rf"{_WB_L}(?:СП|SP){_WB_R}", ""),
-    ("ISO", rf"{_WB_L}ISO{_WB_R}", ""),
-    ("IEC", rf"{_WB_L}IEC{_WB_R}", ""),
-    ("DIN", rf"{_WB_L}DIN{_WB_R}", ""),
-    ("EN", rf"{_WB_L}EN{_WB_R}", ""),
-    ("API", rf"{_WB_L}API{_WB_R}", ""),
-    ("ASTM", rf"{_WB_L}ASTM{_WB_R}", ""),
-    ("НПБ", rf"{_WB_L}(?:НПБ|NPB){_WB_R}", ""),
-    ("ВСН", rf"{_WB_L}(?:ВСН|VSN){_WB_R}", ""),
+    ("ОСТ", rf"{_WB_L}(?:ОСТ|OST|OCT){_TYPE_END}", _LEAD_OST),
+    ("СТП", rf"{_PAREN}{_WB_L}(?:СТП|STP){_TYPE_END}", ""),
+    ("РД", rf"{_PAREN}{_WB_L}(?:РД|RD){_TYPE_END}", ""),
+    ("СО", rf"{_PAREN}{_WB_L}(?:СО|CO|SO){_TYPE_END}", ""),
+    ("ГОСТ", rf"{_WB_L}(?:ГОСТ|GOST){_TYPE_END}(?:\s*(?:Р|R)\.?)?", ""),
+    ("СТБ", rf"{_WB_L}(?:СТБ|STB){_TYPE_END}", ""),
+    ("ТУ", rf"{_PAREN}{_WB_L}(?:ТУ|TU){_TYPE_END}", ""),
+    ("СНиП", rf"{_WB_L}(?:СНиП|SNIP|СН\s*И\s*П){_TYPE_END}", ""),
+    ("ТКП", rf"{_WB_L}(?:ТКП|TKP|Т\s*К\s*П){_TYPE_END}", ""),
+    ("СП", rf"{_WB_L}(?:СП|SP){_TYPE_END}", ""),
+    ("ISO", rf"{_WB_L}ISO{_TYPE_END}", ""),
+    ("IEC", rf"{_WB_L}IEC{_TYPE_END}", ""),
+    ("DIN", rf"{_WB_L}DIN{_TYPE_END}", ""),
+    ("EN", rf"{_WB_L}EN{_TYPE_END}", ""),
+    ("API", rf"{_WB_L}API{_TYPE_END}", ""),
+    ("ASTM", rf"{_WB_L}ASTM{_TYPE_END}", ""),
+    ("НПБ", rf"{_WB_L}(?:НПБ|NPB){_TYPE_END}", ""),
+    ("ВСН", rf"{_WB_L}(?:ВСН|VSN){_TYPE_END}", ""),
 ]
 
 # Минимально полный номер с начала захвата (не жадно до конца строки)
 _CLIP: dict[str, re.Pattern[str]] = {
     "ГОСТ": re.compile(
         r"^("
-        r"\d[\d\s.]*-\d{2,4}"  # 5264-80, 9.602-2016, 8969-75
-        r")",
+        r"\d[\d\s.]*?-\d{2,4}"
+        r")(?!\d)",
         re.I,
     ),
     "ОСТ": re.compile(
@@ -92,6 +94,7 @@ def _light_clean(raw: str) -> str:
     s = (raw or "").replace("–", "-").replace("—", "-")
     s = re.sub(r"(\d)\s+\.", r"\1.", s)
     s = re.sub(r"\.\s+(\d)", r".\1", s)
+    s = re.sub(r"(\d)\s+-(\d)", r"\1-\2", s)
     return re.sub(r"\s+", " ", s.strip())
 
 
@@ -215,6 +218,9 @@ def _canonical_number(kind: str, ref: str) -> str:
 
 
 def _base_number_key(kind: str, ref: str) -> str:
+    body, year = _body_year_digits(kind, ref)
+    if body:
+        return f"{kind.casefold()}:{body}"
     digits = _canonical_number(kind, ref)
     if not digits:
         return _canonical_key(kind, ref)
@@ -225,7 +231,7 @@ def _base_number_key(kind: str, ref: str) -> str:
 
 
 def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
-    blob = _light_clean(text)
+    blob = _light_clean(fuzzy_normative_text(text))
     if not blob:
         return False
     ref_s = _light_clean(ref)
@@ -394,18 +400,45 @@ def _digits_one_apart(a: str, b: str) -> bool:
     return sum(x != y for x, y in zip(a, b)) == 1
 
 
-def resolve_single_digit_variants(
+def _body_year_digits(kind: str, ref: str) -> tuple[str, str]:
+    """Цифры номера без года и год из хвоста (-75, -2012)."""
+    s = _light_clean(ref)
+    ym = re.search(r"-(\d{2,4})$", s)
+    year = ym.group(1) if ym else ""
+    num_m = re.search(
+        r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
+        r"снип|snip|ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        s,
+    )
+    num = _light_clean(num_m.group(1)) if num_m else s
+    if ym:
+        num = num[: num.rfind("-")].strip()
+    return re.sub(r"\D", "", num), year
+
+
+def _contexts_distinct(a: dict[str, str], b: dict[str, str]) -> bool:
+    """Разные строки таблицы (12 … vs 13 …) — не сливать похожие номера."""
+    ca = _light_clean(str(a.get("context") or a.get("ref") or ""))
+    cb = _light_clean(str(b.get("context") or b.get("ref") or ""))
+    if not ca or not cb or ca == cb:
+        return False
+    ma = re.match(r"^(\d{1,3})\b", ca)
+    mb = re.match(r"^(\d{1,3})\b", cb)
+    return bool(ma and mb and ma.group(1) != mb.group(1))
+
+
+def resolve_number_conflicts(
     refs: list[dict[str, str]],
     sources: list[str],
 ) -> list[dict[str, str]]:
-    """Один символ в номере: оставить вариант с большим числом совпадений в тайлах."""
+    """Слить OCR-варианты номера: голосование по тайлам, без подстановок."""
     drop: set[int] = set()
     for i, a in enumerate(refs):
         if id(a) in drop:
             continue
         ka = str(a.get("kind") or "")
-        da = _canonical_number(ka, str(a.get("ref") or ""))
-        if not da:
+        ba, ya = _body_year_digits(ka, str(a.get("ref") or ""))
+        if not ba:
             continue
         for b in refs[i + 1 :]:
             if id(b) in drop:
@@ -413,8 +446,19 @@ def resolve_single_digit_variants(
             kb = str(b.get("kind") or "")
             if ka != kb:
                 continue
-            db = _canonical_number(kb, str(b.get("ref") or ""))
-            if not _digits_one_apart(da, db):
+            bb, yb = _body_year_digits(kb, str(b.get("ref") or ""))
+            if not bb:
+                continue
+            if ya and yb and ya != yb:
+                continue
+            prefix = (
+                (len(ba) < len(bb) and bb.startswith(ba) and 1 <= len(bb) - len(ba) <= 2)
+                or (len(bb) < len(ba) and ba.startswith(bb) and 1 <= len(ba) - len(bb) <= 2)
+            )
+            one_digit = _digits_one_apart(ba, bb)
+            if not prefix and not one_digit:
+                continue
+            if one_digit and not prefix and _contexts_distinct(a, b):
                 continue
             va = _ref_vote_count(ka, str(a.get("ref") or ""), sources)
             vb = _ref_vote_count(kb, str(b.get("ref") or ""), sources)
@@ -422,7 +466,19 @@ def resolve_single_digit_variants(
                 drop.add(id(b))
             elif vb > va:
                 drop.add(id(a))
+            elif len(bb) > len(ba):
+                drop.add(id(a))
+            elif len(ba) > len(bb):
+                drop.add(id(b))
     return [r for r in refs if id(r) not in drop]
+
+
+def resolve_single_digit_variants(
+    refs: list[dict[str, str]],
+    sources: list[str],
+) -> list[dict[str, str]]:
+    """Совместимость: делегирует в resolve_number_conflicts."""
+    return resolve_number_conflicts(refs, sources)
 
 
 def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]]:
@@ -433,25 +489,36 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
 
     combined = "\n\n".join(uniq)
     combined_refs = extract_normative_refs(combined)
-    if not combined_refs:
-        return []
+
+    pool: list[dict[str, str]] = list(combined_refs)
+    for src in uniq:
+        pool.extend(extract_normative_refs(src))
+
+    order_keys: list[str] = []
+    for item in combined_refs:
+        key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+        if key and key not in order_keys:
+            order_keys.append(key)
+    for item in pool:
+        key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+        if key and key not in order_keys:
+            order_keys.append(key)
 
     variants: dict[str, list[dict[str, str]]] = {}
-    for src in uniq:
-        for item in extract_normative_refs(src):
-            key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
-            variants.setdefault(key, []).append(item)
+    for item in pool:
+        key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+        variants.setdefault(key, []).append(item)
 
     out: list[dict[str, str]] = []
     seen: set[str] = set()
-    for item in combined_refs:
-        kind = str(item.get("kind") or "")
-        ref = str(item.get("ref") or "")
-        key = _canonical_key(kind, ref)
-        if not key or key in seen:
+    for key in order_keys:
+        if key in seen:
             continue
         seen.add(key)
-        opts = variants.get(key, [item])
+        opts = variants.get(key, [])
+        if not opts:
+            continue
+        kind = str(opts[0].get("kind") or "")
         by_ref: dict[str, dict[str, str]] = {}
         for opt in opts:
             by_ref[str(opt.get("ref") or "")] = opt
@@ -460,12 +527,16 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
             continue
         best_ref = max(
             by_ref.keys(),
-            key=lambda r: (_ref_vote_count(kind, r, uniq), len(_light_clean(r))),
+            key=lambda r: (
+                _ref_vote_count(kind, r, uniq),
+                1 if re.match(r"(?i)^(ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СП|SP|СТБ|STB)", _light_clean(r)) else 0,
+                len(_light_clean(r)),
+            ),
         )
         out.append(by_ref[best_ref])
 
     merged = dedupe_normative_year_variants(out, *uniq)
-    merged = resolve_single_digit_variants(merged, uniq)
+    merged = resolve_number_conflicts(merged, uniq)
     return dedupe_normative_list(merged)
 
 
@@ -502,7 +573,7 @@ def _polish_normative_ref(ref: str) -> str:
         return s
     m = re.search(
         r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
-        r"снип|snip|ткп|tkp|сп|sp)\s",
+        r"снип|snip|ткп|tkp|сп|sp)(?:\s|\d)",
         s,
     )
     if not m:
@@ -574,6 +645,10 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
     s = re.sub(r"(?i)с\s*н\s*и\s*п", "СНиП", s)
     s = re.sub(r"(?i)т\s*к\s*п", "ТКП", s)
+    s = re.sub(r"(?i)(гост|gost)(\d)", r"\1 \2", s)
+    s = re.sub(r"(?i)(ост|oct|ost)(\d)", r"\1 \2", s)
+    # ГОСТ10705-8076х3 → год -80 и размер 76х3 (OCR слеил строки)
+    s = re.sub(r"(-\d{2})(\d{2,}(?=[xх×]))", r"\1 \2", s)
     s = re.sub(
         r"((?:ОСТ|OST|OCT|ГОСТ|GOST|СТБ|STB|ТУ|СТП|STP|РД|RD|СО|CO|SO|"
         r"СНиП|SNIP|ТКП|TKP|СП|SP|DIN|EN|ISO|IEC))\s*\n+\s*([\d\+])",

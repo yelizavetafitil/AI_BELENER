@@ -79,8 +79,13 @@
       <div class="feed-inner" id="chat-inner">
 
         <div class="welcome" id="empty-state">
-          <div class="welcome-title">Добрый день</div>
-          <div class="welcome-sub">Загрузите PDF или скан чертежа — извлечение <strong>всего текста</strong> с листа (OCR, любой размер). Без облака. Уточняющие вопросы — через Ollama.</div>
+          <div class="welcome-title">Проверка ГОСТ на чертеже</div>
+          <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все <strong>ГОСТ</strong>, исправит OCR-ошибки и проверит актуальность на <strong>normy.stn.by</strong>. Дату проверки можно изменить ниже (по умолчанию — сегодня).</div>
+          <div class="welcome-chips">
+            <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
+            <button type="button" class="chip" onclick="setPrompt('Перечень ГОСТ с контекстом')">ГОСТ с контекстом</button>
+            <button type="button" class="chip" onclick="setPrompt('Извлечь весь текст с листа')">Весь текст листа</button>
+          </div>
         </div>
 
       </div>
@@ -97,13 +102,17 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+        <div class="check-date-row">
+          <label class="check-date-label" for="check-date">Дата проверки актуальности</label>
+          <input type="date" id="check-date" class="check-date-input" title="Дата, на которую проверяется актуальность ГОСТ">
+        </div>
         <div class="composer" id="input-box">
           <button class="attach" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
-          <textarea id="input-field" placeholder="Разбор документа и анализ текста — или свой вопрос. PDF/картинку можно отправить без текста." rows="1"></textarea>
+          <textarea id="input-field" placeholder="Прикрепите чертёж — проверка ГОСТ запустится автоматически. Или задайте свой вопрос." rows="1"></textarea>
           <button class="send" id="send-btn" onclick="sendMessage()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

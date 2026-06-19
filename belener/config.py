@@ -635,6 +635,40 @@ def tile_ocr_time_budget_sec() -> float:
         return 150.0
 
 
+def gost_check_total_budget_sec() -> float:
+    """Полный бюджет: OCR + проверка STN (сек)."""
+    try:
+        return max(60.0, min(float(os.environ.get("PDF_GOST_CHECK_BUDGET", "180").strip()), 600.0))
+    except ValueError:
+        return 180.0
+
+
+def stn_batch_budget_sec() -> float:
+    """Резерв времени на проверку normy.stn.by внутри общего бюджета."""
+    try:
+        return max(20.0, min(float(os.environ.get("PDF_STN_BATCH_BUDGET", "60").strip()), 180.0))
+    except ValueError:
+        return 60.0
+
+
+def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None) -> float:
+    """Сколько секунд отдать OCR, не съедая резерв STN."""
+    tile_cap = tile_ocr_time_budget_sec()
+    if pipeline_deadline is None:
+        return tile_cap
+    import time
+
+    left = pipeline_deadline - time.monotonic() - stn_batch_budget_sec()
+    return max(25.0, min(tile_cap, left))
+
+
+def tile_ocr_parallel_workers() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_TILE_OCR_PARALLEL", "3").strip()), 4))
+    except ValueError:
+        return 3
+
+
 def normative_tile_overlap_frac() -> float:
     return tile_ocr_overlap_frac()
 
@@ -856,3 +890,86 @@ def report_llm_model() -> str:
         or os.environ.get("MODEL_DEFAULT")
         or "gemma3:4b"
     ).strip()
+
+
+def stn_lookup_enabled() -> bool:
+    return (os.environ.get("PDF_STN_LOOKUP") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def stn_base_url() -> str:
+    return (os.environ.get("PDF_STN_BASE_URL") or "https://normy.stn.by").strip().rstrip("/")
+
+
+def stn_login() -> str:
+    return (os.environ.get("PDF_STN_LOGIN") or os.environ.get("STN_LOGIN") or "").strip()
+
+
+def stn_password() -> str:
+    return (os.environ.get("PDF_STN_PASSWORD") or os.environ.get("STN_PASSWORD") or "").strip()
+
+
+def stn_timeout_sec() -> int:
+    try:
+        return max(8, min(int(os.environ.get("PDF_STN_TIMEOUT", "15").strip()), 90))
+    except ValueError:
+        return 15
+
+
+def stn_parallel_workers() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_STN_PARALLEL", "1").strip()), 4))
+    except ValueError:
+        return 1
+
+
+def stn_max_queries() -> int:
+    """Сколько вариантов запроса пробовать на STN (остальные — только при OCR-вариантах)."""
+    try:
+        return max(1, min(int(os.environ.get("PDF_STN_MAX_QUERIES", "1").strip()), 8))
+    except ValueError:
+        return 1
+
+
+def stn_ocr_variant_limit() -> int:
+    try:
+        return max(0, min(int(os.environ.get("PDF_STN_OCR_VARIANTS", "0").strip()), 20))
+    except ValueError:
+        return 0
+
+
+def stn_max_refs() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "20").strip()), 50))
+    except ValueError:
+        return 20
+
+
+def normative_skip_tiles_min_refs() -> int:
+    return 0
+
+
+def tile_ocr_psm_modes() -> tuple[int, ...]:
+    raw = (os.environ.get("PDF_TILE_OCR_PSM") or "6").strip()
+    out: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(max(3, min(int(part), 13)))
+        except ValueError:
+            continue
+    return tuple(out) if out else (6, 3)
+
+
+def tile_text_skip_ocr_min_chars() -> int:
+    """В тайле достаточно текста из PDF — Tesseract не вызываем."""
+    try:
+        return max(0, min(int(os.environ.get("PDF_TILE_TEXT_SKIP_OCR_MIN", "100").strip()), 2000))
+    except ValueError:
+        return 100

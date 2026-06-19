@@ -56,6 +56,11 @@ services:
       PDF_YOLO_ZONES: ${PDF_YOLO_ZONES:-0}
       PDF_YOLO_MODEL: ${PDF_YOLO_MODEL:-}
       PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-tesseract}
+      PDF_STN_LOOKUP: ${PDF_STN_LOOKUP:-1}
+      PDF_STN_BASE_URL: ${PDF_STN_BASE_URL:-https://normy.stn.by}
+      PDF_STN_LOGIN: ${PDF_STN_LOGIN:-}
+      PDF_STN_PASSWORD: ${PDF_STN_PASSWORD:-}
+      PDF_STN_TIMEOUT: ${PDF_STN_TIMEOUT:-20}
     volumes:
       - ./:/workspace:ro
       - ./belener:/app/belener:ro

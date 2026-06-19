@@ -182,6 +182,7 @@ SYSTEM_PROMPT_CHAT = (
 )
 
 EXTRACT_DEFAULT_QUESTION = "Извлечь весь текст с листа"
+GOST_DEFAULT_QUESTION = "Проверка ГОСТ на листе"
 EXTRACT_FOLLOWUP_PROMPT = (
     "Ниже — **только** извлечённый с листа текст (OCR/текстовый слой). "
     "Отвечай **строго** по нему на русском. Не придумывай факты.\n\n"
@@ -207,12 +208,38 @@ def _is_default_drawing_question(q: str) -> bool:
     }
 
 
+def _parse_check_date(raw: str | None):
+    """Дата проверки актуальности нормативов (по умолчанию — сегодня на сервере)."""
+    from datetime import date, datetime
+
+    s = (raw or "").strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _is_gost_check_request(question: str, mode: str = "") -> bool:
+    if _is_text_extract_question(question):
+        return False
+    if (mode or "").strip().casefold() in ("gost", "1", "true", "yes", "on"):
+        return True
+    return _is_normative_question(question)
+
+
 def _is_normative_question(q: str) -> bool:
-    """Запрос только на перечень ГОСТ/ОСТ/ТУ — быстрый OCR, без полного разбора чертежа."""
+    """Запрос на перечень ГОСТ/нормативов — быстрый OCR, без полного разбора чертежа."""
     s = (q or "").strip().casefold().replace("ё", "е")
     if not s:
         return False
     keys = (
+        GOST_DEFAULT_QUESTION.casefold(),
+        "проверка гост",
+        "проверить гост",
         "все гост",
         "все gost",
         "все ost",
@@ -225,6 +252,7 @@ def _is_normative_question(q: str) -> bool:
         "список gost",
         "какие гост",
         "перечень гост",
+        "гост на листе",
         "нормативн",
     )
     return any(k in s for k in keys)
@@ -264,6 +292,11 @@ def _chunk_sse_text(text: str, size: int = 900):
 def _ollama_user_message(exc: Exception) -> str:
     msg = str(exc).strip()
     low = msg.lower()
+    if "timed out" in low or "timeout" in low:
+        return (
+            "Таймаут при обращении к normy.stn.by. Список ГОСТ на листе сохранён; "
+            "проверку актуальности повторите позже или увеличьте PDF_STN_TIMEOUT в .env."
+        )
     if "model runner" in low or "unexpectedly stopped" in low:
         return (
             "Vision-модель Ollama остановилась (часто нехватка RAM на CPU). "
@@ -288,9 +321,13 @@ def _sse_status(text: str):
     yield f"data: {json.dumps({'status': text}, ensure_ascii=False)}\n\n"
 
 
-def stream_extract_pdf_normative(path: str, filename: str, question: str):
-    """PDF → OCR страниц (плитки) → таблица всех ГОСТ/ОСТ."""
+def stream_extract_pdf_normative(path: str, filename: str, question: str, *, check_date=None):
+    """PDF → OCR страниц (плитки) → таблица нормативов + проверка ГОСТ на STN."""
+    from datetime import date
+
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
+
+    validity_date = check_date or date.today()
 
     yield from _sse_status("Читаю PDF: OCR по тайлам листа, поиск ГОСТ/ОСТ/ТУ…")
 
@@ -323,15 +360,41 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str):
         yield from _sse_error(str(result.get("error") or "Не удалось прочитать PDF"))
         return
 
+    from belener.config import stn_lookup_enabled
+    from belener.stn_lookup import refine_and_check_normative_refs
+
+    stn_checks = []
+    if stn_lookup_enabled():
+        yield from _sse_status("Проверка ГОСТ на normy.stn.by…")
+        try:
+            refined, stn_checks = refine_and_check_normative_refs(
+                result.get("normative_refs") or [],
+                today=validity_date,
+            )
+            result["normative_refs"] = refined
+            result["stn_checks"] = [c.to_dict() for c in stn_checks]
+        except Exception as e:
+            app.logger.exception("STN batch failed file=%s", filename)
+            result["stn_error"] = _ollama_user_message(e)
+
     include_ctx = "контекст" in (question or "").casefold()
-    report = normative_result_to_markdown(result, include_context=include_ctx)
+    report = normative_result_to_markdown(
+        result,
+        include_context=include_ctx,
+        stn_checks=stn_checks,
+        check_date=validity_date,
+    )
     yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
     yield "data: [DONE]\n\n"
 
 
-def stream_extract_image_normative(path: str, filename: str, question: str):
-    """Изображение → OCR (как внутренняя «страница» PDF) → таблица нормативов."""
+def stream_extract_image_normative(path: str, filename: str, question: str, *, check_date=None):
+    """Изображение → OCR → таблица нормативов."""
+    from datetime import date
+
     from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
+
+    validity_date = check_date or date.today()
 
     yield from _sse_status("OCR изображения, поиск ГОСТ/ОСТ/ТУ…")
     try:
@@ -342,7 +405,28 @@ def stream_extract_image_normative(path: str, filename: str, question: str):
         return
 
     include_ctx = "контекст" in (question or "").casefold()
-    report = normative_result_to_markdown(result, include_context=include_ctx)
+    from belener.config import stn_lookup_enabled
+    from belener.stn_lookup import refine_and_check_normative_refs
+
+    stn_checks = []
+    if stn_lookup_enabled():
+        yield from _sse_status("Проверка ГОСТ на normy.stn.by…")
+        try:
+            refined, stn_checks = refine_and_check_normative_refs(
+                result.get("normative_refs") or [],
+                today=validity_date,
+            )
+            result["normative_refs"] = refined
+            result["stn_checks"] = [c.to_dict() for c in stn_checks]
+        except Exception as e:
+            app.logger.exception("STN batch failed file=%s", filename)
+            result["stn_error"] = _ollama_user_message(e)
+    report = normative_result_to_markdown(
+        result,
+        include_context=include_ctx,
+        stn_checks=stn_checks,
+        check_date=validity_date,
+    )
     yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
     yield "data: [DONE]\n\n"
 
@@ -665,43 +749,43 @@ def save_message(conv_id: str, role: str, content: str, model: str = MODEL_DEFAU
         conn.commit()
 
 
-def generate_title(question: str, model: str) -> str:
-    try:
-        resp = _client.chat(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты генерируешь названия чатов. "
-                        "Отвечай ТОЛЬКО самим названием — одной строкой, 2–4 слова. "
-                        "Никаких объяснений, никаких списков, никаких кавычек."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Название чата по запросу:\n{question[:400]}"
-                }
-            ],
-            options={"num_ctx": 2048, "temperature": 0.1},
-            stream=False
-        )
-        raw = resp["message"]["content"]
-        # Убираем теги <think>...</think>
-        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-        # Если модель вернула список — берём первый пункт
-        m = re.search(r"^[\d\-\*•]\s*\.?\s*(.+)$", raw, re.MULTILINE)
-        title = m.group(1).strip() if m else next(
-            (ln.strip() for ln in raw.splitlines() if ln.strip()), ""
-        )
-        # Убираем типичные «мусорные» префиксы
-        title = re.sub(
-            r"(?i)^(название|title|тема|чат|вот|итого|ответ)\s*[:\-–—]?\s*", "", title
-        ).strip()
-        title = title.strip('"\'«»').rstrip(".,;:!?").strip()
-        return title[:60] if len(title) > 2 else question[:50]
-    except Exception:
-        return question[:50]
+def derive_chat_title(question: str, file_name: str | None = None) -> str:
+    """Название чата по первому сообщению (без LLM — без «Гости под звездами» и т.п.)."""
+    q = re.sub(r"\s+", " ", (question or "").strip())
+    q_one = q.split("\n")[0].strip()
+
+    if _is_normative_question(q):
+        task = "ГОСТ"
+    elif _is_text_extract_question(q) or _is_default_drawing_question(q):
+        task = "Разбор листа"
+    elif _is_analysis_question(q):
+        task = "Анализ"
+    else:
+        task = ""
+
+    stem = ""
+    if file_name:
+        stem = os.path.splitext(os.path.basename(file_name))[0].strip()
+
+    if stem and task:
+        title = f"{task}: {stem}"
+    elif stem:
+        title = stem
+    elif task:
+        title = task
+    elif q_one:
+        title = q_one
+    else:
+        title = "Новый чат"
+
+    title = title.strip('"\'«»').rstrip(".,;:!?").strip()
+    if len(title) > 60:
+        if stem and task:
+            budget = max(8, 60 - len(task) - 2)
+            title = f"{task}: {stem[:budget].rstrip()}"
+        else:
+            title = title[:57].rstrip() + "…"
+    return title if len(title) >= 2 else "Новый чат"
 
 
 # ── утилиты файлов ────────────────────────────────────────────────────────────
@@ -945,6 +1029,8 @@ def api_chat(conv_id):
     question = request.form.get("question", "").strip()
     model = request.form.get("model", MODEL_DEFAULT)
     user_override = request.form.get("model_override", "").strip().lower() in ("1", "true", "yes", "on")
+    gost_mode = request.form.get("mode", "").strip()
+    check_date = _parse_check_date(request.form.get("check_date"))
     file = request.files.get("file")
 
     tmp_path = file_name = extracted_text = None
@@ -958,8 +1044,8 @@ def api_chat(conv_id):
         file.save(tmp_path)
 
     if not question:
-        if tmp_path and ext == ".pdf":
-            question = EXTRACT_DEFAULT_QUESTION
+        if tmp_path and ext in (".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"):
+            question = GOST_DEFAULT_QUESTION
         else:
             return {"error": "Вопрос не может быть пустым"}, 400
 
@@ -1016,8 +1102,13 @@ def api_chat(conv_id):
                 elif ext == ".pdf":
                     ext_model = model_for_task("drawing", model, user_override=user_override)
                     app.logger.info("PDF extract file=%s model=%s", file_name, ext_model)
-                    if _is_normative_question(question):
-                        gen = stream_extract_pdf_normative(tmp_path, file_name or "document.pdf", question)
+                    if _is_gost_check_request(question, gost_mode):
+                        gen = stream_extract_pdf_normative(
+                            tmp_path,
+                            file_name or "document.pdf",
+                            question,
+                            check_date=check_date,
+                        )
                     else:
                         gen = stream_extract_pdf(
                             tmp_path, file_name or "document.pdf", question, ext_model, history
@@ -1075,9 +1166,12 @@ def api_chat(conv_id):
                         yield chunk
 
                 elif ext in (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"):
-                    if _is_normative_question(question):
+                    if _is_gost_check_request(question, gost_mode):
                         for chunk in stream_extract_image_normative(
-                            tmp_path, file_name or "image.png", question
+                            tmp_path,
+                            file_name or "image.png",
+                            question,
+                            check_date=check_date,
                         ):
                             if chunk.startswith("data: ") and chunk != "data: [DONE]\n\n":
                                 try:
@@ -1123,7 +1217,7 @@ def api_chat(conv_id):
                         cnt = cur.fetchone()["cnt"]
 
                 if cnt == 1:
-                    title = generate_title(question, model)
+                    title = derive_chat_title(question, file_name)
                     with get_db() as conn:
                         with conn.cursor() as cur:
                             cur.execute("UPDATE conversations SET title = %s WHERE id = %s", (title, conv_id))

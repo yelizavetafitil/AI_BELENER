@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -50,15 +51,17 @@ def normative_refs_to_markdown(
     filename: str = "",
     pipeline: str = "",
     include_context: bool = False,
+    stn_checks: list | None = None,
+    check_date: date | None = None,
+    stn_error: str = "",
 ) -> str:
     lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
     if filename:
         lines.append(f"**Файл:** {filename}")
     if pipeline:
-        mode = "Тайлы листа (OCR)"
-        if "normative" in pipeline:
-            mode = "Тайлы листа (OCR)"
-        lines.append(f"**Режим:** {mode} (`{pipeline}`)")
+        lines.append(f"**Режим:** Тайлы листа (OCR) (`{pipeline}`)")
+    if check_date:
+        lines.append(f"**Дата проверки актуальности:** {check_date.strftime('%d.%m.%Y')}")
     lines.append("")
 
     if not refs:
@@ -67,29 +70,51 @@ def normative_refs_to_markdown(
             "используйте полный разбор чертежа.*"
         )
         lines.append("")
-        return "\n".join(lines)
-
-    if include_context:
+    elif include_context:
         lines.extend(["| Тип | Обозначение | Контекст на листе |", "| --- | --- | --- |"])
         for n in refs:
             lines.append(
                 f"| {n.get('kind') or '—'} | {n.get('ref') or '—'} | {n.get('context') or '—'} |"
             )
+        lines.append("")
+        lines.append(f"*Найдено: {len(refs)}*")
+        lines.append("")
     else:
         lines.extend(["| Тип | Обозначение |", "| --- | --- |"])
         for n in refs:
             lines.append(f"| {n.get('kind') or '—'} | {n.get('ref') or '—'} |")
+        lines.append("")
+        lines.append(f"*Найдено: {len(refs)}*")
+        lines.append("")
 
-    lines.append("")
-    lines.append(f"*Найдено: {len(refs)}*")
-    lines.append("")
+    if stn_checks:
+        from belener.stn_lookup import stn_checks_to_markdown
+
+        lines.extend(stn_checks_to_markdown(stn_checks, check_date=check_date))
+
+    stn_error = (stn_error or "").strip()
+    if stn_error:
+        lines.extend(["", f"*⚠ {stn_error}*", ""])
+
     return "\n".join(lines)
 
 
-def normative_result_to_markdown(result: dict[str, Any], *, include_context: bool = False) -> str:
+def normative_result_to_markdown(
+    result: dict[str, Any],
+    *,
+    include_context: bool = False,
+    stn_checks: list | None = None,
+    check_date: date | None = None,
+) -> str:
+    checks = stn_checks
+    if checks is None:
+        checks = result.get("stn_checks")
     return normative_refs_to_markdown(
         list(result.get("normative_refs") or []),
         filename=str(result.get("filename") or ""),
         pipeline=str(result.get("pipeline") or ""),
         include_context=include_context,
+        stn_checks=checks,
+        check_date=check_date,
+        stn_error=str(result.get("stn_error") or ""),
     )

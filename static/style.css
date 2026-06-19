@@ -595,6 +595,67 @@ body::before {
   line-height: 1.72;
 }
 
+.welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.chip {
+  border: 1px solid rgba(176, 208, 244, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(247, 250, 255, 0.92);
+  font: 600 15px/1 var(--f);
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .18s, border-color .18s;
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(176, 208, 244, 0.55);
+}
+
+.check-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+.check-date-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(236, 243, 251, 0.62);
+}
+
+.check-date-input {
+  font: 600 15px/1 var(--f);
+  color: var(--text);
+  background: rgba(246, 250, 254, 0.96);
+  border: 1px solid rgba(191, 212, 234, 0.92);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 160px;
+}
+
+.check-date-input:focus {
+  outline: none;
+  border-color: rgba(28, 79, 156, 0.65);
+  box-shadow: 0 0 0 4px rgba(28, 79, 156, 0.1);
+}
+
+.msg-content td.stn-ok { color: #7ddea8; font-weight: 700; }
+.msg-content td.stn-cancel { color: #ff9b9b; font-weight: 700; }
+.msg-content td.stn-warn { color: #ffd27a; font-weight: 700; }
+.msg-content td.stn-miss { color: rgba(236, 243, 251, 0.55); }
+
 .chips {
   display: flex;
   flex-wrap: wrap;

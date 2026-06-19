@@ -132,6 +132,36 @@ def test_resolve_single_digit_by_tile_votes():
     assert "5264-80" in gost[0]
 
 
+def test_gost_without_space_after_type():
+    text = "Труба В-20Г0СТ10705-80 76х3,0 ГОСТ 10704-91"
+    refs = extract_normative_refs(text)
+    refs_str = " ".join(r["ref"] for r in refs if r["kind"] == "ГОСТ")
+    assert "10705-80" in refs_str
+    assert "10704-91" in refs_str
+
+
+def test_merge_keeps_8962_and_8969():
+    from belener.normative_refs import merge_normative_refs_from_sources
+
+    t1 = "12___| ГОСТ 8962-75"
+    t2 = "13 ГОСТ 8969-75"
+    out = merge_normative_refs_from_sources(t1, t2)
+    nums = {r["ref"] for r in out if r["kind"] == "ГОСТ"}
+    assert any("8962" in r for r in nums)
+    assert any("8969" in r for r in nums)
+
+
+def test_merge_picks_10704_over_1070():
+    from belener.normative_refs import merge_normative_refs_from_sources
+
+    t_bad = "25х2 ГОСТ 1070-91"
+    t_good = "32х2 ГОСТ 10704-91"
+    out = merge_normative_refs_from_sources(t_bad, t_good, t_good, t_good)
+    gost91 = [r["ref"] for r in out if r["kind"] == "ГОСТ" and "-91" in r["ref"]]
+    assert any("10704-91" in r for r in gost91)
+    assert not any("1070-91" in r for r in gost91)
+
+
 def test_gost_10705():
     text = "Труба 76x3,0 ГОСТ 10704-91 В-Ст3пс ГОСТ 10705-80"
     refs = extract_normative_refs(text)

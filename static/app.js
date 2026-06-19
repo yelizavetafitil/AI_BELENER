@@ -5,6 +5,7 @@ let autoModelEnabled = true;
 let userOverrodeModel = false;
 let _modelMap = {}; // id → label
 let userScrolled = false;
+const GOST_DEFAULT_QUESTION = 'Проверка ГОСТ на листе';
 
 const sendIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 const stopIcon  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
@@ -96,6 +97,19 @@ function fbCopy(text, cb) {
   document.body.removeChild(ta);
 }
 
+function colorizeStnStatus(el) {
+  el.querySelectorAll('table tr').forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    if (cells.length < 5) return;
+    const st = cells[4].textContent.trim().toLowerCase();
+    cells[4].classList.remove('stn-ok', 'stn-cancel', 'stn-warn', 'stn-miss');
+    if (st === 'актуален') cells[4].classList.add('stn-ok');
+    else if (st === 'отменён' || st === 'отменен') cells[4].classList.add('stn-cancel');
+    else if (st.includes('не введён') || st.includes('не введен')) cells[4].classList.add('stn-warn');
+    else if (st.includes('нет') || st.includes('ошибка')) cells[4].classList.add('stn-miss');
+  });
+}
+
 function addCodeBtns(el) {
   el.querySelectorAll('pre').forEach(pre => {
     if (pre.parentElement.classList.contains('code-wrap')) return;
@@ -130,6 +144,7 @@ function addCodeBtns(el) {
     b.onclick = () => doCopy(tblPlain(table), b);
     tools.appendChild(b);
   });
+  colorizeStnStatus(el);
 }
 
 function addMsgCopy(el, html) {
@@ -241,8 +256,12 @@ function clearFeed() {
   welcome.className = 'welcome';
   welcome.id = 'empty-state';
   welcome.innerHTML = `
-    <div class="welcome-title">Добрый день</div>
-    <div class="welcome-sub">Загрузите PDF или скан чертежа — извлечение всего текста с листа (OCR). Уточняющие вопросы — через выбранную модель.</div>`;
+    <div class="welcome-title">Проверка ГОСТ на чертеже</div>
+    <div class="welcome-sub">Загрузите PDF или скан — найдём все <strong>ГОСТ</strong> и проверим актуальность на normy.stn.by.</div>
+    <div class="welcome-chips">
+      <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
+      <button type="button" class="chip" onclick="setPrompt('Перечень ГОСТ с контекстом')">ГОСТ с контекстом</button>
+    </div>`;
   inner.appendChild(welcome);
 }
 
@@ -437,8 +456,8 @@ function stopStreaming() {
 async function sendMessage() {
   if (isStreaming) return;
   const qRaw = ta.value.trim();
-  const q = qRaw || (currentFile && currentFile.name.toLowerCase().endsWith('.pdf')
-    ? 'Разбор документа и анализ текста' : '');
+  const isDrawing = currentFile && /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i.test(currentFile.name);
+  const q = qRaw || (isDrawing ? GOST_DEFAULT_QUESTION : '');
   if (!q) return;
 
   // Авто-выбор для вопроса без файла (сложные запросы)
@@ -488,6 +507,10 @@ async function sendMessage() {
 
   const fd = new FormData();
   fd.append('question', q); fd.append('model', model);
+  const isGostCheck = !/извлеч|весь текст|прочитай/i.test(q);
+  if (isGostCheck) fd.append('mode', 'gost');
+  const checkDateEl = document.getElementById('check-date');
+  if (checkDateEl && checkDateEl.value) fd.append('check_date', checkDateEl.value);
   if (userOverrodeModel) fd.append('model_override', '1');
   if (fc) fd.append('file', fc);
 
@@ -668,10 +691,21 @@ async function deleteAllChats() {
   showToast('Все чаты удалены');
 }
 
+function initCheckDate() {
+  const el = document.getElementById('check-date');
+  if (!el) return;
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  el.value = `${y}-${m}-${d}`;
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 marked.use({ gfm: true });
 initNavState();
+initCheckDate();
 loadModels();
 loadConversations();
 loadCurrentUser();
