@@ -31,7 +31,8 @@ def test_is_stn_checkable():
     assert is_stn_checkable("ГОСТ")
     assert is_stn_checkable("СНиП")
     assert is_stn_checkable("ОСТ")
-    assert not is_stn_checkable("СТП")
+    assert is_stn_checkable("СТП")
+    assert not is_stn_checkable("ТУ")
 
 
 def test_digit_compatible_blocks_1070_vs_10704():
@@ -153,9 +154,19 @@ def test_check_fund_kinds(monkeypatch):
         {"kind": "СТП", "ref": "СТП 34 17.101"},
     ]
     out = check_normative_refs_stn(refs, client=_FakeClient(), today=date(2026, 6, 11))
-    kinds = {c.kind for c in out}
-    assert kinds == {"ГОСТ", "ОСТ", "СНиП"}
-    assert len(out) == 3
+    assert len(out) == 4
+    assert {c.kind for c in out} == {"ГОСТ", "ОСТ", "СНиП", "СТП"}
+
+
+def test_stn_table_only_found_in_ips():
+    checks = [
+        StnCheckResult("ГОСТ", "ГОСТ 10704-91", "", found=True, intro_date="01.01.1993", status="актуален"),
+        StnCheckResult("ГОСТ", "ГОСТ 8969-75", "", found=False, status="нет в ИПС"),
+    ]
+    md = "\n".join(stn_checks_to_markdown(checks, check_date=date(2026, 6, 19)))
+    assert "10704-91" in md
+    assert "8969-75" not in md
+    assert "Проверено на листе: 2" in md
 
 
 def test_parse_card_html_ips():

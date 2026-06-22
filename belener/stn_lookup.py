@@ -32,7 +32,7 @@ log = logging.getLogger("belener.stn_lookup")
 
 # Приоритетные типы фонда STN (остальные тоже пробуем искать).
 STN_FUND_KINDS: frozenset[str] = frozenset(
-    {"ГОСТ", "ОСТ", "СТБ", "СНиП", "ТКП", "СП", "ТР"}
+    {"ГОСТ", "ОСТ", "СТБ", "СТП", "СНиП", "ТКП", "СП", "ТР"}
 )
 STN_CHECKABLE_KINDS = STN_FUND_KINDS  # совместимость
 
@@ -723,8 +723,7 @@ def refine_and_check_normative_refs(
     checkable_refs = [
         dict(item)
         for item in (refs or [])
-        if is_stn_checkable(str(item.get("kind") or "").strip())
-        and str(item.get("ref") or "").strip()
+        if str(item.get("kind") or "").strip() and str(item.get("ref") or "").strip()
     ]
 
     t0 = time.monotonic()
@@ -867,24 +866,29 @@ def stn_checks_to_markdown(
     if check_date:
         lines.append(f"*Дата проверки актуальности: {check_date.strftime('%d.%m.%Y')}*")
         lines.append("")
-    lines.extend([
-        "| Тип | Обозначение (лист) | Дата введения | Дата отмены | Статус |",
-        "| --- | --- | --- | --- | --- |",
-    ])
-    for c in checks:
-        intro = c.intro_date or "—"
-        cancel = c.cancel_date or "—"
-        status = c.status or "—"
-        if c.error and c.status == "ошибка проверки":
-            status = f"{status} ({c.error[:60]})"
-        designation = c.ref
-        lines.append(f"| {c.kind} | {designation} | {intro} | {cancel} | {status} |")
-    lines.append("")
+    found_checks = [c for c in checks if c.found]
+    if not found_checks:
+        lines.append("*В ИПС normy.stn.by не найдено ни одного документа из списка.*")
+        lines.append("")
+    else:
+        lines.extend([
+            "| Тип | Обозначение (лист) | Дата введения | Дата отмены | Статус |",
+            "| --- | --- | --- | --- | --- |",
+        ])
+        for c in found_checks:
+            intro = c.intro_date or "—"
+            cancel = c.cancel_date or "—"
+            status = c.status or "—"
+            if c.error and c.status == "ошибка проверки":
+                status = f"{status} ({c.error[:60]})"
+            designation = c.ref
+            lines.append(f"| {c.kind} | {designation} | {intro} | {cancel} | {status} |")
+        lines.append("")
     checked = len(checks)
-    found = sum(1 for c in checks if c.found)
-    active = sum(1 for c in checks if c.status == "актуален")
+    found = len(found_checks)
+    active = sum(1 for c in found_checks if c.status == "актуален")
     lines.append(
-        f"*Проверено: {checked}; найдено в ИПС: {found}; актуально: {active}*"
+        f"*Проверено на листе: {checked}; найдено в ИПС: {found}; актуально: {active}*"
     )
     lines.append("")
     return lines

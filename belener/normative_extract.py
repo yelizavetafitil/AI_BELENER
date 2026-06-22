@@ -58,8 +58,6 @@ def normative_refs_to_markdown(
     lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
     if filename:
         lines.append(f"**Файл:** {filename}")
-    if pipeline:
-        lines.append(f"**Режим:** Тайлы листа (OCR) (`{pipeline}`)")
     if check_date:
         lines.append(f"**Дата проверки актуальности:** {check_date.strftime('%d.%m.%Y')}")
     lines.append("")

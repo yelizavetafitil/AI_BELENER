@@ -431,8 +431,10 @@ function addMessage(role, content, badge) {
   const av = role === 'user'
     ? `<div class="msg-avatar">↑</div>`
     : `<div class="msg-avatar"><img src="/ico.png" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:6px;"></div>`;
-  const bd = badge ? `<div class="msg-file-badge">${esc(badge)}</div><br>` : '';
-  div.innerHTML = `${av}<div class="msg-body"><div class="msg-role">${role === 'user' ? 'Вы' : 'БелнипиAI'}</div><div class="msg-content">${bd}${role === 'user' ? esc(content) : ''}</div></div>`;
+  const bd = badge
+    ? `<div class="msg-user-stack"><div class="msg-file-badge">${esc(badge)}</div><div class="msg-user-text">${esc(content)}</div></div>`
+    : esc(content);
+  div.innerHTML = `${av}<div class="msg-body"><div class="msg-role">${role === 'user' ? 'Вы' : 'БелнипиAI'}</div><div class="msg-content">${role === 'user' ? bd : ''}</div></div>`;
   wrap.appendChild(div);
   return div.querySelector('.msg-content');
 }

@@ -737,10 +737,10 @@ def save_message(conv_id: str, role: str, content: str, model: str = MODEL_DEFAU
                 (str(uuid.uuid4()), conv_id, role, content, tokens)
             )
             msg_id = cur.fetchone()["id"]
-            if attachment_name and attachment_text:
+            if attachment_name:
                 cur.execute(
                     "INSERT INTO attachments (message_id, original_name, extracted_text) VALUES (%s, %s, %s)",
-                    (msg_id, attachment_name, attachment_text)
+                    (msg_id, attachment_name, attachment_text or "")
                 )
             cur.execute(
                 "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
@@ -1057,7 +1057,13 @@ def api_chat(conv_id):
     history = load_history_with_summary(conv_id, profile["num_ctx"])
 
     # Сохраняем вопрос пользователя
-    save_message(conv_id, "user", question, model)
+    save_message(
+        conv_id,
+        "user",
+        question,
+        model,
+        attachment_name=file_name if file_name else None,
+    )
 
     def generate():
         nonlocal extracted_text
