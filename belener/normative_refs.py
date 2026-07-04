@@ -191,11 +191,14 @@ def format_ost_number(num: str) -> str:
 
 
 def format_gost_number(num: str) -> str:
-    """OCR: 94.67-75 → 9467-75 (точка внутри 4-значного номера)."""
+    """OCR: 94.67-75 → 9467-75; 5264 80-11 → 5264-80 (хвост строки таблицы)."""
     s = _light_clean(num)
     m = re.match(r"^(\d{2})\.(\d{2})-(\d{2,4})$", s)
     if m:
         return f"{m.group(1)}{m.group(2)}-{m.group(3)}"
+    m = re.match(r"^(\d{4,})\s+(\d{2})-(\d{2})$", s)
+    if m and m.group(2) != m.group(3):
+        return f"{m.group(1)}-{m.group(2)}"
     return s
 
 
@@ -252,11 +255,28 @@ def _digit_prefix_before_type(text: str, type_start: int) -> int | None:
     return None
 
 
+def _is_steel_grade_prefix(prefix: str) -> bool:
+    """Ст3сп3, В-St3 — марка стали перед ГОСТ в дроби спецификации."""
+    p = _light_clean(prefix)
+    if not p:
+        return False
+    return bool(
+        re.match(
+            r"^(?:Ст|ST)\d+(?:сп|SP)\d+|^(?:Ст|ST)\d+(?:сп|SP)?\d*$|"
+            r"^(?:В|B)[\-–—]?\d+(?:сп|SP)?\d*$",
+            p,
+            re.I,
+        )
+    )
+
+
 def _ref_has_one_type(ref: str) -> bool:
+    s = _light_clean(ref)
+    s = re.sub(r"Ст\d+(?:сп|SP)\d+", " ", s, flags=re.I)
     hits = re.findall(
         r"(?i)(?<![a-zа-яё])(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
         r"снип|snip|ткп|tkp|сп|sp|всн|нпб|iso|iec|din|en|api|astm)",
-        ref,
+        s,
     )
     return len(hits) == 1
 
@@ -452,18 +472,55 @@ def dedupe_normative_year_variants(
     return out
 
 
+def _sanitize_normative_ref(ref: str) -> str:
+    """Финальная подпись для таблицы: без «по», без OCR-пробелов в номере."""
+    s = _polish_normative_ref(ref)
+    s = re.sub(
+        r"^(?:по|в|на|с|для|и)\s+(?=(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|"
+        r"СНиП|SNIP|СП|SP|ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
+        "",
+        s,
+        flags=re.I,
+    )
+    m = re.match(r"^((?:ГОСТ|GOST)\s+)(.+)$", s, re.I)
+    if m:
+        num = format_gost_number(m.group(2))
+        s = f"{m.group(1)}{num}"
+    return _light_clean(s)
+
+
+def _ref_display_score(ref: str, *, kind: str = "") -> tuple[int, ...]:
+    """Меньше — чище подпись для ответа."""
+    s = _sanitize_normative_ref(ref)
+    raw = _light_clean(ref)
+    noise_prefix = 1 if re.match(
+        r"^(?:по|в|на|с|для)\s+(?:ГОСТ|GOST|ОСТ|OST|ТКП|TKP|"
+        r"СНиП|SNIP|СП|SP|ТУ|TU|СТБ|STB)\b",
+        raw,
+        re.I,
+    ) else 0
+    spaced_num = 1 if re.search(r"(?i)(?:ГОСТ|GOST)\s+\d{4,}\s+\d", raw) else 0
+    tail = 1 if re.search(r"\s+\d+(?:[.,]\d+)?\s*$", s) else 0
+    gq = _gost_variant_quality(s) if kind == "ГОСТ" else 0
+    return (noise_prefix, spaced_num, tail, -gq, len(s))
+
+
 def dedupe_normative_list(refs: list[dict[str, str]]) -> list[dict[str, str]]:
     """Один канонический номер — одна строка в ответе."""
     out: list[dict[str, str]] = []
     seen: set[str] = set()
     for item in refs or []:
         kind = str(item.get("kind") or "")
-        ref = str(item.get("ref") or "")
+        ref = _sanitize_normative_ref(str(item.get("ref") or ""))
+        if not ref:
+            continue
         key = _canonical_key(kind, ref)
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append(item)
+        cleaned = dict(item)
+        cleaned["ref"] = ref
+        out.append(cleaned)
     return out
 
 
@@ -756,21 +813,19 @@ def _gost_variant_quality(ref: str) -> int:
 
 
 def _pick_better_ref(a: str, b: str, *, kind: str = "") -> str:
-    """Без хвоста таблицы; полнее — ближе к подписи на листе (материал, размер)."""
-    la, lb = _light_clean(a), _light_clean(b)
+    """Без «пo» и OCR-пробелов; полнее — ближе к подписи на листе (материал, размер)."""
+    la, lb = _sanitize_normative_ref(a), _sanitize_normative_ref(b)
+    sa, sb = _ref_display_score(a, kind=kind), _ref_display_score(b, kind=kind)
+    if sa < sb:
+        return la or a
+    if sb < sa:
+        return lb or b
     if la and lb:
         if la.casefold() in lb.casefold() and len(lb) > len(la):
-            return b
+            return la
         if lb.casefold() in la.casefold() and len(la) > len(lb):
-            return a
-
-    def score(r: str) -> tuple[int, int, int, int]:
-        s = _light_clean(r)
-        tail = 1 if re.search(r"\s+\d+(?:[.,]\d+)?\s*$", s) else 0
-        gq = _gost_variant_quality(r) if kind == "ГОСТ" else 0
-        return (tail, -_dot_score(kind, r), -gq, -len(s))
-
-    return a if score(a) <= score(b) else b
+            return lb
+    return la if len(la or "") >= len(lb or "") else lb
 
 
 def _ocr_loosen_normative_spacing(text: str) -> str:
@@ -838,7 +893,13 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     )
     s = re.sub(r"(-\d{2})(?=(?:ОСТ|OST|OCT)\b)", r"\1\n", s, flags=re.I)
     s = re.sub(
-        r"((?:ГОСТ|GOST)\s+[\d\s.\-]+-\d{2,4})\s+([A-Za-zА-Яа-я]\-[\w\-]+(?:\s+(?:ГОСТ|GOST)))",
+        r"((?:ГОСТ|GOST)\s+[\d\s.\-]+-\d{2,4})\s*[/\\|]\s*([A-Za-zА-Яа-яЁё\d][\w\d]*(?:\s+(?:ГОСТ|GOST)))",
+        r"\1\n\2",
+        s,
+        flags=re.I,
+    )
+    s = re.sub(
+        r"((?:ГОСТ|GOST)\s+[\d\s.\-]+-\d{2,4})\s+([A-Za-zА-Яа-яЁё][\w\d]*(?:\s+(?:ГОСТ|GOST)))",
         r"\1\n\2",
         s,
         flags=re.I,
@@ -913,7 +974,7 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
         raw = _light_clean(text[span_start:end])
         mg = re.match(r"^(.*?)(?:ГОСТ|GOST)\s", raw, re.I | re.S)
         prefix = _light_clean(mg.group(1)) if mg else ""
-        if prefix and _is_noise_gost_prefix(prefix):
+        if prefix and (_is_noise_gost_prefix(prefix) or _is_steel_grade_prefix(prefix)):
             prefix = ""
         if prefix and len(prefix) <= 24:
             ref = _light_clean(f"{prefix} ГОСТ {num}")
@@ -942,12 +1003,15 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
             flags=re.I,
         )
     if not _ref_has_one_type(ref):
-        return None
+        if kind == "ГОСТ":
+            ref = _sanitize_normative_ref(f"ГОСТ {num}")
+        if not _ref_has_one_type(ref):
+            return None
 
     win = _window(text, span_start, end)
     if is_noise_span(win, num) or not accept_by_context(win, num, prefix=kind):
         return None
-    return _polish_normative_ref(ref)
+    return _sanitize_normative_ref(ref)
 
 
 def _parse_match(m: re.Match[str], text: str, kind: str) -> dict[str, str] | None:

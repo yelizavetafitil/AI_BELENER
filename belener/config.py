@@ -680,12 +680,30 @@ def stn_batch_budget_sec() -> float:
         return 60.0
 
 
-def normative_supplement_budget_sec() -> float:
-    """Резерв на доп. OCR спецификации (spec_br) на широких листах."""
+def normative_force_tile_ocr() -> bool:
+    """Всегда Tesseract на тайлах — текстовый слой PDF часто неполный на сканах."""
+    return (os.environ.get("PDF_NORMATIVE_FORCE_OCR") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def normative_wide_right_dpi_boost() -> float:
+    """DPI-множитель для правых тайлов и spec_right на широких листах."""
     try:
-        return max(12.0, min(float(os.environ.get("PDF_NORMATIVE_SUPPLEMENT_SEC", "22").strip()), 60.0))
+        return max(1.0, min(float(os.environ.get("PDF_NORMATIVE_WIDE_DPI_BOOST", "1.15").strip()), 1.35))
     except ValueError:
-        return 22.0
+        return 1.15
+
+
+def normative_supplement_budget_sec() -> float:
+    """Резерв на доп. OCR spec_right на широких листах."""
+    try:
+        return max(16.0, min(float(os.environ.get("PDF_NORMATIVE_SUPPLEMENT_SEC", "28").strip()), 45.0))
+    except ValueError:
+        return 28.0
 
 
 def normative_ocr_budget_sec(page_count: int = 1) -> float:

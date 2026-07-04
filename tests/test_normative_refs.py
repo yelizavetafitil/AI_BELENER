@@ -22,6 +22,20 @@ def test_ost_34_10_series_spacing():
         assert "34.10." not in refs[0]["ref"], f"bad dot: {refs[0]['ref']}"
 
 
+def test_spec_fraction_gosts():
+    text = (
+        "ГОСТ 24379.1-80\n"
+        "Лист 20 ГОСТ 19903-74 / Ст3сп3 ГОСТ 14637-89\n"
+        "Лист 5 ГОСТ 19903-74 / Ст3сп3 ГОСТ 14637-89"
+    )
+    refs = merge_normative_refs_from_sources(text)
+    got = {(r["kind"], r["ref"]) for r in refs}
+    assert ("ГОСТ", "ГОСТ 24379.1-80") in got
+    assert ("ГОСТ", "ГОСТ 19903-74") in got
+    assert ("ГОСТ", "ГОСТ 14637-89") in got
+    assert len(refs) == 3
+
+
 def test_strip_po_before_gost():
     text = "по ГОСТ 9.402-2004\nпо ГОСТ 9467-75\nГОСТ 5264-80\nТКП 45-2.01-111-2008"
     refs = extract_normative_refs(text)
@@ -29,6 +43,29 @@ def test_strip_po_before_gost():
         assert not re.match(r"^по\s", r["ref"], re.I), r["ref"]
     assert any("9.402-2004" in r["ref"] for r in refs)
     assert any("9467-75" in r["ref"] for r in refs)
+
+
+def test_multitile_no_po_or_ocr_garbage():
+    tiles = [
+        "по ГОСТ 9.402-2004",
+        "ТКП 45-2.01-111-2008",
+        "ГОСТ 5264-80",
+        "по ГОСТ 9467-75",
+        "ГОСТ 5264 80-11",
+    ]
+    refs = merge_normative_refs_from_sources(*tiles)
+    got = {r["ref"] for r in refs}
+    assert "ГОСТ 9.402-2004" in got
+    assert "ГОСТ 9467-75" in got
+    assert "ГОСТ 5264-80" in got
+    assert not any(re.match(r"^по\s", r, re.I) for r in got)
+    assert "ГОСТ 5264 80-11" not in got
+
+
+def test_gost_spaced_number_normalizes():
+    refs = extract_normative_refs("ГОСТ 5264 80-11")
+    assert any("5264-80" in r["ref"] for r in refs)
+    assert not any("80-11" in r["ref"] for r in refs)
 
 
 def test_gost_27772_drops_truncated_2772():
