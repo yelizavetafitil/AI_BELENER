@@ -1,9 +1,97 @@
+import re
+
 from belener.normative_refs import (
     dedupe_normative_year_variants,
     extract_normative_refs,
+    merge_normative_refs_from_sources,
     merge_page_supplement,
     prune_unconfirmed_variants,
 )
+
+
+def test_ost_34_10_series_spacing():
+    cases = {
+        "34 10 699-97": "34 10.699-97",
+        "34 10699-97": "34 10.699-97",
+        "34 10.700-97": "34 10.700-97",
+    }
+    for raw, expected in cases.items():
+        refs = extract_normative_refs(f"ОСТ {raw}")
+        assert refs, raw
+        assert expected.replace(" ", "") in refs[0]["ref"].replace(" ", ""), f"{raw} -> {refs[0]['ref']}"
+        assert "34.10." not in refs[0]["ref"], f"bad dot: {refs[0]['ref']}"
+
+
+def test_strip_po_before_gost():
+    text = "по ГОСТ 9.402-2004\nпо ГОСТ 9467-75\nГОСТ 5264-80\nТКП 45-2.01-111-2008"
+    refs = extract_normative_refs(text)
+    for r in refs:
+        assert not re.match(r"^по\s", r["ref"], re.I), r["ref"]
+    assert any("9.402-2004" in r["ref"] for r in refs)
+    assert any("9467-75" in r["ref"] for r in refs)
+
+
+def test_gost_27772_drops_truncated_2772():
+    out = merge_normative_refs_from_sources(
+        "С235 GОСТ 27772-2015",
+        "ГОСТ 2772-2015 лист",
+    )
+    gosts = [r["ref"] for r in out if r["kind"] == "ГОСТ" and "277" in r["ref"]]
+    assert any("27772-2015" in r for r in gosts)
+    assert not any(re.match(r".*ГОСТ\s+2772-2015", r, re.I) for r in gosts)
+
+
+def test_gost_one_digit_ocr_pair():
+    from belener.normative_refs import _gost_one_digit_ocr_pair
+
+    assert _gost_one_digit_ocr_pair("27772", "2772")
+    assert not _gost_one_digit_ocr_pair("33259", "3325")
+    assert not _gost_one_digit_ocr_pair("10704", "10705")
+    refs = extract_normative_refs("Г0СТ94.67-75 Электроды")
+    assert any("9467-75" in r["ref"] and "94.67" not in r["ref"] for r in refs)
+
+
+def test_stp_dots_from_spaces():
+    refs = extract_normative_refs("СТП 34 39 201\nСТП 34.17.101")
+    assert any("34.39.201" in r["ref"] for r in refs)
+    assert any("34.17.101" in r["ref"] for r in refs)
+
+
+def test_ost_108_series_dots_restored():
+    cases = {
+        "108275.52-80": "108.275.52-80",
+        "108 367 37-80": "108.367.37-80",
+        "10827552-80": "108.275.52-80",
+        "108632 02-80": "108.632.02-80",
+        "10864301-80": "108.643.01-80",
+        "108.764.01-80": "108.764.01-80",
+        "108275 56-80": "108.275.56-80",
+    }
+    for raw, expected in cases.items():
+        refs = extract_normative_refs(f"ОСТ {raw}")
+        assert refs, raw
+        assert expected.replace(" ", "") in refs[0]["ref"].replace(" ", ""), f"{raw} -> {refs[0]['ref']}"
+
+
+def test_gost_not_parsed_as_ost():
+    text = "ГОСТ 1050-88\nГОСТ 9467-75"
+    refs = extract_normative_refs(text)
+    assert not any(r["kind"] == "ОСТ" for r in refs)
+
+
+def test_ost_zero_cyrillic_ocr():
+    text = "19.0СТ 108275.52-80\n020СТ 108632 02-80"
+    refs = extract_normative_refs(text)
+    ost = [r["ref"] for r in refs if r["kind"] == "ОСТ"]
+    assert any("108.275.52-80" in r.replace(" ", "") for r in ost)
+    assert any("108.632.02-80" in r.replace(" ", "") for r in ost)
+
+
+def test_ref_vote_counts_loosened_ost_ocr():
+    from belener.normative_refs import _ref_vote_count
+
+    src = "020СТ 108632 01-80"
+    assert _ref_vote_count("ОСТ", "ОСТ 108.632.01-80", [src]) >= 1
 
 
 def test_ost_lead_60_from_bolt_not_captured():
@@ -11,7 +99,7 @@ def test_ost_lead_60_from_bolt_not_captured():
     refs = extract_normative_refs(text)
     kinds = [r["ref"] for r in refs if r["kind"] == "ОСТ"]
     assert not any(r.startswith("60 ") for r in kinds)
-    assert any("34.10.699-97" in r.replace(" ", "") for r in kinds)
+    assert any("3410.699-97" in r.replace(" ", "") for r in kinds)
 
 
 def test_ost_space_before_dot_normalized():
@@ -19,7 +107,7 @@ def test_ost_space_before_dot_normalized():
     refs = extract_normative_refs(text)
     ost = [r for r in refs if r["kind"] == "ОСТ"]
     assert ost
-    assert "34.10.700-97" in ost[0]["ref"].replace(" ", "")
+    assert "3410.700-97" in ost[0]["ref"].replace(" ", "")
 
 
 def test_ost_incomplete_36_146_rejected():
@@ -110,6 +198,32 @@ def test_prefers_full_ref_with_gost():
     refs = extract_normative_refs(text)
     gost = [r for r in refs if "10704-91" in r["ref"]]
     assert len(gost) == 1
+
+
+def test_glued_gost_year_with_table_column():
+    text = "57х2,5 ГОСТ 10704-9120| 336 м\nТруб Т В_20 ГОСТ 10705-80"
+    refs = extract_normative_refs(text)
+    refs_str = " ".join(r["ref"] for r in refs)
+    assert "10704-91" in refs_str
+    assert "10705-80" in refs_str
+
+
+def test_stb_from_spec_table_ocr():
+    text = "8 | СТБ 1544-2005\nГОСТ 3634-99"
+    refs = extract_normative_refs(text)
+    assert any(r.get("kind") == "СТБ" and "1544-2005" in r["ref"] for r in refs)
+
+
+def test_stb_bare_number_after_row():
+    text = "8 | 1544-2005\nБетон С 12/15"
+    refs = extract_normative_refs(text)
+    assert any("1544-2005" in r["ref"] for r in refs)
+
+
+def test_stb_ocr_sb_and_paren_glue():
+    text = "8 | СБ 1544-2005\n8 |(151544-2005"
+    refs = extract_normative_refs(text)
+    assert sum(1 for r in refs if "1544-2005" in r["ref"]) >= 1
 
 
 def test_no_hardcoded_gost_replacement():

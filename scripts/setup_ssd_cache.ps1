@@ -30,5 +30,8 @@ if (Test-Path $envFile) {
 }
 
 Write-Host ""
+Write-Host "Start GOST stack (SSD, no vision):"
+Write-Host "  .\scripts\up_gost_stack.ps1"
+Write-Host ""
 Write-Host "Start full stack (SSD + vision):"
 Write-Host "  .\scripts\up_fast_stack.ps1 -PullVision"

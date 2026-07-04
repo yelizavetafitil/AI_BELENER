@@ -16,7 +16,7 @@ import psycopg2
 import psycopg2.extras
 import ollama
 
-from belener.config import model_drawing, model_scan, report_llm_enabled
+from belener.config import model_drawing, model_scan, report_llm_enabled, ensure_upload_temp_dir
 from belener.extract import extract_pdf_path
 from belener.extract_report import extraction_to_markdown
 from belener.scanned import is_scanned_pdf
@@ -183,6 +183,7 @@ SYSTEM_PROMPT_CHAT = (
 
 EXTRACT_DEFAULT_QUESTION = "Извлечь весь текст с листа"
 GOST_DEFAULT_QUESTION = "Проверка ГОСТ на листе"
+DRAWING_PROCESS_STATUS = "Обрабатываю чертеж…"
 EXTRACT_FOLLOWUP_PROMPT = (
     "Ниже — **только** извлечённый с листа текст (OCR/текстовый слой). "
     "Отвечай **строго** по нему на русском. Не придумывай факты.\n\n"
@@ -329,7 +330,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
     validity_date = check_date or date.today()
 
-    yield from _sse_status("Читаю PDF: OCR по тайлам листа, поиск ГОСТ/ОСТ/ТУ…")
+    yield from _sse_status(DRAWING_PROCESS_STATUS)
 
     box: dict = {"result": None, "err": None}
     done = threading.Event()
@@ -344,12 +345,8 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
             done.set()
 
     threading.Thread(target=_run, daemon=True).start()
-    tick = 0
     while not done.wait(timeout=12):
-        yield from _sse_status(
-            ("OCR страницы (Tesseract, плитки)…", "Поиск ГОСТ, ОСТ, СТП, ТУ…")[tick % 2]
-        )
-        tick += 1
+        yield from _sse_status(DRAWING_PROCESS_STATUS)
 
     if box["err"] is not None:
         yield from _sse_error(f"Ошибка: {_ollama_user_message(box['err'])}")
@@ -365,7 +362,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
     stn_checks = []
     if stn_lookup_enabled():
-        yield from _sse_status("Проверка ГОСТ на normy.stn.by…")
+        yield from _sse_status(DRAWING_PROCESS_STATUS)
         try:
             refined, stn_checks = refine_and_check_normative_refs(
                 result.get("normative_refs") or [],
@@ -384,7 +381,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         stn_checks=stn_checks,
         check_date=validity_date,
     )
-    yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
+    yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
 
 
@@ -396,7 +393,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
 
     validity_date = check_date or date.today()
 
-    yield from _sse_status("OCR изображения, поиск ГОСТ/ОСТ/ТУ…")
+    yield from _sse_status(DRAWING_PROCESS_STATUS)
     try:
         result = extract_normatives_from_image_path(path, filename)
     except Exception as e:
@@ -410,7 +407,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
 
     stn_checks = []
     if stn_lookup_enabled():
-        yield from _sse_status("Проверка ГОСТ на normy.stn.by…")
+        yield from _sse_status(DRAWING_PROCESS_STATUS)
         try:
             refined, stn_checks = refine_and_check_normative_refs(
                 result.get("normative_refs") or [],
@@ -427,7 +424,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         stn_checks=stn_checks,
         check_date=validity_date,
     )
-    yield from _chunk_sse_text(f"**Файл:** {filename}\n\n{report}")
+    yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
 
 
@@ -446,7 +443,7 @@ def _skip_extract_followup(question: str) -> bool:
 
 def stream_extract_pdf(path: str, filename: str, question: str, model: str, history=None):
     """Извлечение листа: tile OCR (тот же путь, что для ГОСТ)."""
-    yield from _sse_status("Читаю лист: OCR по тайлам (Tesseract)…")
+    yield from _sse_status(DRAWING_PROCESS_STATUS)
 
     box: dict = {"facts": None, "body": None, "err": None}
     ocr_done = threading.Event()
@@ -476,15 +473,8 @@ def stream_extract_pdf(path: str, filename: str, question: str, model: str, hist
 
     threading.Thread(target=_run_ocr, daemon=True).start()
     threading.Thread(target=_run_format, daemon=True).start()
-    status_msgs = (
-        "OCR по тайлам листа (Tesseract)…",
-        "Сборка текста и нормативов…",
-        "Форматирование читаемого отчёта (ИИ)…",
-    )
-    tick = 0
     while not fmt_done.wait(timeout=12):
-        yield from _sse_status(status_msgs[min(tick, len(status_msgs) - 1)])
-        tick += 1
+        yield from _sse_status(DRAWING_PROCESS_STATUS)
 
     if box["err"] is not None:
         yield from _sse_error(f"Ошибка извлечения: {_ollama_user_message(box['err'])}")
@@ -1038,10 +1028,18 @@ def api_chat(conv_id):
     if file and file.filename:
         ext = os.path.splitext(file.filename)[1].lower()
         file_name = file.filename
-        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        upload_dir = ensure_upload_temp_dir()
+        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, dir=upload_dir)
         tmp_path = tmp.name
         tmp.close()
-        file.save(tmp_path)
+        try:
+            file.save(tmp_path)
+        except OSError as e:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            if getattr(e, "errno", None) == 28:
+                return {"error": "Недостаточно места на диске для загрузки файла. Очистите кэш или освободите место на диске D:."}, 507
+            raise
 
     if not question:
         if tmp_path and ext in (".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"):
@@ -1316,10 +1314,17 @@ def api_detect_file():
         model, reason = suggest_model(ext, "", available)
         return {"type": ext.lstrip("."), "scanned": False, "model": model, "reason": reason}
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, dir=ensure_upload_temp_dir())
     tmp_path = tmp.name
     tmp.close()
-    file.save(tmp_path)
+    try:
+        file.save(tmp_path)
+    except OSError as e:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        if getattr(e, "errno", None) == 28:
+            return {"error": "Недостаточно места на диске для загрузки файла.", "type": "pdf", "scanned": False, "model": MODEL_DEFAULT, "reason": ""}, 507
+        raise
     try:
         is_scanned = is_scanned_pdf(tmp_path) or detect_pdf_type(tmp_path) == "scanned"
         cfg = model_drawing() or model_scan()

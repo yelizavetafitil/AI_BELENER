@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 .env
 .venv/
 backend/.venv/
@@ -9,7 +10,11 @@ frontend/dist/
 *.pdf
 *.png
 !static/**/*.png
+!ico.png
+!name.png
+!back.png
 data/training/crops/
+data/training/yolo_zones/runs/
 data/benchmark/*.md
 terminals/
 .cursor/
@@ -26,3 +31,5 @@ data/training/**/*.cache
 data/training/paddle_rec/finetune/export/
 paddle_logs.txt
 web_logs*.txt
+scan/
+assets/

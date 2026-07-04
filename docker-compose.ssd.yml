@@ -24,6 +24,8 @@ services:
     environment:
       BELENER_SSD_ROOT: /ssd
       PDF_ZONE_CACHE: ${PDF_ZONE_CACHE:-1}
+      TMPDIR: /app/data/tmp
+      BELENER_UPLOAD_TMP: /app/data/tmp
     volumes:
       - ${BELENER_SSD_ROOT:-G:/BelenerCache}/zone_render:/ssd/zone_render
       - ${BELENER_SSD_ROOT:-G:/BelenerCache}/tmp:/ssd/tmp

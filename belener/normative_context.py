@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 
 _FUZZY_GOST = re.compile(r"(?i)g[o0][cсs][tт]|g[o0]st|г[o0][cс][tт]|г[o0]ст")
-_FUZZY_OST = re.compile(r"(?i)(?<![a-zа-яё])o[cс][tт](?![a-zа-яё])|(?<![a-zа-яё])0[cс][tт](?![a-zа-яё])")
+_FUZZY_OST = re.compile(
+    r"(?i)(?<![a-zа-яё])(?:o[cсСC][tтТT]|0[cсСC][tтТT])(?![a-zа-яё])",
+)
 
 _PREFIX_KIND: dict[str, str] = {
     "гost": "ГОСТ",

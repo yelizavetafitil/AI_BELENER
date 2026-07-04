@@ -1,21 +1,24 @@
-# Production: tile OCR + локальная текстовая модель для отчёта.
-#   docker compose -f docker-compose.yml -f docker-compose.fast.yml up -d --force-recreate web
-#   docker compose exec ollama ollama pull gemma3:4b
+# Проверка ГОСТ на листе (tile OCR + STN, без LLM-отчёта).
+#   docker compose -f docker-compose.yml -f docker-compose.fast.yml up -d --build
 
 services:
   web:
     environment:
+      PDF_LOCAL_ONLY: ${PDF_LOCAL_ONLY:-1}
+      PDF_REPORT_LLM: ${PDF_REPORT_LLM:-0}
       PDF_TILE_OCR_DPI: ${PDF_TILE_OCR_DPI:-320}
-      PDF_TILE_OCR_TIME_BUDGET: ${PDF_TILE_OCR_TIME_BUDGET:-150}
-      PDF_TILE_OCR_OVERLAP: ${PDF_TILE_OCR_OVERLAP:-0.12}
+      PDF_TILE_OCR_TIME_BUDGET: ${PDF_TILE_OCR_TIME_BUDGET:-240}
+      PDF_TILE_OCR_OVERLAP: ${PDF_TILE_OCR_OVERLAP:-0.15}
       PDF_TILE_OCR_PSM: ${PDF_TILE_OCR_PSM:-6}
+      PDF_TILE_OCR_MAX_PAGES: ${PDF_TILE_OCR_MAX_PAGES:-0}
       PDF_TILE_TEXT_SKIP_OCR_MIN: ${PDF_TILE_TEXT_SKIP_OCR_MIN:-100}
-      PDF_GOST_CHECK_BUDGET: ${PDF_GOST_CHECK_BUDGET:-180}
+      PDF_OCR_DESKEW: ${PDF_OCR_DESKEW:-0}
+      PDF_TABLE_CLAHE: ${PDF_TABLE_CLAHE:-0}
+      PDF_GOST_CHECK_BUDGET: ${PDF_GOST_CHECK_BUDGET:-210}
+      PDF_GOST_EXTRA_PER_PAGE_SEC: ${PDF_GOST_EXTRA_PER_PAGE_SEC:-18}
       PDF_STN_BATCH_BUDGET: ${PDF_STN_BATCH_BUDGET:-60}
       PDF_NORMATIVE_SKIP_TILES_MIN_REFS: ${PDF_NORMATIVE_SKIP_TILES_MIN_REFS:-0}
-      PDF_REPORT_LLM: ${PDF_REPORT_LLM:-1}
-      PDF_REPORT_LLM_MODEL: ${PDF_REPORT_LLM_MODEL:-qwen2.5vl:7b}
-      PDF_REPORT_LLM_TIMEOUT: ${PDF_REPORT_LLM_TIMEOUT:-180}
+      PDF_NORMATIVE_SUPPLEMENT_SEC: ${PDF_NORMATIVE_SUPPLEMENT_SEC:-22}
       PDF_STN_LOOKUP: ${PDF_STN_LOOKUP:-1}
       PDF_STN_BASE_URL: ${PDF_STN_BASE_URL:-https://normy.stn.by}
       PDF_STN_LOGIN: ${PDF_STN_LOGIN:-}
@@ -25,4 +28,3 @@ services:
       PDF_STN_MAX_QUERIES: ${PDF_STN_MAX_QUERIES:-1}
       PDF_STN_OCR_VARIANTS: ${PDF_STN_OCR_VARIANTS:-0}
       PDF_STN_MAX_REFS: ${PDF_STN_MAX_REFS:-20}
-      MODEL_DEFAULT: ${MODEL_DEFAULT:-qwen2.5vl:7b}

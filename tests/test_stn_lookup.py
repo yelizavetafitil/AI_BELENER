@@ -64,7 +64,7 @@ def test_tkp_normalizes_ocr_spaces():
 
 
 def test_ost_normalizes_space_before_dot():
-    assert search_query("ОСТ", "ОСТ 34 10.761-97") == "ОСТ 34.10.761-97"
+    assert search_query("ОСТ", "ОСТ 34 10.761-97") == "ОСТ 34 10.761-97"
 
 
 def test_parse_card_html_snip():

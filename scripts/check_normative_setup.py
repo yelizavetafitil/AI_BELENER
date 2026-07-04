@@ -27,10 +27,11 @@ RECOMMENDED = {
     "PDF_STN_LOOKUP": "1",
     "PDF_STN_BASE_URL": "https://normy.stn.by",
     "PDF_TILE_OCR_DPI": "320",
-    "PDF_TILE_OCR_TIME_BUDGET": "150",
+    "PDF_TILE_OCR_TIME_BUDGET": "180",
     "PDF_NORMATIVE_SKIP_TILES_MIN_REFS": "0",
     "PDF_STN_PARALLEL": "1",
     "PDF_STN_TIMEOUT": "12-15",
+    "PDF_GOST_CHECK_BUDGET": "210",
 }
 
 

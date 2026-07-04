@@ -257,10 +257,9 @@ function clearFeed() {
   welcome.id = 'empty-state';
   welcome.innerHTML = `
     <div class="welcome-title">Проверка ГОСТ на чертеже</div>
-    <div class="welcome-sub">Загрузите PDF или скан — найдём все <strong>ГОСТ</strong> и проверим актуальность на normy.stn.by.</div>
+    <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все ГОСТ и проверит актуальность на normy.stn.by. Дату проверки можно изменить ниже (по умолчанию — сегодня). Обработка одного сканированного листа занимает около 3 минут.</div>
     <div class="welcome-chips">
       <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
-      <button type="button" class="chip" onclick="setPrompt('Перечень ГОСТ с контекстом')">ГОСТ с контекстом</button>
     </div>`;
   inner.appendChild(welcome);
 }

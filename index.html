@@ -80,11 +80,9 @@
 
         <div class="welcome" id="empty-state">
           <div class="welcome-title">Проверка ГОСТ на чертеже</div>
-          <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все <strong>ГОСТ</strong>, исправит OCR-ошибки и проверит актуальность на <strong>normy.stn.by</strong>. Дату проверки можно изменить ниже (по умолчанию — сегодня).</div>
+          <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все ГОСТ и проверит актуальность на normy.stn.by. Дату проверки можно изменить ниже (по умолчанию — сегодня). Обработка одного сканированного листа занимает около 3 минут.</div>
           <div class="welcome-chips">
             <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
-            <button type="button" class="chip" onclick="setPrompt('Перечень ГОСТ с контекстом')">ГОСТ с контекстом</button>
-            <button type="button" class="chip" onclick="setPrompt('Извлечь весь текст с листа')">Весь текст листа</button>
           </div>
         </div>
 
@@ -137,6 +135,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

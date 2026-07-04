@@ -29,51 +29,71 @@ def _gray_to_pil(gray: "np.ndarray") -> Image.Image:
     return Image.fromarray(gray)
 
 
+def _segment_xyxy(seg) -> tuple[int, int, int, int] | None:
+    """HoughLinesP: (1,4) или (4,) — нормализуем к x1,y1,x2,y2."""
+    if np is None:
+        return None
+    try:
+        flat = np.asarray(seg, dtype=np.int32).reshape(-1)
+    except (ValueError, TypeError):
+        return None
+    if flat.size < 4:
+        return None
+    return int(flat[0]), int(flat[1]), int(flat[2]), int(flat[3])
+
+
 def deskew_image(img: Image.Image, *, max_angle: float = 8.0) -> Image.Image:
     """Выпрямление листа по доминирующим линиям (сканы с телефона / кривой подшив)."""
     if not deskew_available():
         return img
-    gray = _pil_to_gray(img)
-    h, w = gray.shape
-    if h < 80 or w < 80:
+    try:
+        gray = _pil_to_gray(img)
+        h, w = gray.shape
+        if h < 120 or w < 120:
+            return img
+        _, bin_img = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        edges = cv2.Canny(bin_img, 50, 150, apertureSize=3)
+        lines = cv2.HoughLinesP(
+            edges,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=max(80, int(min(h, w) * 0.08)),
+            minLineLength=int(min(h, w) * 0.25),
+            maxLineGap=int(min(h, w) * 0.04),
+        )
+        if lines is None or len(lines) < 4:
+            return img
+        angles: list[float] = []
+        for seg in lines[:120]:
+            coords = _segment_xyxy(seg)
+            if coords is None:
+                continue
+            x1, y1, x2, y2 = coords
+            dx, dy = x2 - x1, y2 - y1
+            if abs(dx) < 8 and abs(dy) < 8:
+                continue
+            ang = np.degrees(np.arctan2(dy, dx))
+            if abs(ang) < max_angle:
+                angles.append(ang)
+        if len(angles) < 4:
+            return img
+        median = float(np.median(angles))
+        if abs(median) < 0.15:
+            return img
+        center = (w // 2, h // 2)
+        mat = cv2.getRotationMatrix2D(center, median, 1.0)
+        rotated = cv2.warpAffine(
+            gray,
+            mat,
+            (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        log.debug("deskew angle=%.2f", median)
+        return _gray_to_pil(rotated)
+    except Exception:
+        log.debug("deskew skipped", exc_info=True)
         return img
-    _, bin_img = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    edges = cv2.Canny(bin_img, 50, 150, apertureSize=3)
-    lines = cv2.HoughLinesP(
-        edges,
-        rho=1,
-        theta=np.pi / 180,
-        threshold=max(80, int(min(h, w) * 0.08)),
-        minLineLength=int(min(h, w) * 0.25),
-        maxLineGap=int(min(h, w) * 0.04),
-    )
-    if lines is None or len(lines) < 4:
-        return img
-    angles: list[float] = []
-    for seg in lines[:120]:
-        x1, y1, x2, y2 = [int(v) for v in seg[0]]
-        dx, dy = x2 - x1, y2 - y1
-        if abs(dx) < 8 and abs(dy) < 8:
-            continue
-        ang = np.degrees(np.arctan2(dy, dx))
-        if abs(ang) < max_angle:
-            angles.append(ang)
-    if len(angles) < 4:
-        return img
-    median = float(np.median(angles))
-    if abs(median) < 0.15:
-        return img
-    center = (w // 2, h // 2)
-    mat = cv2.getRotationMatrix2D(center, median, 1.0)
-    rotated = cv2.warpAffine(
-        gray,
-        mat,
-        (w, h),
-        flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_REPLICATE,
-    )
-    log.debug("deskew angle=%.2f", median)
-    return _gray_to_pil(rotated)
 
 
 def denoise_image(img: Image.Image) -> Image.Image:

@@ -13,7 +13,6 @@ log = logging.getLogger("belener.tile_ocr")
 TILE_COLS = 4
 TILE_ROWS = 2
 TILE_OCR_MAX_SIDE = 2400
-TILE_OCR_PSM = (6, 3)
 PIPELINE = "tile_ocr"
 
 
@@ -45,6 +44,44 @@ def page_tile_jobs(
     return jobs
 
 
+def _tile_row_col(zone: str) -> tuple[int, int]:
+    parts = (zone or "").split("_")
+    if len(parts) >= 3 and parts[0] == "tile":
+        try:
+            return int(parts[1]), int(parts[2])
+        except ValueError:
+            pass
+    return 0, 0
+
+
+def page_tile_jobs_normative(
+    page_rect: fitz.Rect,
+    *,
+    cols: int = TILE_COLS,
+    rows: int = TILE_ROWS,
+    overlap_frac: float = 0.12,
+) -> list[tuple[str, fitz.Rect]]:
+    """Сетка с приоритетом нижнего ряда и правых колонок (спецификация, ТТ)."""
+    jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap_frac)
+    return sorted(jobs, key=lambda item: _tile_row_col(item[0]), reverse=True)
+
+
+def page_supplement_jobs(page_rect: fitz.Rect) -> list[tuple[str, fitz.Rect]]:
+    """Доп. зона на широких листах: спецификация/ТТ справа снизу (мелкий шрифт)."""
+    pr = page_rect
+    if pr.is_empty or pr.width / max(pr.height, 1.0) < 1.6:
+        return []
+    rect = fitz.Rect(
+        pr.x0 + pr.width * 0.70,
+        pr.y0 + pr.height * 0.55,
+        pr.x1,
+        pr.y1,
+    ) & pr
+    if rect.is_empty or rect.width < 80 or rect.height < 80:
+        return []
+    return [("spec_br", rect)]
+
+
 def _scale_image_for_ocr(img, max_side: int):
     from PIL import Image
 
@@ -64,7 +101,8 @@ def _pdf_text_in_rect(page: fitz.Page, rect: fitz.Rect) -> str:
         return ""
 
 
-def _ocr_tile_tesseract(img, *, dpi: int, deadline: float) -> str:
+def _ocr_tile_tesseract(img, *, dpi: int, deadline: float, tile_max_sec: float, zone: str = "") -> str:
+    from belener.config import tile_ocr_psm_modes
     from belener.ocr import (
         _merge_ocr_passes,
         _tesseract_cli,
@@ -75,11 +113,18 @@ def _ocr_tile_tesseract(img, *, dpi: int, deadline: float) -> str:
     if time.monotonic() >= deadline:
         return ""
     lang = ocr_lang()
+    modes = list(tile_ocr_psm_modes())
+    if (zone or "").startswith("spec_"):
+        modes = list(dict.fromkeys(modes + [3, 11]))
     parts: list[str] = []
-    for psm in TILE_OCR_PSM:
+    for psm in modes:
         if time.monotonic() >= deadline:
             break
-        t = _tesseract_cli(img, lang=lang, psm=psm, dpi=dpi)
+        left = deadline - time.monotonic()
+        if left < 0.5:
+            break
+        tout = min(left, tile_max_sec, 60.0)
+        t = _tesseract_cli(img, lang=lang, psm=psm, dpi=dpi, timeout=tout, zone="tile")
         if t:
             parts.append(t)
     if not parts:
@@ -95,7 +140,9 @@ def ocr_tile(
     zone: str,
     dpi: int,
     deadline: float,
+    tile_max_sec: float,
 ) -> str:
+    from belener.config import tile_text_skip_ocr_min_chars
     from belener.ocr import _render_clip
 
     if rect is None or rect.is_empty or time.monotonic() >= deadline:
@@ -111,6 +158,9 @@ def ocr_tile(
     if time.monotonic() >= deadline:
         return "\n\n".join(parts)
 
+    if layer and len(layer) >= tile_text_skip_ocr_min_chars():
+        return "\n\n".join(parts)
+
     ocr = ""
     img = _render_clip(doc, page_index, rect, dpi=dpi)
     if img is not None:
@@ -118,6 +168,8 @@ def ocr_tile(
             _scale_image_for_ocr(img, TILE_OCR_MAX_SIDE),
             dpi=min(dpi, 280),
             deadline=deadline,
+            tile_max_sec=tile_max_sec,
+            zone=zone,
         )
 
     if ocr:
@@ -129,6 +181,40 @@ def ocr_tile(
     return out
 
 
+def _ocr_supplement_tiles(
+    doc: fitz.Document,
+    page_index: int,
+    *,
+    dpi: int,
+    deadline: float,
+    tile_max_sec: float,
+) -> list[str]:
+    from belener.config import normative_supplement_budget_sec
+
+    page = doc[page_index]
+    out: list[str] = []
+    for key, rect in page_supplement_jobs(page.rect):
+        left = deadline - time.monotonic()
+        if left < 8.0:
+            log.warning("tile OCR: supplement skipped page=%s left=%.1fs", page_index + 1, left)
+            break
+        budget = min(normative_supplement_budget_sec(), tile_max_sec, max(12.0, left - 1.0))
+        zdead = min(deadline, time.monotonic() + budget)
+        sup_dpi = min(int(dpi * 1.15), 400)
+        text = ocr_tile(
+            doc,
+            page_index,
+            rect,
+            zone=key,
+            dpi=sup_dpi,
+            deadline=zdead,
+            tile_max_sec=max(12.0, budget - 0.5),
+        )
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
 def extract_page_tiles(
     doc: fitz.Document,
     page_index: int,
@@ -137,21 +223,41 @@ def extract_page_tiles(
     deadline: float,
     tile_max_sec: float,
     overlap_frac: float,
-) -> list[str]:
+    cols: int = TILE_COLS,
+    rows: int = TILE_ROWS,
+) -> tuple[list[str], int, int]:
     page = doc[page_index]
+    supplements = page_supplement_jobs(page.rect)
+    jobs = (
+        page_tile_jobs_normative(page.rect, cols=cols, rows=rows, overlap_frac=overlap_frac)
+        if supplements
+        else page_tile_jobs(page.rect, cols=cols, rows=rows, overlap_frac=overlap_frac)
+    )
+    expected = len(jobs) + len(supplements)
     sources: list[str] = []
+    attempted = 0
 
-    for key, rect in page_tile_jobs(page.rect, overlap_frac=overlap_frac):
+    for text in _ocr_supplement_tiles(
+        doc, page_index, dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec
+    ):
+        attempted += 1
+        if text not in sources:
+            sources.append(text)
+
+    for key, rect in jobs:
         left = deadline - time.monotonic()
         if left < 2:
-            log.warning("tile OCR: budget stop page=%s", page_index + 1)
+            log.warning("tile OCR: budget stop page=%s at %s/%s", page_index + 1, attempted, expected)
             break
-        zdead = min(deadline, time.monotonic() + min(tile_max_sec, left - 1))
-        text = ocr_tile(doc, page_index, rect, zone=key, dpi=dpi, deadline=zdead)
+        attempted += 1
+        remaining = expected - attempted + 1
+        per_tile = max(15.0, min(60.0, (left - 1.5) / max(1, remaining)))
+        zdead = min(deadline, time.monotonic() + min(tile_max_sec, per_tile))
+        text = ocr_tile(doc, page_index, rect, zone=key, dpi=dpi, deadline=zdead, tile_max_sec=per_tile)
         if text and text not in sources:
             sources.append(text)
 
-    return sources
+    return sources, attempted, expected
 
 
 def merge_page_text(tile_chunks: list[str]) -> str:
@@ -165,44 +271,79 @@ def extract_document_tiles(
     max_pages: int | None = None,
 ) -> dict[str, Any]:
     """OCR документа по тайлам в рамках общего бюджета времени."""
-    from belener.config import tile_ocr_dpi, tile_ocr_overlap_frac, tile_ocr_time_budget_sec
+    from belener.config import (
+        normative_ocr_budget_sec,
+        tile_grid_for_page_count,
+        tile_ocr_dpi_for_pages,
+        tile_ocr_max_pages,
+        tile_ocr_overlap_frac,
+    )
 
     t0 = time.monotonic()
-    budget = tile_ocr_time_budget_sec()
+    total_pages = doc.page_count
+    cap = tile_ocr_max_pages() if max_pages is None else max_pages
+    pages_to_scan = min(total_pages, cap) if cap and cap > 0 else total_pages
+
+    budget = normative_ocr_budget_sec(pages_to_scan)
     deadline = t0 + budget
-    dpi = tile_ocr_dpi()
+    dpi = tile_ocr_dpi_for_pages(pages_to_scan)
     overlap = tile_ocr_overlap_frac()
-    pages = min(doc.page_count, max_pages if max_pages is not None else 3)
-    tiles_per_page = TILE_COLS * TILE_ROWS
-    tile_max = max(8.0, min(16.0, (budget - 10) / max(1, pages * tiles_per_page)))
+    cols, rows = tile_grid_for_page_count(pages_to_scan)
+    tiles_per_page = cols * rows
+    tile_max = max(15.0, min(60.0, (budget - 10) / max(1, pages_to_scan * tiles_per_page)))
 
     page_tiles: list[list[str]] = []
     all_sources: list[str] = []
+    pages_processed = 0
+    tiles_expected = 0
+    tiles_done = 0
+    budget_exhausted = False
 
-    for i in range(pages):
-        if deadline - time.monotonic() < 6:
+    for i in range(pages_to_scan):
+        if deadline - time.monotonic() < 4:
+            budget_exhausted = True
+            log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
             break
-        chunks = extract_page_tiles(
+        page_rect = doc[i].rect
+        tiles_expected += len(page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap))
+        tiles_expected += len(page_supplement_jobs(page_rect))
+        chunks, page_done, page_expected = extract_page_tiles(
             doc,
             i,
             dpi=dpi,
             deadline=deadline,
             tile_max_sec=tile_max,
             overlap_frac=overlap,
+            cols=cols,
+            rows=rows,
         )
+        tiles_done += page_done
+        pages_processed += 1
         page_tiles.append(chunks)
         for s in chunks:
             if s and s not in all_sources:
                 all_sources.append(s)
+        if page_done < page_expected:
+            budget_exhausted = True
+            log.warning("tile OCR: partial page=%s tiles=%s/%s", i + 1, page_done, page_expected)
+            break
+        if deadline - time.monotonic() < 4:
+            budget_exhausted = True
+            break
 
     page_texts = [merge_page_text(chunks) for chunks in page_tiles]
     elapsed = time.monotonic() - t0
     log.info(
-        "tile OCR done %.1fs pages=%s tiles=%s chars=%s (%s)",
+        "tile OCR done %.1fs pages=%s/%s tiles=%s/%s chars=%s grid=%sx%s dpi=%s (%s)",
         elapsed,
-        len(page_tiles),
-        len(all_sources),
+        pages_processed,
+        total_pages,
+        tiles_done,
+        tiles_expected,
         sum(len(t) for t in page_texts),
+        cols,
+        rows,
+        dpi,
         filename,
     )
     return {
@@ -211,8 +352,16 @@ def extract_document_tiles(
         "all_sources": all_sources,
         "elapsed_sec": elapsed,
         "tiles_count": len(all_sources),
+        "tiles_expected": tiles_expected,
+        "tiles_done": tiles_done,
         "dpi": dpi,
         "budget_sec": budget,
+        "pages_processed": pages_processed,
+        "pages_total": total_pages,
+        "pages_planned": pages_to_scan,
+        "budget_exhausted": budget_exhausted,
+        "tile_cols": cols,
+        "tile_rows": rows,
     }
 
 

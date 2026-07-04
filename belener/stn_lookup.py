@@ -166,9 +166,13 @@ def _sanitize_stn_ref(kind: str, ref: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def _normalize_stn_number(num: str) -> str:
+def _normalize_stn_number(num: str, kind: str = "") -> str:
     """Номер как на normy.stn.by: 45-4.03-267-2012, 34.10.761-97."""
+    from belener.normative_refs import format_ost_number
+
     s = _clean_stn_query(num)
+    if (kind or "").strip().casefold() in ("ост", "oct", "ost"):
+        return format_ost_number(s).strip(" .-")
     prev = None
     while prev != s:
         prev = s
@@ -186,7 +190,7 @@ def search_query(kind: str, ref: str) -> str:
         ref_s,
     )
     if m:
-        num = _normalize_stn_number(m.group(1))
+        num = _normalize_stn_number(m.group(1), kind)
         return _clean_stn_query(f"{kind} {num}")
     if ref_s.casefold().startswith(kind.casefold()):
         return _clean_stn_query(ref_s)
@@ -196,7 +200,7 @@ def search_query(kind: str, ref: str) -> str:
 def _extract_number_part(kind: str, ref: str) -> str:
     q = search_query(kind, ref)
     m = re.search(r"([\d][\d\s.\-–—]+(?:-\d{2,4})?)", q)
-    return _normalize_stn_number(m.group(1)) if m else ""
+    return _normalize_stn_number(m.group(1), kind) if m else ""
 
 
 def _core_digits(kind: str, ref: str) -> str:
@@ -272,7 +276,7 @@ def _iter_ocr_digit_variants(kind: str, ref: str, *, limit: int = 20) -> list[st
         for src, alt in _OCR_PRIORITY_SWAPS:
             if ch != src:
                 continue
-            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :])):
+            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :], kind)):
                 return out
     for i, ch in enumerate(num):
         if not ch.isdigit():
@@ -280,7 +284,7 @@ def _iter_ocr_digit_variants(kind: str, ref: str, *, limit: int = 20) -> list[st
         for alt in _OCR_DIGIT_SWAPS.get(ch, ""):
             if len(alt) != 1 or alt == ch:
                 continue
-            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :])):
+            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :], kind)):
                 return out
     for i, ch in enumerate(num):
         if not ch.isdigit():
@@ -288,7 +292,7 @@ def _iter_ocr_digit_variants(kind: str, ref: str, *, limit: int = 20) -> list[st
         for alt in _OCR_DIGIT_SWAPS.get(ch, ""):
             if len(alt) == 1 or alt == ch:
                 continue
-            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :])):
+            if _push_variant(_normalize_stn_number(num[:i] + alt + num[i + 1 :], kind)):
                 return out
     return out
 

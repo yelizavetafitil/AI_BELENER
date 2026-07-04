@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 from pathlib import Path
 
 import fitz
@@ -79,5 +80,41 @@ def write_png(key: str, data: bytes) -> None:
     path = zone_cache_dir() / f"{key}.png"
     try:
         path.write_bytes(data)
-    except OSError:
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 28:
+            freed = prune_zone_cache(keep_newest=40)
+            if freed:
+                log.warning("zone cache full — pruned %s files, retry write", freed)
+                try:
+                    path.write_bytes(data)
+                    return
+                except OSError:
+                    pass
         log.debug("zone cache write failed %s", path, exc_info=True)
+
+
+def prune_zone_cache(*, keep_newest: int = 80) -> int:
+    """Удалить старые PNG из кэша зон (при переполнении /ssd)."""
+    if not zone_cache_enabled():
+        return 0
+    cache = zone_cache_dir()
+    try:
+        files = sorted(cache.glob("*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return 0
+    removed = 0
+    for path in files[keep_newest:]:
+        try:
+            path.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def zone_cache_free_mb() -> float | None:
+    try:
+        usage = shutil.disk_usage(zone_cache_dir())
+        return usage.free / (1024 * 1024)
+    except OSError:
+        return None

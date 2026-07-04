@@ -148,11 +148,15 @@ def _is_table_zone(zone: str) -> bool:
     return z.startswith(("spec_", "legend", "tables_block", "explication", "table"))
 
 
+def _is_tile_zone(zone: str) -> bool:
+    return (zone or "").casefold().startswith("tile")
+
+
 def _preprocess_image(img: Image.Image, *, zone: str = "") -> Image.Image:
     from belener.config import ocr_deskew_enabled, table_clahe_enabled
     from belener.image_preprocess import deskew_image
 
-    if ocr_deskew_enabled():
+    if ocr_deskew_enabled() and not _is_tile_zone(zone):
         img = deskew_image(img)
     if table_clahe_enabled() and _is_table_zone(zone):
         from belener.table_preprocess import preprocess_table_image
@@ -247,7 +251,15 @@ def _render_clip(doc: fitz.Document, page_index: int, clip: fitz.Rect, dpi: int)
         return None
 
 
-def _tesseract_cli(img: Image.Image, *, lang: str, psm: int, dpi: int, zone: str = "") -> str:
+def _tesseract_cli(
+    img: Image.Image,
+    *,
+    lang: str,
+    psm: int,
+    dpi: int,
+    zone: str = "",
+    timeout: float | None = None,
+) -> str:
     img = _preprocess_image(img, zone=zone)
     with subprocess.Popen(
         [
@@ -273,8 +285,9 @@ def _tesseract_cli(img: Image.Image, *, lang: str, psm: int, dpi: int, zone: str
         assert proc.stdin is not None
         buf = io.BytesIO()
         img.save(buf, format="PNG")
+        tout = ocr_timeout_sec() if timeout is None else max(1, int(timeout))
         try:
-            out, _ = proc.communicate(buf.getvalue(), timeout=ocr_timeout_sec())
+            out, _ = proc.communicate(buf.getvalue(), timeout=tout)
         except subprocess.TimeoutExpired:
             proc.kill()
             return ""

@@ -1,59 +1,118 @@
-# AI_BELENER
+# БелнипиAI — проверка ГОСТ на чертеже
 
-Локальное веб-приложение для чтения инженерных чертежей (PDF): OCR, таблицы перечня/легенды, основная надпись. **Без отправки чертежей в облако** при локальном режиме.
+Локальное веб-приложение: загрузите PDF или скан листа — система найдёт **ГОСТ, ОСТ, СТП, ТУ, СТБ** и проверит актуальность на [normy.stn.by](https://normy.stn.by).
 
-## Рекомендуемый старт (Windows / AMD, без NVIDIA)
+Чертежи **не отправляются в облако**: OCR выполняется в контейнере (Tesseract). На STN уходят только **коды** нормативных документов.
 
-**Точный вывод** (5 этапов: эталоны, зоны, Surya, парсер, без vision): [docs/ACCURACY_PIPELINE.md](docs/ACCURACY_PIPELINE.md)
+## Требования
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / macOS) или Docker Engine + Compose v2 (Linux)
+- 8 ГБ RAM минимум (рекомендуется 12 ГБ)
+- Свободный порт **8090**
+
+## Быстрый старт (клон → Docker → тест)
+
+### Windows (PowerShell)
 
 ```powershell
+git clone https://github.com/yelizavetafitil/AI_BELENER.git
 cd AI_BELENER
-copy .env.accuracy.example .env
-docker compose -f docker-compose.yml -f docker-compose.surya.yml --profile surya up -d --build
-python scripts/check_accuracy_setup.py
+Copy-Item .env.example .env
+# опционально: учётная запись ИПС для проверки актуальности на normy.stn.by
+# notepad .env
+.\scripts\up_gost_stack.ps1
 ```
 
-Альтернатива: [`.env.surya.example`](.env.surya.example) — то же + Surya, см. [LOCAL_OCR_PIPELINE.md](docs/LOCAL_OCR_PIPELINE.md)
+Скрипт создаёт `G:\BelenerCache` (кэш OCR-тайлов на SSD) и поднимает стек. Если диска `G:` нет — используйте только `docker-compose.fast.yml` (см. Linux ниже).
 
-Проверка корпуса PDF: `docker compose exec web python scripts/validate_faithful.py --dir /workspace`
-
-## Быстрый старт (Linux + DeepSeek-OCR, GPU)
+### Linux / macOS
 
 ```bash
 git clone https://github.com/yelizavetafitil/AI_BELENER.git
 cd AI_BELENER
-cp .env.deepseek.example .env
-# GPU: поднять vLLM DeepSeek-OCR (см. docs/DEPLOY_LINUX_DEEPSEEK.md)
-docker compose -f docker-compose.yml -f docker-compose.deepseek.yml --profile deepseek up -d --build
+cp .env.example .env
+chmod +x scripts/up_gost_stack.sh
+./scripts/up_gost_stack.sh
 ```
 
-- С нуля (все команды): [docs/INSTALL_UBUNTU_FROM_ZERO.md](docs/INSTALL_UBUNTU_FROM_ZERO.md)  
-- Кратко: [docs/DEPLOY_LINUX_DEEPSEEK.md](docs/DEPLOY_LINUX_DEEPSEEK.md)
+### Проверка
 
-Или: `bash scripts/setup-linux-deepseek.sh`
-
-## Запуск без GPU (только Tesseract)
+1. Откройте **http://localhost:8090**
+2. Прикрепите PDF чертежа
+3. Нажмите «Все ГОСТ на листе» или отправьте без текста (запрос подставится автоматически)
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
+# smoke: настройки и тесты внутри контейнера
+docker compose exec web python scripts/check_normative_setup.py
+docker compose exec web python -m pytest tests/ -q
+
+# bench на PDF из папки scan/ (положите файл локально, папка не в git)
+docker compose exec web python scripts/bench_normative_pdfs.py /app/scan/your_drawing.pdf
 ```
 
-Веб-интерфейс: http://localhost:8090
+**STN без логина:** список нормативов с листа работает; таблица актуальности на normy.stn.by — только при заполненных `PDF_STN_LOGIN` и `PDF_STN_PASSWORD` в `.env`.
+
+## Настройка `.env`
+
+| Переменная | Назначение |
+|------------|------------|
+| `WEB_PORT` | Порт веб-интерфейса (по умолчанию 8090) |
+| `PDF_STN_LOGIN` / `PDF_STN_PASSWORD` | Учётная запись ИПС normy.stn.by (для проверки актуальности) |
+| `PDF_STN_LOOKUP` | `1` — проверять на STN, `0` — только список с листа |
+| `PDF_TILE_OCR_DPI` | Качество OCR (320 — баланс скорость/точность) |
+| `PDF_GOST_CHECK_BUDGET` | Общий лимит OCR + STN (сек.) на один запрос |
+| `PDF_GOST_EXTRA_PER_PAGE_SEC` | Доп. секунды за каждый лист после первого (многостраничные PDF) |
+| `PDF_TILE_OCR_MAX_PAGES` | `0` — все листы; иначе лимит листов |
+| `BELENER_SSD_ROOT` | Путь к кэшу на SSD (по умолчанию `G:/BelenerCache`) |
+| `PDF_ZONE_CACHE` | `1` — кэш PNG-тайлов на SSD между запусками |
+
+После изменения `.env`:
+
+```powershell
+.\scripts\up_gost_stack.ps1 -Recreate -NoBuild
+```
+
+## Полезные команды
+
+```bash
+# Логи
+docker compose logs -f web
+
+# Остановить
+docker compose down
+
+# Остановить и удалить базу (все чаты)
+docker compose down -v
+
+# Очистить только чаты, не трогая контейнеры
+docker compose exec db psql -U belener -d belnipiai -c "TRUNCATE messages, conversations CASCADE;"
+
+# Проверка настроек
+docker compose exec web python scripts/check_normative_setup.py
+
+# Тесты
+docker compose exec web python -m pytest tests/test_normative_refs.py tests/test_stn_lookup.py -q
+```
+
+## Что внутри
+
+| Путь | Описание |
+|------|----------|
+| `app.py` | Веб-сервер и API |
+| `belener/` | OCR, извлечение ГОСТ, проверка STN |
+| `static/`, `index.html` | Интерфейс |
+| `docker-compose.yml` | Базовый стек (web + PostgreSQL) |
+| `docker-compose.fast.yml` | Профиль «Проверка ГОСТ на листе» |
+| `data/training/` | Данные для дообучения моделей (для ГОСТ **не нужны**) |
+| `docs/` | Расширенные сценарии (Surya, DeepSeek, полный разбор чертежа) |
 
 ## Приватность
 
-| Переменная | Описание |
-|------------|----------|
-| `PDF_LOCAL_ONLY=1` | Vision и LLM-отчёт выключены |
-| `PDF_REPORT_FAITHFUL=1` | Только OCR/парсер |
-| `PDF_OCR_ENGINE=deepseek` | Локальный DeepSeek-OCR |
-| `PDF_VISION_TABLES=0` | Vision не «додумывает» таблицы |
+- `PDF_LOCAL_ONLY=1` — без облачных LLM и vision
+- `PDF_REPORT_LLM=0` — отчёт только из OCR и парсера
+- На normy.stn.by передаются коды документов (ГОСТ 10704-91 и т.п.), не изображения чертежа
+- **Номера ГОСТ не подставляются** из «ожидаемого списка»: в отчёт попадает только то, что прочитано с листа; спорные OCR-варианты разрешаются голосованием по тайлам, без таблицы замен
 
-См. `.env.deepseek.example`.
+## Расширенные режимы
 
-## Структура
-
-- `belener/` — пайплайн извлечения
-- `services/deepseek_ocr/` — адаптер API DeepSeek-OCR
-- `docker-compose.deepseek.yml` — профиль `deepseek`
+Полный разбор чертежа, GPU-OCR и другие профили — см. каталог `docs/` и файлы `docker-compose.*.yml`, `.env.*.example`.

@@ -54,11 +54,30 @@ def normative_refs_to_markdown(
     stn_checks: list | None = None,
     check_date: date | None = None,
     stn_error: str = "",
+    page_count: int = 0,
+    pages_processed: int = 0,
+    budget_exhausted: bool = False,
 ) -> str:
     lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
     if filename:
         lines.append(f"**Файл:** {filename}")
+    if page_count > 1:
+        if filename:
+            lines.append("")
+        proc = pages_processed or page_count
+        note = f"**Листов в файле:** {page_count}"
+        if proc < page_count:
+            note += f" · **обработано:** {proc}"
+        if budget_exhausted:
+            note += " · *не все листы успели прочитаться*"
+        lines.append(note)
+    elif budget_exhausted:
+        if filename:
+            lines.append("")
+        lines.append("*Не все участки листа успели прочитаться — список может быть неполным.*")
     if check_date:
+        if filename or page_count > 1 or budget_exhausted:
+            lines.append("")
         lines.append(f"**Дата проверки актуальности:** {check_date.strftime('%d.%m.%Y')}")
     lines.append("")
 
@@ -115,4 +134,7 @@ def normative_result_to_markdown(
         stn_checks=checks,
         check_date=check_date,
         stn_error=str(result.get("stn_error") or ""),
+        page_count=int(result.get("page_count") or 0),
+        pages_processed=int(result.get("pages_processed") or 0),
+        budget_exhausted=bool(result.get("budget_exhausted")),
     )

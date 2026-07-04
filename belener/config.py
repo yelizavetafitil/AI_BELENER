@@ -3,7 +3,28 @@
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 from pathlib import Path
+
+
+def ensure_upload_temp_dir() -> str:
+    """Каталог для загруженных файлов — не переполненный том /ssd/tmp."""
+    explicit = (os.environ.get("BELENER_UPLOAD_TMP") or "").strip()
+    if explicit:
+        path = Path(explicit)
+    else:
+        data_tmp = Path("/app/data/tmp")
+        if Path("/app/data").exists():
+            path = data_tmp
+        else:
+            path = Path(os.environ.get("TMPDIR") or tempfile.gettempdir())
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
+def upload_temp_dir() -> str:
+    return ensure_upload_temp_dir()
 
 
 def extract_mode() -> str:
@@ -628,19 +649,27 @@ def tile_ocr_time_budget_sec() -> float:
         raw = (
             os.environ.get("PDF_TILE_OCR_TIME_BUDGET")
             or os.environ.get("PDF_NORMATIVE_TIME_BUDGET")
-            or "150"
+            or "180"
         )
-        return max(30.0, min(float(str(raw).strip()), 300.0))
-    except ValueError:
-        return 150.0
-
-
-def gost_check_total_budget_sec() -> float:
-    """Полный бюджет: OCR + проверка STN (сек)."""
-    try:
-        return max(60.0, min(float(os.environ.get("PDF_GOST_CHECK_BUDGET", "180").strip()), 600.0))
+        return max(30.0, min(float(str(raw).strip()), 600.0))
     except ValueError:
         return 180.0
+
+
+def gost_check_extra_per_page_sec() -> float:
+    try:
+        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "18").strip()))
+    except ValueError:
+        return 18.0
+
+
+def gost_check_total_budget_sec(page_count: int = 1) -> float:
+    try:
+        base = max(60.0, min(float(os.environ.get("PDF_GOST_CHECK_BUDGET", "210").strip()), 900.0))
+    except ValueError:
+        base = 210.0
+    extra = gost_check_extra_per_page_sec() * max(0, int(page_count) - 1)
+    return min(base + extra, 900.0)
 
 
 def stn_batch_budget_sec() -> float:
@@ -651,9 +680,55 @@ def stn_batch_budget_sec() -> float:
         return 60.0
 
 
-def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None) -> float:
+def normative_supplement_budget_sec() -> float:
+    """Резерв на доп. OCR спецификации (spec_br) на широких листах."""
+    try:
+        return max(12.0, min(float(os.environ.get("PDF_NORMATIVE_SUPPLEMENT_SEC", "22").strip()), 60.0))
+    except ValueError:
+        return 22.0
+
+
+def normative_ocr_budget_sec(page_count: int = 1) -> float:
+    total = gost_check_total_budget_sec(page_count)
+    ocr = total - stn_batch_budget_sec()
+    single = tile_ocr_time_budget_sec()
+    cols, rows = tile_grid_for_page_count(page_count)
+    tiles_total = max(1, int(page_count)) * cols * rows
+    min_needed = tiles_total * 20.0 + normative_supplement_budget_sec()
+    return max(45.0, min(max(single, ocr, min_needed), 600.0))
+
+
+def tile_ocr_max_pages() -> int:
+    try:
+        raw = os.environ.get("PDF_TILE_OCR_MAX_PAGES", "0")
+        v = int(str(raw or "0").strip())
+        return 0 if v <= 0 else min(v, 100)
+    except ValueError:
+        return 0
+
+
+def tile_grid_for_page_count(page_count: int) -> tuple[int, int]:
+    n = max(1, int(page_count))
+    if n <= 1:
+        return 4, 2
+    if n <= 5:
+        return 3, 2
+    return 2, 2
+
+
+def tile_ocr_dpi_for_pages(page_count: int) -> int:
+    base = tile_ocr_dpi()
+    n = max(1, int(page_count))
+    if n <= 3:
+        return base
+    if n <= 8:
+        return max(260, min(base, 300))
+    return max(240, min(base, 280))
+
+
+def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None, page_count: int = 1) -> float:
     """Сколько секунд отдать OCR, не съедая резерв STN."""
-    tile_cap = tile_ocr_time_budget_sec()
+    tile_cap = normative_ocr_budget_sec(page_count)
     if pipeline_deadline is None:
         return tile_cap
     import time

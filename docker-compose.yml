@@ -65,7 +65,10 @@ services:
       - ./:/workspace:ro
       - ./belener:/app/belener:ro
       - ./app.py:/app/app.py:ro
+      - ./index.html:/app/index.html:ro
+      - ./static:/app/static:ro
       - ./scripts:/app/scripts:ro
+      - ./scan:/app/scan:ro
       - ./data:/app/data
     depends_on:
       db:
