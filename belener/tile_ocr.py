@@ -131,7 +131,7 @@ def subdivide_rect(
     return jobs or [(key, rect)]
 
 
-def page_notes_jobs(page_rect: fitz.Rect) -> list[tuple[str, fitz.Rect]]:
+def page_notes_jobs(page_rect: fitz.Rect, *, rows: int | None = None) -> list[tuple[str, fitz.Rect]]:
     """Нижняя полоса листа: ТТ, общие указания, перечень ТНПА."""
     pr = page_rect
     if pr.is_empty:
@@ -144,13 +144,23 @@ def page_notes_jobs(page_rect: fitz.Rect) -> list[tuple[str, fitz.Rect]]:
     ) & pr
     if lower.is_empty or lower.width < 80 or lower.height < 80:
         return []
-    return subdivide_rect("supp_notes", lower, rows=SUPP_NOTES_ROWS, overlap_frac=0.14)
+    note_rows = rows if rows is not None else SUPP_NOTES_ROWS
+    return subdivide_rect("supp_notes", lower, rows=note_rows, overlap_frac=0.14)
 
 
-def page_all_supplement_jobs(page_rect: fitz.Rect) -> list[tuple[str, fitz.Rect]]:
+def page_all_supplement_jobs(page_rect: fitz.Rect, *, notes_rows: int | None = None) -> list[tuple[str, fitz.Rect]]:
     jobs: list[tuple[str, fitz.Rect]] = []
     jobs.extend(page_supplement_jobs(page_rect))
-    jobs.extend(page_notes_jobs(page_rect))
+    jobs.extend(page_notes_jobs(page_rect, rows=notes_rows))
+    return jobs
+
+
+def supplements_for_page_scan(page_rect: fitz.Rect, document_pages: int) -> list[tuple[str, fitz.Rect]]:
+    """Меньше доп. зон на больших PDF — укладываемся в бюджет по листам."""
+    n = max(1, int(document_pages))
+    jobs = list(page_supplement_jobs(page_rect))
+    if n <= 4:
+        jobs.extend(page_notes_jobs(page_rect))
     return jobs
 
 
@@ -268,6 +278,7 @@ def _ocr_supplement_tiles(
     doc: fitz.Document,
     page_index: int,
     *,
+    supplement_jobs: list[tuple[str, fitz.Rect]] | None = None,
     dpi: int,
     deadline: float,
     tile_max_sec: float,
@@ -278,7 +289,7 @@ def _ocr_supplement_tiles(
 
     page = doc[page_index]
     out: list[str] = []
-    jobs = page_all_supplement_jobs(page.rect)
+    jobs = supplement_jobs if supplement_jobs is not None else page_all_supplement_jobs(page.rect)
     if not jobs:
         return out
     per_zone = min(28.0, max(16.0, normative_supplement_budget_sec()))
@@ -378,10 +389,11 @@ def extract_page_tiles(
     cols: int = TILE_COLS,
     rows: int = TILE_ROWS,
     force_ocr: bool = False,
+    document_pages: int = 1,
 ) -> tuple[list[str], int, int]:
     page = doc[page_index]
     wide = page_is_wide(page.rect)
-    supplements = page_all_supplement_jobs(page.rect)
+    supplements = supplements_for_page_scan(page.rect, document_pages)
     overlap_use = max(overlap_frac, 0.18) if wide else overlap_frac
     jobs = (
         page_tile_jobs_normative(page.rect, cols=cols, rows=rows, overlap_frac=overlap_use)
@@ -395,6 +407,8 @@ def extract_page_tiles(
     expected = len(jobs) + len(supplements)
     sources: list[str] = []
     attempted = 0
+    multi_page = int(document_pages) > 4
+    sup_quality = not multi_page
 
     if wide:
         right_jobs, left_jobs = _split_grid_jobs(jobs, cols)
@@ -409,12 +423,13 @@ def extract_page_tiles(
             doc, page_index, right_jobs,
             sources=sources, attempted=attempted, remaining_total=expected,
             dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
-            force_ocr=force_ocr, high_quality=True,
+            force_ocr=force_ocr, high_quality=not multi_page,
         )
         if supplements and deadline - time.monotonic() >= 10:
             for text in _ocr_supplement_tiles(
-                doc, page_index, dpi=dpi, deadline=deadline,
-                tile_max_sec=tile_max_sec, force_ocr=force_ocr, quality=True,
+                doc, page_index, supplement_jobs=supplements, dpi=dpi, deadline=deadline,
+                tile_max_sec=tile_max_sec, force_ocr=force_ocr,
+                quality=sup_quality,
             ):
                 attempted += 1
                 if text not in sources:
@@ -428,8 +443,9 @@ def extract_page_tiles(
     else:
         if supplements and deadline - time.monotonic() >= 8:
             for text in _ocr_supplement_tiles(
-                doc, page_index, dpi=dpi, deadline=deadline,
-                tile_max_sec=tile_max_sec, force_ocr=force_ocr, quality=True,
+                doc, page_index, supplement_jobs=supplements, dpi=dpi, deadline=deadline,
+                tile_max_sec=tile_max_sec, force_ocr=force_ocr,
+                quality=sup_quality,
             ):
                 attempted += 1
                 if text not in sources:
@@ -482,13 +498,18 @@ def extract_document_tiles(
     cap = tile_ocr_max_pages() if max_pages is None else max_pages
     pages_to_scan = min(total_pages, cap) if cap and cap > 0 else total_pages
 
-    budget = normative_ocr_budget_sec(pages_to_scan)
+    budget = normative_ocr_budget_sec(pages_to_scan, doc=doc)
     deadline = t0 + budget
     dpi = tile_ocr_dpi_for_pages(pages_to_scan)
     overlap = tile_ocr_overlap_frac()
     cols, rows = tile_grid_for_page_count(pages_to_scan)
-    tiles_per_page = cols * rows
-    tile_max = max(15.0, min(60.0, (budget - 10) / max(1, pages_to_scan * tiles_per_page)))
+    if pages_to_scan == 1 and doc.page_count >= 1:
+        tiles_per_page = len(page_tile_jobs(doc[0].rect, cols=cols, rows=rows)) + len(
+            page_all_supplement_jobs(doc[0].rect)
+        )
+    else:
+        tiles_per_page = cols * rows
+    tile_max = max(12.0, min(60.0, (budget - 8) / max(1, pages_to_scan * max(1, tiles_per_page))))
 
     page_tiles: list[list[str]] = []
     all_sources: list[str] = []
@@ -504,7 +525,7 @@ def extract_document_tiles(
             break
         page_rect = doc[i].rect
         tiles_expected += len(page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap))
-        tiles_expected += len(page_all_supplement_jobs(page_rect))
+        tiles_expected += len(supplements_for_page_scan(page_rect, pages_to_scan))
         chunks, page_done, page_expected = extract_page_tiles(
             doc,
             i,
@@ -515,6 +536,7 @@ def extract_document_tiles(
             cols=cols,
             rows=rows,
             force_ocr=force_ocr,
+            document_pages=pages_to_scan,
         )
         tiles_done += page_done
         pages_processed += 1
@@ -533,8 +555,10 @@ def extract_document_tiles(
 
     page_texts = [merge_page_text(chunks) for chunks in page_tiles]
     elapsed = time.monotonic() - t0
+    if pages_to_scan == 1 and pages_processed == 1 and tiles_done >= tiles_expected and tiles_expected > 0:
+        budget_exhausted = False
     log.info(
-        "tile OCR done %.1fs pages=%s/%s tiles=%s/%s chars=%s grid=%sx%s dpi=%s (%s)",
+        "tile OCR done %.1fs pages=%s/%s tiles=%s/%s chars=%s grid=%sx%s dpi=%s budget=%.0fs (%s)",
         elapsed,
         pages_processed,
         total_pages,
@@ -544,6 +568,7 @@ def extract_document_tiles(
         cols,
         rows,
         dpi,
+        budget,
         filename,
     )
     return {

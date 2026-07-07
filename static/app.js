@@ -5,7 +5,15 @@ let autoModelEnabled = true;
 let userOverrodeModel = false;
 let _modelMap = {}; // id → label
 let userScrolled = false;
+let currentPreviewUrl = '';
+let lastRetryRequest = null;
 const GOST_DEFAULT_QUESTION = 'Проверка ГОСТ на листе';
+const DRAWING_FILE_RE = /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i;
+
+function getSelectedModel() {
+  const el = document.getElementById('model-select');
+  return (el && el.value) ? el.value : 'gemma3:4b';
+}
 
 const sendIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 const stopIcon  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
@@ -74,10 +82,10 @@ function doCopy(text, btn) {
   const iconOnly = btn.classList.contains('tcbtn');
   const ok = () => {
     btn.classList.add('ok');
-    btn.innerHTML = iconOnly ? okIco : okIco + ' copied';
+    btn.innerHTML = iconOnly ? okIco : okIco + ' скопировано';
     setTimeout(() => {
       btn.classList.remove('ok');
-      btn.innerHTML = iconOnly ? cpIco : cpIco + (btn.dataset.lbl || ' copy');
+      btn.innerHTML = iconOnly ? cpIco : cpIco + (btn.dataset.lbl || ' копировать');
     }, 2000);
   };
   if (navigator.clipboard && window.isSecureContext) {
@@ -99,14 +107,22 @@ function fbCopy(text, cb) {
 
 function colorizeStnStatus(el) {
   el.querySelectorAll('table tr').forEach(tr => {
+    tr.classList.remove('row-stn-cancel', 'row-stn-warn');
     const cells = tr.querySelectorAll('td');
     if (cells.length < 5) return;
     const st = cells[4].textContent.trim().toLowerCase();
     cells[4].classList.remove('stn-ok', 'stn-cancel', 'stn-warn', 'stn-miss');
-    if (st === 'актуален') cells[4].classList.add('stn-ok');
-    else if (st === 'отменён' || st === 'отменен') cells[4].classList.add('stn-cancel');
-    else if (st.includes('не введён') || st.includes('не введен')) cells[4].classList.add('stn-warn');
-    else if (st.includes('нет') || st.includes('ошибка')) cells[4].classList.add('stn-miss');
+    if (st === 'актуален') {
+      cells[4].classList.add('stn-ok');
+    } else if (st === 'отменён' || st === 'отменен') {
+      cells[4].classList.add('stn-cancel');
+      tr.classList.add('row-stn-cancel');
+    } else if (st.includes('не введён') || st.includes('не введен')) {
+      cells[4].classList.add('stn-warn');
+      tr.classList.add('row-stn-warn');
+    } else if (st.includes('нет') || st.includes('ошибка')) {
+      cells[4].classList.add('stn-miss');
+    }
   });
 }
 
@@ -118,8 +134,8 @@ function addCodeBtns(el) {
     pre.parentNode.insertBefore(w, pre);
     w.appendChild(pre);
     const b = document.createElement('button');
-    b.className = 'cbtn'; b.dataset.lbl = ' copy';
-    b.innerHTML = cpIco + ' copy';
+    b.className = 'cbtn'; b.dataset.lbl = ' копировать';
+    b.innerHTML = cpIco + ' копировать';
     b.onclick = () => doCopy(pre.innerText.trimEnd(), b);
     w.appendChild(b);
   });
@@ -138,8 +154,8 @@ function addCodeBtns(el) {
     w.appendChild(table);
     const b = document.createElement('button');
     b.className = 'tcbtn';
-    b.title = 'Copy table';
-    b.setAttribute('aria-label', 'Copy table');
+    b.title = 'Копировать таблицу';
+    b.setAttribute('aria-label', 'Копировать таблицу');
     b.innerHTML = cpIco;
     b.onclick = () => doCopy(tblPlain(table), b);
     tools.appendChild(b);
@@ -154,6 +170,96 @@ function addMsgCopy(el, html) {
   b.innerHTML = cpIco + ' копировать ответ';
   b.onclick = () => doCopy(htmlToReadable(html), b);
   el.appendChild(b);
+}
+
+function addReportActions(el, html) {
+  const old = el.querySelector('.report-actions'); if (old) old.remove();
+  // Disabled by request: no extra report download button.
+}
+
+function downloadReportPdf(text) {
+  if (!window.pdfMake) {
+    showToast('PDF-генератор не загрузился, обновите страницу', true);
+    return;
+  }
+  const lines = String(text || '').split('\n');
+  const content = lines.map(line => ({
+    text: line.length ? line : ' ',
+    margin: [0, 0, 0, 2],
+  }));
+  const docDefinition = {
+    pageSize: 'A4',
+    pageMargins: [36, 40, 36, 40],
+    defaultStyle: {
+      fontSize: 10.5,
+      lineHeight: 1.28,
+    },
+    content: [
+      {text: 'Отчёт БелнипиAI', style: 'title', margin: [0, 0, 0, 10]},
+      ...content,
+    ],
+    styles: {
+      title: {fontSize: 16, bold: true},
+    },
+  };
+  window.pdfMake.createPdf(docDefinition).download('belener-gost-report.pdf');
+}
+
+function createProgress() {
+  const box = document.createElement('div');
+  box.className = 'progress-card';
+  box.innerHTML = `
+    <div class="progress-head">
+      <span class="progress-stage">Подготовка</span>
+      <span class="progress-value" style="display: none;"></span>
+    </div>
+    <div class="progress-track"><div class="progress-fill indeterminate"></div></div>
+    <div class="progress-status">Ожидаю ответ сервера...</div>`;
+  return box;
+}
+
+function updateProgress(box, payload) {
+  if (!box) return;
+  const progress = Number.isFinite(payload.progress) ? payload.progress : null;
+  if (payload.stage) box.querySelector('.progress-stage').textContent = payload.stage;
+  if (progress !== null) {
+    const fill = box.querySelector('.progress-fill');
+    fill.classList.remove('indeterminate');
+    fill.style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+    const val = box.querySelector('.progress-value');
+    val.style.display = 'inline';
+    val.textContent = `${Math.max(0, Math.min(progress, 100))}%`;
+  }
+  if (payload.status) box.querySelector('.progress-status').textContent = payload.status;
+}
+
+function retryLastMessage() {
+  if (!lastRetryRequest || isStreaming) return;
+  ta.value = lastRetryRequest.question || '';
+  ta.dispatchEvent(new Event('input'));
+  if (lastRetryRequest.file) setFile(lastRetryRequest.file, {skipAutostart: true});
+  sendMessage();
+}
+
+function confirmDialog(text, title = 'Подтверждение') {
+  return new Promise(resolve => {
+    const modal = document.getElementById('confirm-modal');
+    const titleEl = document.getElementById('confirm-title');
+    const textEl = document.getElementById('confirm-text');
+    const ok = document.getElementById('confirm-ok');
+    const cancel = document.getElementById('confirm-cancel');
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    modal.hidden = false;
+    const finish = value => {
+      modal.hidden = true;
+      ok.onclick = cancel.onclick = null;
+      resolve(value);
+    };
+    ok.onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    modal.onclick = e => { if (e.target === modal) finish(false); };
+  });
 }
 
 // ── markdown ─────────────────────────────────────────────────────────────────
@@ -196,7 +302,7 @@ function renderConvList(convs) {
 }
 
 async function newChat() {
-  const model = document.getElementById('model-select').value || 'gemma3:4b';
+  const model = getSelectedModel();
   const data = await fetch('/api/conversations', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -221,11 +327,12 @@ async function openChat(id) {
 
   hideEmpty();
   for (const m of msgs) {
-    const ac = addMessage(m.role, m.role === 'user' ? m.content : '', m.file_name || null);
+    const ac = addMessage(m.role, m.role === 'user' ? m.content : '', m.file_name || null, m.file_url || null);
     if (m.role === 'assistant') {
       ac.innerHTML = marked.parse(fixMarkdown(m.content));
       addCodeBtns(ac);
       addMsgCopy(ac, ac.innerHTML);
+      addReportActions(ac, ac.innerHTML);
     }
   }
   userScrolled = false;
@@ -256,10 +363,25 @@ function clearFeed() {
   welcome.className = 'welcome';
   welcome.id = 'empty-state';
   welcome.innerHTML = `
-    <div class="welcome-title">Проверка ГОСТ на чертеже</div>
-    <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все ГОСТ и проверит актуальность на normy.stn.by. Дату проверки можно изменить ниже (по умолчанию — сегодня). Обработка одного сканированного листа занимает около 3 минут.</div>
-    <div class="welcome-chips">
-      <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
+    <div class="welcome-hero">
+      <div class="welcome-badge">Локальная обработка · данные не уходят в облако</div>
+      <h1 class="welcome-title">Проверка ГОСТ<br>на чертеже</h1>
+      <p class="welcome-sub">Загрузите PDF или скан — система найдёт ГОСТ, ОСТ, СТП, ТУ и СТБ на всех листах и проверит актуальность на normy.stn.by. Ответ приходит сразу по готовности; лимит по времени — до ~10 мин на 8 листов, не более 40 мин на запрос.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card"><div class="step-num">1</div><div class="step-body"><div class="step-title">Загрузите файл</div><div class="step-desc">PDF, скан или изображение листа</div></div></div>
+      <div class="step-card"><div class="step-num">2</div><div class="step-body"><div class="step-title">OCR находит нормативы</div><div class="step-desc">Поиск по всему листу, без подстановок</div></div></div>
+      <div class="step-card"><div class="step-num">3</div><div class="step-body"><div class="step-title">Проверка актуальности</div><div class="step-desc">Сверка с базой normy.stn.by</div></div></div>
+    </div>
+    <div class="welcome-actions">
+      <button type="button" class="action-card action-card-primary" onclick="document.getElementById('file-input').click()">
+        <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+        <span class="action-text"><strong>Загрузить чертёж</strong><small>PDF, PNG, JPG и другие форматы</small></span>
+      </button>
+      <button type="button" class="action-card" onclick="setPrompt('Проверка ГОСТ на листе')">
+        <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+        <span class="action-text"><strong>Все ГОСТ на листе</strong><small>Быстрый запрос без ввода текста</small></span>
+      </button>
     </div>`;
   inner.appendChild(welcome);
 }
@@ -267,6 +389,8 @@ function clearFeed() {
 // ── models ────────────────────────────────────────────────────────────────────
 
 async function loadModels() {
+  // Model selector is intentionally hidden in UI now.
+  if (!document.getElementById('model-select')) return;
   try {
     const d = await fetch('/api/models').then(r => r.json());
     const models = d.models && d.models.length ? d.models : [{id: 'gemma3:4b', label: 'Базовая'}];
@@ -282,13 +406,48 @@ async function loadModels() {
       selectModel(first);
     }
   } catch {
-    document.getElementById('stat-status').textContent = 'Нет соединения';
-    document.getElementById('status-dot').classList.add('off');
+    const statusText = document.getElementById('stat-status');
+    const statusDot = document.getElementById('status-dot');
+    if (statusText) statusText.textContent = 'Нет соединения';
+    if (statusDot) statusDot.classList.add('off');
+  }
+}
+
+async function loadSystemStatus() {
+  try {
+    const data = await fetch('/api/status').then(r => r.json());
+    const banner = document.getElementById('system-banner');
+    const modelSection = document.getElementById('model-section');
+    if (data.gost_only && modelSection) modelSection.hidden = true;
+    if (!banner) return;
+
+    const stn = data.stn || {};
+    if (!stn.enabled) {
+      banner.hidden = false;
+      banner.className = 'system-banner warn';
+      banner.textContent = 'Проверка актуальности на normy.stn.by отключена. Будет показан только список нормативов с листа.';
+    } else if (!stn.configured) {
+      banner.hidden = false;
+      banner.className = 'system-banner warn';
+      banner.textContent = 'STN включён, но логин и пароль не указаны в .env. Список нормативов будет найден, актуальность может быть недоступна.';
+    } else {
+      banner.hidden = false;
+      banner.className = 'system-banner ok';
+      banner.textContent = 'STN подключён: актуальность нормативов будет проверяться на normy.stn.by.';
+    }
+  } catch (e) {
+    const banner = document.getElementById('system-banner');
+    if (banner) {
+      banner.hidden = false;
+      banner.className = 'system-banner warn';
+      banner.textContent = 'Не удалось получить состояние сервера. Проверьте подключение.';
+    }
   }
 }
 
 function renderModelDrop(models) {
   const drop = document.getElementById('model-sel-drop');
+  if (!drop) return;
   drop.innerHTML = '';
   models.forEach(m => {
     const id = typeof m === 'string' ? m : m.id;
@@ -303,8 +462,10 @@ function renderModelDrop(models) {
 }
 
 function selectModel(id, userChose = false) {
-  document.getElementById('model-select').value = id;
-  document.getElementById('model-sel-val').textContent = _modelMap[id] || id;
+  const hidden = document.getElementById('model-select');
+  const valueEl = document.getElementById('model-sel-val');
+  if (hidden) hidden.value = id;
+  if (valueEl) valueEl.textContent = _modelMap[id] || id;
   document.querySelectorAll('.csel-opt').forEach(opt => {
     opt.classList.toggle('active', opt.dataset.id === id);
   });
@@ -317,13 +478,16 @@ function selectModel(id, userChose = false) {
 function toggleDrop() {
   const drop = document.getElementById('model-sel-drop');
   const trigger = document.getElementById('model-sel-trigger');
+  if (!drop || !trigger) return;
   const isOpen = drop.classList.toggle('open');
   trigger.classList.toggle('open', isOpen);
 }
 
 function closeDrop() {
-  document.getElementById('model-sel-drop').classList.remove('open');
-  document.getElementById('model-sel-trigger').classList.remove('open');
+  const drop = document.getElementById('model-sel-drop');
+  const trigger = document.getElementById('model-sel-trigger');
+  if (drop) drop.classList.remove('open');
+  if (trigger) trigger.classList.remove('open');
 }
 
 document.addEventListener('click', e => {
@@ -359,13 +523,37 @@ document.addEventListener('paste', e => {
   }
 });
 
-function setFile(f) {
+function setFile(f, options = {}) {
   currentFile = f;
   document.getElementById('file-preview-name').textContent = f.name;
   document.getElementById('file-preview-size').textContent = fmtSize(f.size);
   document.getElementById('file-preview').classList.add('show');
+  renderFilePreview(f);
   if (autoModelEnabled && !userOverrodeModel) {
     detectFileAndSelectModel(f);
+  }
+}
+
+function isDrawingFile(f) {
+  return Boolean(f && DRAWING_FILE_RE.test(f.name));
+}
+
+function renderFilePreview(f) {
+  const box = document.getElementById('file-preview-render');
+  if (!box) return;
+  if (currentPreviewUrl) {
+    URL.revokeObjectURL(currentPreviewUrl);
+    currentPreviewUrl = '';
+  }
+  box.innerHTML = '';
+  if (!isDrawingFile(f)) return;
+  currentPreviewUrl = URL.createObjectURL(f);
+  if (/\.(png|jpe?g|bmp|gif|webp)$/i.test(f.name)) {
+    box.innerHTML = `<img src="${currentPreviewUrl}" alt="Предпросмотр файла">`;
+  } else if (/\.pdf$/i.test(f.name)) {
+    box.innerHTML = `<iframe src="${currentPreviewUrl}#page=1&view=FitH" title="Предпросмотр PDF"></iframe>`;
+  } else {
+    box.innerHTML = '<div class="preview-note">Предпросмотр для этого формата недоступен, файл будет обработан как изображение.</div>';
   }
 }
 
@@ -384,15 +572,28 @@ async function detectFileAndSelectModel(f) {
       selectModel(data.model);
       showAutoModelBadge(data.model, data.reason);
     }
+    if (data.page_count > 1 && data.budget_human) {
+      const sizeEl = document.getElementById('file-preview-size');
+      if (sizeEl) {
+        sizeEl.textContent = `${fmtSize(f.size)} · ${data.page_count} лист. · ${data.budget_human}`;
+      }
+    }
   } catch(e) {
     await autoSelectModel(ext, document.getElementById('input-field').value.trim());
   }
 }
 
-function removeFile() {
+function removeFile(options = {}) {
+  const preservePreviewUrl = Boolean(options.preservePreviewUrl);
   currentFile = null;
   document.getElementById('file-input').value = '';
   document.getElementById('file-preview').classList.remove('show');
+  const box = document.getElementById('file-preview-render');
+  if (box) box.innerHTML = '';
+  if (currentPreviewUrl && !preservePreviewUrl) {
+    URL.revokeObjectURL(currentPreviewUrl);
+    currentPreviewUrl = '';
+  }
   clearAutoModelBadge();
 }
 
@@ -422,7 +623,15 @@ function hideEmpty() {
   if (el) el.style.display = 'none';
 }
 
-function addMessage(role, content, badge) {
+function escAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function addMessage(role, content, badge, fileUrl) {
   hideEmpty();
   const wrap = document.getElementById('chat-inner');
   const div = document.createElement('div');
@@ -431,7 +640,7 @@ function addMessage(role, content, badge) {
     ? `<div class="msg-avatar">↑</div>`
     : `<div class="msg-avatar"><img src="/ico.png" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:6px;"></div>`;
   const bd = badge
-    ? `<div class="msg-user-stack"><div class="msg-file-badge">${esc(badge)}</div><div class="msg-user-text">${esc(content)}</div></div>`
+    ? `<div class="msg-user-stack"><div class="msg-file-badge"><span class="msg-file-name">${esc(badge)}</span>${fileUrl ? `<a class="msg-file-open" href="${escAttr(fileUrl)}" target="_blank" rel="noopener">Открыть</a>` : ''}</div><div class="msg-user-text">${esc(content)}</div></div>`
     : esc(content);
   div.innerHTML = `${av}<div class="msg-body"><div class="msg-role">${role === 'user' ? 'Вы' : 'БелнипиAI'}</div><div class="msg-content">${role === 'user' ? bd : ''}</div></div>`;
   wrap.appendChild(div);
@@ -457,7 +666,7 @@ function stopStreaming() {
 async function sendMessage() {
   if (isStreaming) return;
   const qRaw = ta.value.trim();
-  const isDrawing = currentFile && /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i.test(currentFile.name);
+  const isDrawing = isDrawingFile(currentFile);
   const q = qRaw || (isDrawing ? GOST_DEFAULT_QUESTION : '');
   if (!q) return;
 
@@ -466,7 +675,8 @@ async function sendMessage() {
     await autoSelectModel('', q);
   }
 
-  const model = document.getElementById('model-select').value || 'gemma3:4b';
+  const model = getSelectedModel();
+  const modelWasOverridden = userOverrodeModel;
   userOverrodeModel = false;
   clearAutoModelBadge();
 
@@ -491,19 +701,20 @@ async function sendMessage() {
   ta.value = ''; ta.style.height = 'auto';
 
   const fc = currentFile, fn = fc ? fc.name : null;
-  if (fc) removeFile();
+  const localFileUrl = currentPreviewUrl || null;
+  lastRetryRequest = {question: q, file: fc, filename: fn};
+  if (fc) removeFile({preservePreviewUrl: !!localFileUrl});
 
   userScrolled = false;
-  addMessage('user', q, fn); scrollEnd(true);
+  addMessage('user', q, fn, localFileUrl); scrollEnd(true);
+  if (localFileUrl && localFileUrl.startsWith('blob:')) {
+    setTimeout(() => {
+      try { URL.revokeObjectURL(localFileUrl); } catch (e) {}
+    }, 10 * 60 * 1000);
+  }
   const ac = addMessage('assistant', '');
-  const dots = document.createElement('div');
-  dots.className = 'thinking';
-  dots.innerHTML = '<span></span><span></span><span></span>';
-  const status = document.createElement('div');
-  status.className = 'extract-status';
-  status.textContent = '';
-  ac.appendChild(dots);
-  ac.appendChild(status);
+  const progress = createProgress();
+  ac.appendChild(progress);
   scrollEnd(true);
 
   const fd = new FormData();
@@ -512,7 +723,7 @@ async function sendMessage() {
   if (isGostCheck) fd.append('mode', 'gost');
   const checkDateEl = document.getElementById('check-date');
   if (checkDateEl && checkDateEl.value) fd.append('check_date', checkDateEl.value);
-  if (userOverrodeModel) fd.append('model_override', '1');
+  if (modelWasOverridden) fd.append('model_override', '1');
   if (fc) fd.append('file', fc);
 
   let raw = '', first = true;
@@ -528,16 +739,21 @@ async function sendMessage() {
         const p = line.slice(6); if (p === '[DONE]') break;
         try {
           const o = JSON.parse(p);
-          if (o.error) { showToast(o.error, true); break; }
+          if (o.error) {
+            showToast(o.error, true);
+            showInlineError(ac, o.error);
+            first = false;
+            break;
+          }
           if (o.title) {
             updateChatTitle(currentConvId, o.title);
           }
           if (o.status) {
-            status.textContent = o.status;
+            updateProgress(progress, o);
             scrollEnd();
           }
           if (o.text) {
-            if (first) { dots.remove(); status.remove(); first = false; }
+            if (first) { progress.remove(); first = false; }
             raw += o.text;
             ac.innerHTML = marked.parse(fixMarkdown(raw)) + '<span class="cursor"></span>';
             addCodeBtns(ac); scrollEnd();
@@ -546,19 +762,19 @@ async function sendMessage() {
       }
     }
   } catch(err) {
-    if (first) dots.remove();
     if (err.name !== 'AbortError') {
-      ac.innerHTML = '<span style="color:var(--red)">Ошибка соединения с сервером</span>';
+      showInlineError(ac, 'Ошибка соединения с сервером');
       showToast('Ошибка соединения', true);
     }
   }
 
   const cur = ac.querySelector('.cursor'); if (cur) cur.remove();
-  if (first) { dots.remove(); status.remove(); }
+  if (first) { progress.remove(); }
   if (raw) {
     ac.innerHTML = marked.parse(fixMarkdown(raw));
     addCodeBtns(ac);
     addMsgCopy(ac, ac.innerHTML);
+    addReportActions(ac, ac.innerHTML);
   }
 
   abortController = null;
@@ -567,6 +783,14 @@ async function sendMessage() {
   btn.innerHTML = sendIcon;
   btn.onclick = sendMessage;
   ta.focus(); scrollEnd();
+}
+
+function showInlineError(el, message) {
+  el.innerHTML = `
+    <div class="inline-error">
+      <strong>${esc(message)}</strong>
+      <button class="report-btn retry-btn" onclick="retryLastMessage()">Повторить</button>
+    </div>`;
 }
 
 function updateChatTitle(id, title) {
@@ -599,7 +823,8 @@ function showAutoModelBadge(model, reason) {
   if (!badge) {
     badge = document.createElement('span');
     badge.id = 'auto-model-badge';
-    document.querySelector('.field-label').appendChild(badge);
+    const anchor = document.getElementById('model-sel-wrap') || document.querySelector('.field-label');
+    anchor.appendChild(badge);
   }
   badge.className = 'auto-model-badge';
   badge.title = reason;
@@ -650,32 +875,48 @@ async function loadCurrentUser() {
 
 function collapseNav() {
   document.querySelector('.shell').classList.add('nav-collapsed');
-  document.querySelector('.nav').classList.add('collapsed');
+  document.querySelector('.nav')?.classList.add('collapsed');
   localStorage.setItem('navCollapsed', 'true');
+}
+
+function expandNav() {
+  document.querySelector('.shell').classList.remove('nav-collapsed');
+  document.querySelector('.nav')?.classList.remove('collapsed');
+  localStorage.setItem('navCollapsed', 'false');
 }
 
 function toggleNav() {
   const shell = document.querySelector('.shell');
   const nav = document.querySelector('.nav');
   const isNowCollapsed = shell.classList.toggle('nav-collapsed');
-  nav.classList.toggle('collapsed', isNowCollapsed);
+  nav?.classList.toggle('collapsed', isNowCollapsed);
   localStorage.setItem('navCollapsed', isNowCollapsed ? 'true' : 'false');
 }
 
 function initNavState() {
   const saved = localStorage.getItem('navCollapsed');
   const isSmall = window.innerWidth < 900;
-  const shouldCollapse = saved === 'true' || (saved === null && isSmall);
-  if (shouldCollapse) collapseNav();
+  if (isSmall) {
+    if (saved === 'false') expandNav();
+    else collapseNav();
+    return;
+  }
+  if (saved === 'true') collapseNav();
+  else expandNav();
 }
 
-let _lastInnerWidth = window.innerWidth;
+let _wasSmallViewport = window.innerWidth < 900;
 window.addEventListener('resize', () => {
-  const w = window.innerWidth;
-  if (w < _lastInnerWidth && !document.querySelector('.shell').classList.contains('nav-collapsed')) {
-    collapseNav();
+  const isSmall = window.innerWidth < 900;
+  if (isSmall !== _wasSmallViewport) {
+    if (isSmall) collapseNav();
+    else {
+      const saved = localStorage.getItem('navCollapsed');
+      if (saved === 'true') collapseNav();
+      else expandNav();
+    }
+    _wasSmallViewport = isSmall;
   }
-  _lastInnerWidth = w;
 });
 
 // ── delete all chats ──────────────────────────────────────────────────────────
@@ -683,7 +924,8 @@ window.addEventListener('resize', () => {
 async function deleteAllChats() {
   const items = document.querySelectorAll('.chat-item');
   if (!items.length) return;
-  if (!confirm('Удалить все чаты? Это действие нельзя отменить.')) return;
+  const confirmed = await confirmDialog('Удалить все чаты? Это действие нельзя отменить.', 'Удаление истории');
+  if (!confirmed) return;
   const ids = Array.from(items).map(el => el.dataset.id);
   await Promise.all(ids.map(id => fetch(`/api/conversations/${id}`, { method: 'DELETE' })));
   currentConvId = null;
@@ -710,11 +952,28 @@ initCheckDate();
 loadModels();
 loadConversations();
 loadCurrentUser();
+loadSystemStatus();
 ta.focus();
 
 // Останавливаем автоскролл если пользователь уходит вверх
 document.getElementById('chat-area').addEventListener('scroll', () => {
   const a = document.getElementById('chat-area');
   userScrolled = a.scrollHeight - a.scrollTop - a.clientHeight > 80;
+});
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.preview-zoom-btn');
+  if (!btn) return;
+  const targetId = btn.dataset.target;
+  const img = document.getElementById(targetId);
+  if (!img) return;
+  const action = btn.dataset.action;
+  const current = Number(img.dataset.scale || '1');
+  let next = current;
+  if (action === 'in') next = Math.min(4, current + 0.2);
+  if (action === 'out') next = Math.max(0.5, current - 0.2);
+  if (action === 'reset') next = 1;
+  img.dataset.scale = String(next);
+  img.style.transform = `scale(${next})`;
 });
 

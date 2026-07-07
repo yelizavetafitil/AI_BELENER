@@ -9,6 +9,40 @@ from belener.normative_refs import (
 )
 
 
+def test_highlight_patterns_strict():
+    from belener.normative_refs import highlight_patterns_for_normative_ref
+
+    terms = highlight_patterns_for_normative_ref("В-ступ ГОСТ 10705-80")
+    assert all(re.search(r"(?i)гост|gost", t) for t in terms)
+    assert not any(t == "10705-80" for t in terms)
+
+    ost = highlight_patterns_for_normative_ref("ОСТ 34-10-615-93")
+    assert all("ОСТ" in t or "ост" in t.lower() for t in ost)
+    assert not any(t == "34-10-615-93" for t in ost)
+    assert any("ОСТ34-10-615-93" in t.replace(" ", "") for t in ost)
+    assert any(t.startswith("(") for t in ost)
+
+
+def test_highlight_parenthesized_gost_in_words():
+    from belener.normative_extract import _find_pinpoint_rects
+
+    words = [
+        (72.0, 300.0, 118.0, 315.0, "(ГОСТ", 0, 0, 0),
+        (120.0, 300.0, 175.0, 315.0, "12707-77)", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "ГОСТ 12707-77")
+    assert len(rects) == 2
+
+
+def test_search_terms_for_highlight():
+    from belener.normative_refs import search_terms_for_normative_ref
+
+    terms = search_terms_for_normative_ref("В-ступ ГОСТ 10705-80")
+    joined = " ".join(terms).casefold()
+    assert "гост 10705-80" in joined
+    assert "10705-80" not in terms
+
+
 def test_ost_34_10_series_spacing():
     cases = {
         "34 10 699-97": "34 10.699-97",

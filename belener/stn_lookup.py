@@ -911,7 +911,8 @@ def stn_checks_to_markdown(
         lines.append(f"*Дата проверки актуальности: {check_date.strftime('%d.%m.%Y')}*")
         lines.append("")
     found_checks = [c for c in checks if c.found]
-    if not found_checks:
+    not_found = [c for c in checks if not c.found]
+    if not found_checks and not not_found:
         lines.append("*В ИПС normy.stn.by не найдено ни одного документа из списка.*")
         lines.append("")
     else:
@@ -926,6 +927,11 @@ def stn_checks_to_markdown(
             if c.error and c.status == "ошибка проверки":
                 status = f"{status} ({c.error[:60]})"
             lines.append(f"| {c.kind} | {c.ref} | {intro} | {cancel} | {status} |")
+        for c in not_found:
+            status = c.status or "—"
+            if c.error and c.status == "ошибка проверки":
+                status = f"{status} ({c.error[:60]})"
+            lines.append(f"| {c.kind} | {c.ref} | — | — | {status} |")
         lines.append("")
     checked = len(checks)
     found = len(found_checks)

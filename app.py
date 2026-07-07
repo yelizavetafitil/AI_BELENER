@@ -322,16 +322,45 @@ def _sse_status(text: str):
     yield f"data: {json.dumps({'status': text}, ensure_ascii=False)}\n\n"
 
 
+def _gost_pipeline_progress_status(page_count: int, elapsed_sec: int, budget_sec: float) -> str:
+    """Единая подпись прогресса: листы и максимальное время (ответ часто быстрее)."""
+    from belener.config import gost_check_budget_human
+
+    pages = max(1, int(page_count))
+    eta = gost_check_budget_human(pages)
+    return f"Количество листов: {pages}, максимум {eta}."
+
+
+def _heartbeat_while(event: threading.Event, *, page_count: int, budget_sec: float, t0: float):
+    """Периодически шлёт ту же подпись с обновлённым временем."""
+    import time
+
+    while not event.wait(timeout=12):
+        elapsed = int(time.monotonic() - t0)
+        yield from _sse_status(_gost_pipeline_progress_status(page_count, elapsed, budget_sec))
+
+
 def stream_extract_pdf_normative(path: str, filename: str, question: str, *, check_date=None):
     """PDF → OCR страниц (плитки) → таблица нормативов + проверка ГОСТ на STN."""
     import time
     from datetime import date
 
+    import fitz
+
+    from belener.config import gost_check_total_budget_sec, stn_lookup_enabled, stn_pipeline_reserve_sec
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
 
     validity_date = check_date or date.today()
+    pipeline_t0 = time.monotonic()
 
-    yield from _sse_status(DRAWING_PROCESS_STATUS)
+    try:
+        with fitz.open(path) as doc:
+            page_count = max(1, doc.page_count)
+    except Exception:
+        page_count = 1
+
+    budget_sec = gost_check_total_budget_sec(page_count)
+    yield from _sse_status(_gost_pipeline_progress_status(page_count, 0, budget_sec))
 
     box: dict = {"result": None, "err": None}
     done = threading.Event()
@@ -346,8 +375,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
             done.set()
 
     threading.Thread(target=_run, daemon=True).start()
-    while not done.wait(timeout=12):
-        yield from _sse_status(DRAWING_PROCESS_STATUS)
+    yield from _heartbeat_while(done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
 
     if box["err"] is not None:
         yield from _sse_error(f"Ошибка: {_ollama_user_message(box['err'])}")
@@ -358,26 +386,38 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         yield from _sse_error(str(result.get("error") or "Не удалось прочитать PDF"))
         return
 
-    from belener.config import gost_check_total_budget_sec, stn_batch_budget_sec, stn_lookup_enabled
     from belener.stn_lookup import refine_and_check_normative_refs
 
     stn_checks = []
     if stn_lookup_enabled():
-        yield from _sse_status(DRAWING_PROCESS_STATUS)
-        try:
-            page_count = int(result.get("page_count") or 1)
-            # Резерв STN после OCR: не привязывать к старту pipeline (OCR ~100+ с).
-            stn_deadline = time.monotonic() + stn_batch_budget_sec()
-            refined, stn_checks = refine_and_check_normative_refs(
-                result.get("normative_refs") or [],
-                today=validity_date,
-                deadline=stn_deadline,
-            )
-            result["normative_refs"] = refined
-            result["stn_checks"] = [c.to_dict() for c in stn_checks]
-        except Exception as e:
-            app.logger.exception("STN batch failed file=%s", filename)
-            result["stn_error"] = _ollama_user_message(e)
+        page_count = int(result.get("page_count") or page_count)
+        budget_sec = gost_check_total_budget_sec(page_count)
+        stn_box: dict = {"err": None}
+        stn_done = threading.Event()
+
+        def _stn_run():
+            try:
+                refs_count = len(result.get("normative_refs") or [])
+                pipeline_deadline = pipeline_t0 + budget_sec
+                stn_reserve = stn_pipeline_reserve_sec(page_count, refs_count)
+                stn_deadline = min(pipeline_deadline, time.monotonic() + stn_reserve)
+                refined, checks = refine_and_check_normative_refs(
+                    result.get("normative_refs") or [],
+                    today=validity_date,
+                    deadline=stn_deadline,
+                )
+                result["normative_refs"] = refined
+                result["stn_checks"] = [c.to_dict() for c in checks]
+                stn_checks.extend(checks)
+            except Exception as e:
+                app.logger.exception("STN batch failed file=%s", filename)
+                result["stn_error"] = _ollama_user_message(e)
+                stn_box["err"] = e
+            finally:
+                stn_done.set()
+
+        threading.Thread(target=_stn_run, daemon=True).start()
+        yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
 
     include_ctx = "контекст" in (question or "").casefold()
     report = normative_result_to_markdown(
@@ -385,6 +425,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         include_context=include_ctx,
         stn_checks=stn_checks,
         check_date=validity_date,
+        source_path=path,
     )
     yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
@@ -395,42 +436,69 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     import time
     from datetime import date
 
+    from belener.config import gost_check_total_budget_sec, stn_lookup_enabled, stn_pipeline_reserve_sec
     from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
-
-    validity_date = check_date or date.today()
-
-    yield from _sse_status(DRAWING_PROCESS_STATUS)
-    try:
-        result = extract_normatives_from_image_path(path, filename)
-    except Exception as e:
-        app.logger.exception("normative image OCR failed file=%s", filename)
-        yield from _sse_error(f"Ошибка OCR: {_ollama_user_message(e)}")
-        return
-
-    include_ctx = "контекст" in (question or "").casefold()
-    from belener.config import stn_batch_budget_sec, stn_lookup_enabled
     from belener.stn_lookup import refine_and_check_normative_refs
 
+    validity_date = check_date or date.today()
+    pipeline_t0 = time.monotonic()
+    page_count = 1
+    budget_sec = gost_check_total_budget_sec(page_count)
+    yield from _sse_status(_gost_pipeline_progress_status(page_count, 0, budget_sec))
+
+    box: dict = {"result": None, "err": None}
+    done = threading.Event()
+
+    def _run():
+        try:
+            box["result"] = extract_normatives_from_image_path(path, filename)
+        except Exception as e:
+            app.logger.exception("normative image OCR failed file=%s", filename)
+            box["err"] = e
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    yield from _heartbeat_while(done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+
+    if box["err"] is not None:
+        yield from _sse_error(f"Ошибка OCR: {_ollama_user_message(box['err'])}")
+        return
+
+    result = box["result"] or {}
+    include_ctx = "контекст" in (question or "").casefold()
     stn_checks = []
     if stn_lookup_enabled():
-        yield from _sse_status(DRAWING_PROCESS_STATUS)
-        try:
-            stn_deadline = time.monotonic() + stn_batch_budget_sec()
-            refined, stn_checks = refine_and_check_normative_refs(
-                result.get("normative_refs") or [],
-                today=validity_date,
-                deadline=stn_deadline,
-            )
-            result["normative_refs"] = refined
-            result["stn_checks"] = [c.to_dict() for c in stn_checks]
-        except Exception as e:
-            app.logger.exception("STN batch failed file=%s", filename)
-            result["stn_error"] = _ollama_user_message(e)
+        stn_done = threading.Event()
+
+        def _stn_run():
+            try:
+                refs_count = len(result.get("normative_refs") or [])
+                pipeline_deadline = pipeline_t0 + budget_sec
+                stn_reserve = stn_pipeline_reserve_sec(page_count, refs_count)
+                stn_deadline = min(pipeline_deadline, time.monotonic() + stn_reserve)
+                refined, checks = refine_and_check_normative_refs(
+                    result.get("normative_refs") or [],
+                    today=validity_date,
+                    deadline=stn_deadline,
+                )
+                result["normative_refs"] = refined
+                result["stn_checks"] = [c.to_dict() for c in checks]
+                stn_checks.extend(checks)
+            except Exception as e:
+                app.logger.exception("STN batch failed file=%s", filename)
+                result["stn_error"] = _ollama_user_message(e)
+            finally:
+                stn_done.set()
+
+        threading.Thread(target=_stn_run, daemon=True).start()
+        yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
     report = normative_result_to_markdown(
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
         check_date=validity_date,
+        source_path=path,
     )
     yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
@@ -1247,6 +1315,10 @@ def api_chat(conv_id):
 
 # ── статика ───────────────────────────────────────────────────────────────────
 
+@app.route("/api/preview/<path:filename>")
+def serve_preview(filename):
+    return send_from_directory(os.path.join(ROOT_DIR, "data", "tmp"), filename)
+
 @app.route("/")
 def index():
     return send_from_directory(ROOT_DIR, "index.html")
@@ -1334,18 +1406,28 @@ def api_detect_file():
             return {"error": "Недостаточно места на диске для загрузки файла.", "type": "pdf", "scanned": False, "model": MODEL_DEFAULT, "reason": ""}, 507
         raise
     try:
+        import fitz
+
+        from belener.config import gost_check_budget_human, gost_check_total_budget_sec
+
         is_scanned = is_scanned_pdf(tmp_path) or detect_pdf_type(tmp_path) == "scanned"
         cfg = model_drawing() or model_scan()
         model = _resolve_config_model(cfg, available) if cfg else None
         if not model:
             model, _ = suggest_model(".txt", "", available)
-        reason = f"PDF — полное извлечение текста (OCR); модель для уточнений: {model}"
+        with fitz.open(tmp_path) as doc:
+            page_count = max(1, doc.page_count)
+        budget_human = gost_check_budget_human(page_count)
+        reason = f"Количество листов: {page_count}, максимум {budget_human}"
         return {
             "type": "pdf",
             "scanned": is_scanned,
             "drawing": True,
             "model": model,
             "reason": reason,
+            "page_count": page_count,
+            "budget_sec": int(gost_check_total_budget_sec(page_count)),
+            "budget_human": budget_human,
         }
     finally:
         os.unlink(tmp_path)

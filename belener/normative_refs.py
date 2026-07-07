@@ -229,6 +229,182 @@ def format_tkp_number(num: str) -> str:
     return re.sub(r"\s+", "", s).strip(" .-")
 
 
+def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
+    """Строгие фразы для подсветки на листе — только с типом документа, без коротких номеров."""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(s: str, *, require_space_after_kind: bool = True) -> None:
+        s = re.sub(r"\s+", " ", (s or "").strip())
+        if len(s) < 6:
+            return
+        if require_space_after_kind:
+            if not re.search(
+                r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)\s",
+                s,
+            ):
+                return
+        elif not re.search(
+            r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)",
+            s,
+        ):
+            return
+        key = re.sub(r"\s+", "", s).casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(s)
+
+    raw = _sanitize_normative_ref((ref or "").strip())
+    if not raw:
+        return out
+    add(raw)
+
+    stripped = re.sub(
+        r"^(?:[\w\-А-Яа-яЁё]{1,16}\s+)+"
+        r"((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)\s+.+)$",
+        r"\1",
+        raw,
+        flags=re.I,
+    )
+    if stripped != raw:
+        add(stripped)
+
+    kind_m = re.match(
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP))\s+(.+)$",
+        stripped,
+        re.I,
+    )
+    if kind_m:
+        kind_raw, rest = kind_m.group(1), kind_m.group(2).strip()
+        kind_map = {
+            "GOST": "ГОСТ",
+            "OST": "ОСТ",
+            "OCT": "ОСТ",
+            "TU": "ТУ",
+            "STB": "СТБ",
+            "STP": "СТП",
+            "TKP": "ТКП",
+            "SNIP": "СНиП",
+            "SP": "СП",
+        }
+        kind = kind_map.get(kind_raw.upper(), kind_raw.upper())
+        num = _clip_num(rest, kind)
+        if num:
+            if kind == "ОСТ":
+                num_fmt = format_ost_number(num)
+            elif kind == "ГОСТ":
+                num_fmt = format_gost_number(num)
+            elif kind == "СТБ":
+                num_fmt = format_stb_number(num)
+            else:
+                num_fmt = num
+            add(f"{kind} {num_fmt}")
+            add(f"{kind}{num_fmt}", require_space_after_kind=False)
+            add(f"({kind} {num_fmt})")
+            add(f"({kind}{num_fmt})", require_space_after_kind=False)
+
+    return out
+
+
+def search_terms_for_normative_ref(ref: str) -> list[str]:
+    """Совместимость: подсветка использует только строгие паттерны."""
+    return highlight_patterns_for_normative_ref(ref)
+
+
+def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
+    """(kind, canonical_number, dedupe_key) для сопоставления попаданий."""
+    s = _sanitize_normative_ref(ref)
+    kind_m = re.match(
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP))\s+",
+        s,
+        re.I,
+    )
+    kind = kind_m.group(1).upper() if kind_m else ""
+    kind_map = {"GOST": "ГОСТ", "OST": "ОСТ", "OCT": "ОСТ", "TU": "ТУ", "STB": "СТБ", "STP": "СТП", "TKP": "ТКП", "SNIP": "СНиП", "SP": "СП"}
+    kind = kind_map.get(kind, kind)
+    canon = _canonical_number(kind, s) if kind else ""
+    return kind, canon, _dedupe_key(s)
+
+
+def _phrase_is_tight_normative_match(
+    phrase: str,
+    *,
+    kind: str,
+    canon: str,
+    dedupe: str,
+    max_extra_chars: int = 18,
+) -> bool:
+    """Фраза из соседних слов — только целевой норматив, без лишнего текста строки."""
+    blob = _light_clean(phrase)
+    if not blob:
+        return False
+    matched = [
+        item
+        for item in extract_normative_refs(blob)
+        if item.get("kind") == kind
+        and _canonical_number(kind, item.get("ref") or "") == canon
+    ]
+    if not matched:
+        return False
+    ref_len = max(len(_sanitize_normative_ref(m.get("ref") or "")) for m in matched)
+    return len(blob) <= ref_len + max_extra_chars
+
+
+def _phrase_matches_highlight_ref(
+    phrase: str,
+    *,
+    kind: str,
+    canon: str,
+    dedupe: str,
+    ref_str: str,
+    max_extra_chars: int = 22,
+) -> bool:
+    """Совпадение для подсветки: точное или тот же номер с усечённым годом на листе."""
+    if _phrase_is_tight_normative_match(
+        phrase, kind=kind, canon=canon, dedupe=dedupe, max_extra_chars=max_extra_chars
+    ):
+        return True
+    blob = _light_clean(phrase)
+    if not blob or not kind:
+        return False
+    kind_re = {
+        "ГОСТ": r"гост|gost",
+        "ОСТ": r"ост|ost|oct",
+        "ТУ": r"ту|tu",
+        "СТБ": r"стб|stb",
+        "СТП": r"стп|stp",
+        "ТКП": r"ткп|tkp",
+        "СНиП": r"снип|snip",
+        "СП": r"сп|sp",
+    }.get(kind, re.escape(kind))
+    if not re.search(rf"(?<![a-zа-яё]){kind_re}(?![a-zа-яё])", blob, re.I):
+        return False
+    body, _year = _body_year_digits(kind, _sanitize_normative_ref(ref_str))
+    if len(body) < 4:
+        return False
+    blob_digits = re.sub(r"\D", "", blob)
+    if not blob_digits.startswith(body):
+        return False
+    ref_len = len(_sanitize_normative_ref(ref_str))
+    return len(blob) <= ref_len + max_extra_chars
+
+
+def _text_contains_normative_ref(text: str, *, kind: str, canon: str, dedupe: str) -> bool:
+    blob = _light_clean(text)
+    if not blob:
+        return False
+    for item in extract_normative_refs(blob):
+        if kind and item.get("kind") != kind:
+            continue
+        item_kind = item.get("kind") or kind
+        if _canonical_number(item_kind, item.get("ref") or "") == canon:
+            return True
+        if _dedupe_key(item.get("ref") or "") == dedupe:
+            return True
+    return False
+
+
 def format_stp_number(num: str) -> str:
     s = _light_clean(num)
     compact = re.sub(r"[\s.]", "", s)

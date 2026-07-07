@@ -3,138 +3,192 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>БелнипиAI</title>
+<title>БелнипиAI — проверка ГОСТ</title>
 <link rel="icon" type="image/png" href="/ico.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 
 <div class="shell">
 
-  <aside class="nav">
-    <div class="nav-brand">
-      <img src="/name.png?v=2" class="nav-brand-wordmark" alt="Белнипиэнергопром">
-      <button class="nav-collapse-btn" onclick="toggleNav()" title="Свернуть панель">
-        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="1" y="1" width="16" height="16" rx="3"/>
-          <line x1="6" y1="1" x2="6" y2="17"/>
-        </svg>
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" onclick="toggleNav()" title="Панель чатов" aria-label="Панель чатов">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-    </div>
-
-    <div class="nav-body">
-      <div class="field-label">Модель</div>
-      <div class="sel-wrap" id="model-sel-wrap">
-        <div class="csel" id="model-sel-trigger" onclick="toggleDrop()">
-          <span class="csel-val" id="model-sel-val">Загрузка...</span>
-          <span class="csel-arr">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </span>
+      <a class="brand" href="/">
+        <img src="/ico.png" alt="" class="brand-icon">
+        <div class="brand-text">
+          <span class="brand-name">БелнипиAI</span>
+          <span class="brand-tag">Проверка нормативов на чертеже</span>
         </div>
-        <div class="csel-drop" id="model-sel-drop"></div>
-        <input type="hidden" id="model-select" value="">
-      </div>
-
-      <div class="chats-header">
-        <div class="chats-label">Чаты</div>
-        <button class="new-chat-plus" onclick="newChat()" title="Новый чат">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-      </div>
-      <div class="chats-list" id="chats-list">
-        <div class="chats-empty">Нет чатов</div>
-      </div>
+      </a>
     </div>
-
-    <div class="nav-foot">
-      <div class="dot" id="status-dot"></div>
-      <span id="stat-status">Система работает</span>
-      <span class="user-pill" id="current-user">Гость</span>
-      <button class="del-all-btn" onclick="deleteAllChats()" title="Удалить все чаты">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-          <path d="M10 11v6"/><path d="M14 11v6"/>
-          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-        </svg>
+    <div class="topbar-right">
+      <button class="btn btn-primary btn-sm" onclick="newChat()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Новый чат
       </button>
     </div>
-  </aside>
+  </header>
 
-  <main class="page">
-    <div class="page-brand">
-      <button class="nav-open-btn" onclick="toggleNav()" title="Открыть панель">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <div class="feed" id="chat-area">
-      <div class="feed-inner" id="chat-inner">
+  <div class="workspace">
 
-        <div class="welcome" id="empty-state">
-          <div class="welcome-title">Проверка ГОСТ на чертеже</div>
-          <div class="welcome-sub">Загрузите PDF или скан листа — система найдёт все ГОСТ и проверит актуальность на normy.stn.by. Дату проверки можно изменить ниже (по умолчанию — сегодня). Обработка одного сканированного листа занимает около 3 минут.</div>
-          <div class="welcome-chips">
-            <button type="button" class="chip" onclick="setPrompt('Проверка ГОСТ на листе')">Все ГОСТ на листе</button>
+    <aside class="nav">
+      <div class="nav-section nav-section-grow">
+        <div class="nav-section-head">
+          <span class="nav-section-title">История</span>
+          <button class="icon-btn icon-btn-ghost" onclick="deleteAllChats()" title="Удалить все чаты">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+          </button>
+        </div>
+        <div class="chats-list" id="chats-list">
+          <div class="chats-empty">Пока нет чатов — загрузите чертёж</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="page">
+      <div class="feed" id="chat-area">
+        <div class="feed-inner" id="chat-inner">
+
+          <div class="welcome" id="empty-state">
+            <div class="welcome-hero">
+              <div class="welcome-badge">Локальная обработка · данные не уходят в облако</div>
+              <h1 class="welcome-title">Проверка ГОСТ<br>на чертеже</h1>
+              <p class="welcome-sub">Загрузите PDF или скан листа — система найдёт ГОСТ, ОСТ, СТП, ТУ и СТБ, затем проверит актуальность на normy.stn.by. Один лист обрабатывается около 3 минут.</p>
+            </div>
+
+            <div class="steps">
+              <div class="step-card">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <div class="step-title">Загрузите файл</div>
+                  <div class="step-desc">PDF, скан или изображение листа</div>
+                </div>
+              </div>
+              <div class="step-card">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <div class="step-title">OCR находит нормативы</div>
+                  <div class="step-desc">Поиск по всему листу, без подстановок</div>
+                </div>
+              </div>
+              <div class="step-card">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <div class="step-title">Проверка актуальности</div>
+                  <div class="step-desc">Сверка с базой normy.stn.by</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="welcome-actions">
+              <button type="button" class="action-card action-card-primary" onclick="document.getElementById('file-input').click()">
+                <span class="action-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </span>
+                <span class="action-text">
+                  <strong>Загрузить чертёж</strong>
+                  <small>PDF, PNG, JPG и другие форматы</small>
+                </span>
+              </button>
+              <button type="button" class="action-card" onclick="setPrompt('Проверка ГОСТ на листе')">
+                <span class="action-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                </span>
+                <span class="action-text">
+                  <strong>Все ГОСТ на листе</strong>
+                  <small>Быстрый запрос без ввода текста</small>
+                </span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="bar">
+        <div class="bar-inner">
+          <div class="composer-card" id="input-box">
+            <div class="composer-toolbar">
+              <div class="toolbar-group">
+                <label class="form-field form-field-inline" for="check-date">
+                  <span class="form-label">Дата проверки</span>
+                  <input type="date" id="check-date" class="form-input check-date-input" title="Дата актуальности ГОСТ">
+                </label>
+              </div>
+              <div class="toolbar-hint">Перетащите файл в окно или нажмите «Прикрепить»</div>
+            </div>
+
+            <div class="file-chip" id="file-preview">
+              <div class="file-chip-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div class="file-chip-info">
+                <span class="file-chip-name" id="file-preview-name"></span>
+                <span class="file-chip-size" id="file-preview-size"></span>
+              </div>
+              <button class="icon-btn icon-btn-ghost file-chip-rm" onclick="removeFile()" title="Удалить файл">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="file-preview-render" id="file-preview-render"></div>
+
+            <div class="composer">
+              <button class="attach" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                </svg>
+                <span>Прикрепить</span>
+              </button>
+              <textarea id="input-field" placeholder="Опишите задачу или прикрепите чертёж, затем нажмите «Отправить»" rows="1"></textarea>
+              <button class="send" id="send-btn" onclick="sendMessage()" title="Отправить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-
       </div>
-    </div>
-
-    <div class="bar">
-      <div class="bar-inner">
-        <div class="file-chip" id="file-preview">
-          <div class="file-chip-info">
-            <span class="file-chip-name" id="file-preview-name"></span>
-            <span class="file-chip-size" id="file-preview-size"></span>
-          </div>
-          <button class="file-chip-rm" onclick="removeFile()" title="Удалить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div class="check-date-row">
-          <label class="check-date-label" for="check-date">Дата проверки актуальности</label>
-          <input type="date" id="check-date" class="check-date-input" title="Дата, на которую проверяется актуальность ГОСТ">
-        </div>
-        <div class="composer" id="input-box">
-          <button class="attach" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
-          <textarea id="input-field" placeholder="Прикрепите чертёж — проверка ГОСТ запустится автоматически. Или задайте свой вопрос." rows="1"></textarea>
-          <button class="send" id="send-btn" onclick="sendMessage()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
-        </div>
-        <input type="file" id="file-input" style="display:none"
-          accept=".pdf,.docx,.doc,.xlsx,.xls,.xlsm,.txt,.md,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif,.tiff,.bmp">
-      </div>
-    </div>
-  </main>
+    </main>
+  </div>
 </div>
 
 <div class="drop" id="drop-overlay">
   <div class="drop-inner">
-    <div class="drop-icon">📂</div>
-    <div class="drop-ttl">Перетащите файл сюда</div>
-    <div class="drop-sub">PDF, DOCX, XLSX, изображения...</div>
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    </div>
+    <div class="drop-ttl">Отпустите файл здесь</div>
+    <div class="drop-sub">PDF, DOCX, XLSX, изображения</div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
+<input type="file" id="file-input" style="display:none"
+  accept=".pdf,.docx,.doc,.xlsx,.xls,.xlsm,.txt,.md,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif,.tiff,.bmp">
+
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="/static/app.js?v=3"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.15/build/pdfmake.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.15/build/vfs_fonts.js"></script>
+<div class="modal-backdrop" id="confirm-modal" hidden>
+  <div class="modal">
+    <div class="modal-title" id="confirm-title">Подтверждение</div>
+    <div class="modal-text" id="confirm-text"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="confirm-cancel">Отмена</button>
+      <button class="btn btn-danger" id="confirm-ok">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js?v=10"></script>
 </body>
 </html>

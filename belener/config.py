@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 def ensure_upload_temp_dir() -> str:
@@ -649,27 +650,61 @@ def tile_ocr_time_budget_sec() -> float:
         raw = (
             os.environ.get("PDF_TILE_OCR_TIME_BUDGET")
             or os.environ.get("PDF_NORMATIVE_TIME_BUDGET")
-            or "180"
+            or "165"
         )
-        return max(30.0, min(float(str(raw).strip()), 600.0))
+        return max(30.0, min(float(str(raw).strip()), 220.0))
     except ValueError:
-        return 180.0
+        return 165.0
 
 
 def gost_check_extra_per_page_sec() -> float:
     try:
-        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "18").strip()))
+        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "50").strip()))
     except ValueError:
-        return 18.0
+        return 50.0
+
+
+def gost_check_total_budget_max_sec() -> float:
+    """Верхний предел общего времени (1 лист ≈ PDF_GOST_CHECK_BUDGET, далее +N с/лист)."""
+    try:
+        return max(220.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET_MAX", "2400").strip()))
+    except ValueError:
+        return 2400.0
 
 
 def gost_check_total_budget_sec(page_count: int = 1) -> float:
     try:
-        base = max(60.0, min(float(os.environ.get("PDF_GOST_CHECK_BUDGET", "210").strip()), 900.0))
+        base = max(60.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET", "220").strip()))
     except ValueError:
-        base = 210.0
-    extra = gost_check_extra_per_page_sec() * max(0, int(page_count) - 1)
-    return min(base + extra, 900.0)
+        base = 220.0
+    pages = max(1, int(page_count))
+    extra = gost_check_extra_per_page_sec() * max(0, pages - 1)
+    return min(base + extra, gost_check_total_budget_max_sec())
+
+
+def gost_check_budget_human(page_count: int = 1) -> str:
+    """Верхняя оценка времени (фактически часто быстрее)."""
+    sec = int(round(gost_check_total_budget_sec(page_count)))
+    if sec < 90:
+        return f"до ~{sec} с"
+    minutes = max(1, int(round(sec / 60)))
+    if minutes < 60:
+        return f"до ~{minutes} мин"
+    hours, mins = divmod(minutes, 60)
+    if mins:
+        return f"до ~{hours} ч {mins} мин"
+    return f"до ~{hours} ч"
+
+
+def stn_pipeline_reserve_sec(page_count: int = 1, refs_count: int = 0) -> float:
+    """Резерв STN внутри общего бюджета (масштабируется с числом листов и нормативов)."""
+    total = gost_check_total_budget_sec(page_count)
+    pages = max(1, int(page_count))
+    refs = max(int(refs_count), 0)
+    if pages == 1:
+        return min(total * 0.4, max(75.0, stn_batch_budget_sec() + max(refs, 1) * 3.5))
+    reserve = stn_batch_budget_sec() + max(refs, 1) * 3.0 + pages * 2.0
+    return min(total * 0.32, max(50.0, reserve))
 
 
 def stn_batch_budget_sec() -> float:
@@ -706,16 +741,39 @@ def normative_supplement_budget_sec() -> float:
         return 28.0
 
 
-def normative_ocr_budget_sec(page_count: int = 1) -> float:
+def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> float:
+    """Бюджет OCR в общем лимите; для 1 листа резервируем время на STN."""
     total = gost_check_total_budget_sec(page_count)
-    stn = stn_batch_budget_sec()
-    ocr_cap = max(45.0, total - stn)
-    ocr = min(total - stn, tile_ocr_time_budget_sec())
-    single = tile_ocr_time_budget_sec()
+    pages = max(1, int(page_count))
+    if pages == 1:
+        min_stn_tail = stn_pipeline_reserve_sec(pages, 0)
+    else:
+        min_stn_tail = min(55.0, stn_batch_budget_sec())
+    ocr_cap = max(60.0, total - min_stn_tail)
+
+    from belener.tile_ocr import page_tile_jobs, supplements_for_page_scan
+
     cols, rows = tile_grid_for_page_count(page_count)
-    tiles_total = max(1, int(page_count)) * cols * rows
-    min_needed = tiles_total * 20.0 + normative_supplement_budget_sec()
-    return max(45.0, min(max(single, ocr, min_needed), ocr_cap, 600.0))
+    tiles_total = 0
+    if doc is not None and getattr(doc, "page_count", 0):
+        scan_pages = min(int(doc.page_count), pages)
+        for i in range(scan_pages):
+            rect = doc[i].rect
+            tiles_total += len(page_tile_jobs(rect, cols=cols, rows=rows))
+            tiles_total += len(supplements_for_page_scan(rect, pages))
+    else:
+        if pages <= 4:
+            sup_per_page = 8
+        elif pages <= 12:
+            sup_per_page = 1
+        else:
+            sup_per_page = 1
+        tiles_total = pages * (cols * rows + sup_per_page)
+
+    per_tile = 11.0 if pages == 1 else (9.5 if pages <= 12 else 8.0)
+    min_needed = tiles_total * per_tile + (normative_supplement_budget_sec() if pages <= 4 else 10.0)
+    single = tile_ocr_time_budget_sec()
+    return max(45.0, min(max(single, min_needed), ocr_cap, total * 0.96))
 
 
 def tile_ocr_max_pages() -> int:
@@ -733,7 +791,11 @@ def tile_grid_for_page_count(page_count: int) -> tuple[int, int]:
         return 4, 2
     if n <= 5:
         return 3, 2
-    return 2, 2
+    if n <= 20:
+        return 2, 2
+    if n <= 50:
+        return 2, 1
+    return 1, 2
 
 
 def tile_ocr_dpi_for_pages(page_count: int) -> int:
@@ -743,7 +805,11 @@ def tile_ocr_dpi_for_pages(page_count: int) -> int:
         return base
     if n <= 8:
         return max(260, min(base, 300))
-    return max(240, min(base, 280))
+    if n <= 20:
+        return max(240, min(base, 280))
+    if n <= 50:
+        return max(220, min(base, 260))
+    return max(200, min(base, 240))
 
 
 def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None, page_count: int = 1) -> float:
