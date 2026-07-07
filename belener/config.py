@@ -708,12 +708,14 @@ def normative_supplement_budget_sec() -> float:
 
 def normative_ocr_budget_sec(page_count: int = 1) -> float:
     total = gost_check_total_budget_sec(page_count)
-    ocr = total - stn_batch_budget_sec()
+    stn = stn_batch_budget_sec()
+    ocr_cap = max(45.0, total - stn)
+    ocr = min(total - stn, tile_ocr_time_budget_sec())
     single = tile_ocr_time_budget_sec()
     cols, rows = tile_grid_for_page_count(page_count)
     tiles_total = max(1, int(page_count)) * cols * rows
     min_needed = tiles_total * 20.0 + normative_supplement_budget_sec()
-    return max(45.0, min(max(single, ocr, min_needed), 600.0))
+    return max(45.0, min(max(single, ocr, min_needed), ocr_cap, 600.0))
 
 
 def tile_ocr_max_pages() -> int:
@@ -1023,23 +1025,23 @@ def stn_parallel_workers() -> int:
 def stn_max_queries() -> int:
     """Сколько вариантов запроса пробовать на STN (остальные — только при OCR-вариантах)."""
     try:
-        return max(1, min(int(os.environ.get("PDF_STN_MAX_QUERIES", "1").strip()), 8))
+        return max(1, min(int(os.environ.get("PDF_STN_MAX_QUERIES", "3").strip()), 8))
     except ValueError:
-        return 1
+        return 3
 
 
 def stn_ocr_variant_limit() -> int:
     try:
-        return max(0, min(int(os.environ.get("PDF_STN_OCR_VARIANTS", "0").strip()), 20))
+        return max(0, min(int(os.environ.get("PDF_STN_OCR_VARIANTS", "4").strip()), 20))
     except ValueError:
-        return 0
+        return 4
 
 
 def stn_max_refs() -> int:
     try:
-        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "20").strip()), 50))
+        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "40").strip()), 50))
     except ValueError:
-        return 20
+        return 40
 
 
 def normative_skip_tiles_min_refs() -> int:

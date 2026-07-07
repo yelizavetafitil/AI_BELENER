@@ -324,6 +324,7 @@ def _sse_status(text: str):
 
 def stream_extract_pdf_normative(path: str, filename: str, question: str, *, check_date=None):
     """PDF → OCR страниц (плитки) → таблица нормативов + проверка ГОСТ на STN."""
+    import time
     from datetime import date
 
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
@@ -357,16 +358,20 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         yield from _sse_error(str(result.get("error") or "Не удалось прочитать PDF"))
         return
 
-    from belener.config import stn_lookup_enabled
+    from belener.config import gost_check_total_budget_sec, stn_batch_budget_sec, stn_lookup_enabled
     from belener.stn_lookup import refine_and_check_normative_refs
 
     stn_checks = []
     if stn_lookup_enabled():
         yield from _sse_status(DRAWING_PROCESS_STATUS)
         try:
+            page_count = int(result.get("page_count") or 1)
+            # Резерв STN после OCR: не привязывать к старту pipeline (OCR ~100+ с).
+            stn_deadline = time.monotonic() + stn_batch_budget_sec()
             refined, stn_checks = refine_and_check_normative_refs(
                 result.get("normative_refs") or [],
                 today=validity_date,
+                deadline=stn_deadline,
             )
             result["normative_refs"] = refined
             result["stn_checks"] = [c.to_dict() for c in stn_checks]
@@ -387,6 +392,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
 def stream_extract_image_normative(path: str, filename: str, question: str, *, check_date=None):
     """Изображение → OCR → таблица нормативов."""
+    import time
     from datetime import date
 
     from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
@@ -402,16 +408,18 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         return
 
     include_ctx = "контекст" in (question or "").casefold()
-    from belener.config import stn_lookup_enabled
+    from belener.config import stn_batch_budget_sec, stn_lookup_enabled
     from belener.stn_lookup import refine_and_check_normative_refs
 
     stn_checks = []
     if stn_lookup_enabled():
         yield from _sse_status(DRAWING_PROCESS_STATUS)
         try:
+            stn_deadline = time.monotonic() + stn_batch_budget_sec()
             refined, stn_checks = refine_and_check_normative_refs(
                 result.get("normative_refs") or [],
                 today=validity_date,
+                deadline=stn_deadline,
             )
             result["normative_refs"] = refined
             result["stn_checks"] = [c.to_dict() for c in stn_checks]

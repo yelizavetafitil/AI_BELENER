@@ -59,7 +59,7 @@ _CLIP: dict[str, re.Pattern[str]] = {
         re.I,
     ),
     "ТУ": re.compile(r"^(\d+(?:-\d+){2,})", re.I),
-    "СТБ": re.compile(r"^(\d+-\d{4})", re.I),
+    "СТБ": re.compile(r"^(\d{3,4}-\d{4})", re.I),
     "СТП": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
     "РД": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
     "СО": re.compile(r"^(\d+(?:-\d+(?:\.\d+)+)+)", re.I),
@@ -154,7 +154,7 @@ def _num_complete(num: str, kind: str) -> bool:
         parts = [p for p in n.split("-") if p]
         return len(parts) >= 3 and len(parts[-1]) in (2, 4)
     if kind == "СТБ":
-        return bool(re.fullmatch(r"\d+-\d{4}", n.replace(" ", "")))
+        return bool(re.fullmatch(r"\d{3,4}-\d{4}", n.replace(" ", "")))
     return len(n.replace(" ", "")) >= 4
 
 
@@ -200,6 +200,33 @@ def format_gost_number(num: str) -> str:
     if m and m.group(2) != m.group(3):
         return f"{m.group(1)}-{m.group(2)}"
     return s
+
+
+def format_stb_number(num: str) -> str:
+    """OCR: 2073 2010 → 2073-2010; 097-2012 → 1097-2012 (потеря «1»)."""
+    s = _light_clean(num)
+    m = re.match(r"^(\d{3,4})\s+(\d{4})$", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    s = re.sub(r"(\d+)\s*-\s*(\d{4})", r"\1-\2", s)
+    compact = re.sub(r"\s+", "", s)
+    m0 = re.match(r"^0(\d{2})-(\d{4})$", compact)
+    if m0:
+        return f"10{m0.group(1)}-{m0.group(2)}"
+    return compact
+
+
+def format_tkp_number(num: str) -> str:
+    """ТКП: пробелы вокруг «-» и «.» → 45-3.02-7-2005, OCR-ошибки (+5 → 45)."""
+    s = _light_clean(num)
+    s = re.sub(r"^\+5", "45", s)
+    s = re.sub(r"\s*\.\s*", ".", s)
+    s = re.sub(r"\s*-\s*", "-", s)
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(r"(\d)\s+(\d)", r"\1.\2", s)
+    return re.sub(r"\s+", "", s).strip(" .-")
 
 
 def format_stp_number(num: str) -> str:
@@ -485,6 +512,14 @@ def _sanitize_normative_ref(ref: str) -> str:
     m = re.match(r"^((?:ГОСТ|GOST)\s+)(.+)$", s, re.I)
     if m:
         num = format_gost_number(m.group(2))
+        s = f"{m.group(1)}{num}"
+    m = re.match(r"^((?:СТБ|STB)\s+)(.+)$", s, re.I)
+    if m:
+        num = format_stb_number(m.group(2))
+        s = f"{m.group(1)}{num}"
+    m = re.match(r"^((?:ТКП|TKP)\s+)(.+)$", s, re.I)
+    if m:
+        num = format_tkp_number(m.group(2))
         s = f"{m.group(1)}{num}"
     return _light_clean(s)
 
@@ -828,6 +863,80 @@ def _pick_better_ref(a: str, b: str, *, kind: str = "") -> str:
     return la if len(la or "") >= len(lb or "") else lb
 
 
+def _expand_stb_partial_years_in_block(block: str) -> str:
+    """В перечне ТНПА OCR часто обрезает год: «СТБ 2235-20» вместо «2235-2011»."""
+    full_years: list[int] = []
+    for fm in re.finditer(r"(?i)(?:СТБ|STB)\s+\d{3,4}-((?:19|20)\d{2})\b", block):
+        try:
+            full_years.append(int(fm.group(1)))
+        except ValueError:
+            pass
+    for fm in re.finditer(
+        r"(?i)(?:^|[;\n])\s*[-–—]?\s*(\d{4})-((?:19|20)\d{2})\b",
+        block,
+        flags=re.M,
+    ):
+        try:
+            full_years.append(int(fm.group(2)))
+        except ValueError:
+            pass
+
+    used_years = list(full_years)
+
+    def _next_year(yy_prefix: str) -> int | None:
+        if not used_years:
+            return None
+        guess = max(used_years) + 1
+        if 1900 <= guess <= 2039:
+            used_years.append(guess)
+            return guess
+        return None
+
+    def repl_stb(m: re.Match[str]) -> str:
+        year = _next_year(m.group(2))
+        if year is None:
+            return m.group(0)
+        return f"СТБ {m.group(1)}-{year}"
+
+    block = re.sub(
+        r"(?i)(?:СТБ|STB)\s+(\d{3,4})-(19|20)(?!\d)",
+        repl_stb,
+        block,
+    )
+
+    def repl_bare(m: re.Match[str]) -> str:
+        year = _next_year(m.group(2))
+        if year is None:
+            return m.group(0)
+        return f"\nСТБ {m.group(1)}-{year}"
+
+    return re.sub(
+        r"(?i)(?:^|[;\n])\s*[-–—]?\s*(\d{4})-(19|20)(?!\d)",
+        repl_bare,
+        block,
+        flags=re.M,
+    )
+
+
+def _recover_stb_truncated_year_in_tnpa(s: str) -> str:
+    """Дополняет обрезанные годы СТБ в блоках после «ТНПА» (и OCR «ТНЛА»)."""
+    if not s:
+        return s
+    marks = list(re.finditer(r"(?i)тн[пл][аa]", s))
+    if not marks:
+        return s
+    out: list[str] = []
+    last = 0
+    for m in marks:
+        out.append(s[last : m.start()])
+        block_start = m.start()
+        block_end = min(len(s), block_start + 2500)
+        out.append(_expand_stb_partial_years_in_block(s[block_start:block_end]))
+        last = block_end
+    out.append(s[last:])
+    return "".join(out)
+
+
 def _ocr_loosen_normative_spacing(text: str) -> str:
     s = fuzzy_normative_text(text or "")
     s = re.sub(r"(?i)г\s*о\s*с\s*т", "ГОСТ", s)
@@ -848,6 +957,20 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     s = re.sub(
         r"(?:^|\n)\s*\d+\s*(?:[\|]\s*)?(\d{4}-\d{4})\b",
         r"\nСТБ \1",
+        s,
+        flags=re.M,
+    )
+    # Перечень ТНПА: «- 2235-2011» или «2235-2011» без префикса СТБ (OCR второй строки)
+    s = re.sub(
+        r"(?:^|[;\n])\s*[-–—]?\s*((?:\d{4}-(?:19|20)\d{2}))\b",
+        r"\nСТБ \1",
+        s,
+        flags=re.M,
+    )
+    # Перечень ТНПА: «- 10704-91» без префикса ГОСТ
+    s = re.sub(
+        r"(?:^|[;\n])\s*[-–—]?\s*((?:\d{4,})-\d{2})\b(?!\d)",
+        r"\nГОСТ \1",
         s,
         flags=re.M,
     )
@@ -911,9 +1034,11 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
         flags=re.I,
     )
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
-    s = re.sub(r"(?i)с\s*н\s*и\s*п", "СНиП", s)
+    s = re.sub(r"(?i)(с\s*н\s*и\s*п|snip)", "СНиП", s)
+    s = re.sub(r"(?i)(т\s*к\s*п|tkp)\s*\+5", r"ТКП 45", s)
     s = re.sub(r"(?i)т\s*к\s*п", "ТКП", s)
     s = re.sub(r"(?i)(гост|gost)(\d)", r"\1 \2", s)
+    s = re.sub(r"(?i)(стб|stb)(\d)", r"\1 \2", s)
     s = re.sub(r"(?i)(ост|oct|ost)(\d)", r"\1 \2", s)
     # ГОСТ10705-8076х3 → год -80 и размер 76х3 (OCR слеил строки)
     s = re.sub(r"(-\d{2})(\d{2,}(?=[xх×]))", r"\1 \2", s)
@@ -924,7 +1049,7 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
         s,
         flags=re.I,
     )
-    return s
+    return _recover_stb_truncated_year_in_tnpa(s)
 
 
 def _match_lead(m: re.Match[str]) -> str | None:
@@ -948,6 +1073,10 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
         num = format_ost_number(num)
     elif kind == "ГОСТ":
         num = format_gost_number(num)
+    elif kind == "СТБ":
+        num = format_stb_number(num)
+    elif kind == "ТКП":
+        num = format_tkp_number(num)
     elif kind in ("СТП", "РД"):
         num = format_stp_number(num)
 
@@ -1056,8 +1185,11 @@ def extract_normative_refs(text: str) -> list[dict[str, str]]:
     best: dict[str, dict[str, str]] = {}
     order: list[str] = []
     for _, _, item, key in sorted(kept, key=lambda x: x[0]):
+        item_kind = str(item.get("kind") or "")
         if key in best:
-            best[key]["ref"] = _pick_better_ref(best[key]["ref"], item["ref"], kind=kind)
+            best[key]["ref"] = _pick_better_ref(
+                best[key]["ref"], item["ref"], kind=item_kind
+            )
             continue
         best[key] = item
         order.append(key)

@@ -23,6 +23,7 @@ from belener.config import (
     stn_lookup_enabled,
     stn_max_queries,
     stn_max_refs,
+    stn_ocr_variant_limit,
     stn_parallel_workers,
     stn_password,
     stn_timeout_sec,
@@ -173,6 +174,8 @@ def _normalize_stn_number(num: str, kind: str = "") -> str:
     s = _clean_stn_query(num)
     if (kind or "").strip().casefold() in ("ост", "oct", "ost"):
         return format_ost_number(s).strip(" .-")
+    if (kind or "").strip().casefold() == "ткп":
+        return s.strip(" .-")
     prev = None
     while prev != s:
         prev = s
@@ -306,10 +309,24 @@ def search_queries(kind: str, ref: str) -> list[str]:
     dotted = num.replace(" ", "").replace("-", ".") if num else ""
 
     out: list[str] = []
-    for q in (full, num, f"{kind} {num}".strip() if num else "", compact, dotted):
-        q = _clean_stn_query(q)
-        if q and q not in out:
-            out.append(q)
+    if kind == "ТКП" and num:
+        for q in (
+            full,
+            f"{kind} {num} (02250)",
+            f"{num} (02250)",
+            num,
+            f"{kind} {num}".strip(),
+            compact,
+            dotted,
+        ):
+            q = _clean_stn_query(q)
+            if q and q not in out:
+                out.append(q)
+    else:
+        for q in (full, num, f"{kind} {num}".strip() if num else "", compact, dotted):
+            q = _clean_stn_query(q)
+            if q and q not in out:
+                out.append(q)
 
     if num and "-" in num:
         parts = [p for p in num.replace(" ", "").split("-") if p]
@@ -322,7 +339,6 @@ def search_queries(kind: str, ref: str) -> list[str]:
                 if q and q not in out:
                     out.append(q)
     if kind == "ТКП" and num:
-        # На сайте обозначение может быть с (02250); в быстром поиске — без.
         for q in (f"{kind} {num} (02250)", f"{num} (02250)"):
             q = _clean_stn_query(q)
             if q and q not in out:
@@ -588,10 +604,10 @@ class StnClient:
         max_queries: int | None = None,
         deadline: float | None = None,
     ) -> tuple[dict[str, Any] | None, str]:
-        """Быстрый поиск: quick (+ doctypes), full — только если quick что-то нашёл."""
+        """Quick, затем full по каждому варианту запроса (full нужен, если quick пуст)."""
         limit = max_queries if max_queries is not None else stn_max_queries()
         if kind == "ТКП":
-            limit = min(max(limit, 3), 4)
+            limit = min(max(limit, 4), 8)
         tried: list[str] = []
         rows: list[dict[str, Any]] = []
         for raw_q in queries[:limit]:
@@ -608,14 +624,14 @@ class StnClient:
                 match = _pick_best_match(kind, ref, rows)
                 if match:
                     return match, "; ".join(tried[:4])
-                if deadline is not None and time.monotonic() >= deadline:
-                    break
-                full_rows = self.search_full(q)
-                if full_rows:
-                    rows.extend(full_rows)
-                    match = _pick_best_match(kind, ref, rows)
-                    if match:
-                        return match, "; ".join(tried[:4])
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            full_rows = self.search_full(q)
+            if full_rows:
+                rows.extend(full_rows)
+                match = _pick_best_match(kind, ref, rows)
+                if match:
+                    return match, "; ".join(tried[:4])
         return None, "; ".join(tried[:4])
 
     def fetch_card(self, doc_id: str) -> str:
@@ -675,6 +691,26 @@ def lookup_one(
             return out
         cli._ensure_logged_in()
         match, used_q = _lookup_match(kind, ref, client=cli, queries=queries, deadline=deadline)
+        variant_retry = False
+        if not match:
+            variant_cap = stn_ocr_variant_limit()
+            if variant_cap > 0 and kind not in ("ТКП", "СП", "СНиП"):
+                extra: list[str] = []
+                for vref in _iter_ocr_digit_variants(kind, ref, limit=variant_cap):
+                    for q in search_queries(kind, vref):
+                        q = _clean_stn_query(q)
+                        if q and q not in extra:
+                            extra.append(q)
+                if extra:
+                    variant_retry = True
+                    match, used_q = _lookup_match(
+                        kind, ref, client=cli, queries=extra, deadline=deadline
+                    )
+        if match and variant_retry:
+            sheet_digits = _core_digits(kind, ref)
+            code_digits = re.sub(r"\D", "", _norm_code(str(match.get("code") or "")))
+            if sheet_digits and code_digits and sheet_digits != code_digits:
+                match = None
 
         if not match:
             if getattr(cli, "_logged_in", False):
@@ -751,6 +787,10 @@ def refine_and_check_normative_refs(
         return list(refs or []), []
 
     shared_cli = client or _default_client()
+    try:
+        shared_cli._ensure_logged_in()
+    except Exception as e:
+        log.warning("STN login failed: %s", e)
     workers = min(stn_parallel_workers(), len(items))
     refined_map: dict[tuple[str, str], dict[str, str]] = {}
     checks_map: dict[tuple[str, str], StnCheckResult] = {}
@@ -885,8 +925,7 @@ def stn_checks_to_markdown(
             status = c.status or "—"
             if c.error and c.status == "ошибка проверки":
                 status = f"{status} ({c.error[:60]})"
-            designation = c.ref
-            lines.append(f"| {c.kind} | {designation} | {intro} | {cancel} | {status} |")
+            lines.append(f"| {c.kind} | {c.ref} | {intro} | {cancel} | {status} |")
         lines.append("")
     checked = len(checks)
     found = len(found_checks)

@@ -149,7 +149,8 @@ def _is_table_zone(zone: str) -> bool:
 
 
 def _is_tile_zone(zone: str) -> bool:
-    return (zone or "").casefold().startswith("tile")
+    z = (zone or "").casefold()
+    return z.startswith("tile") or z.startswith(("spec_", "supp_"))
 
 
 def _preprocess_image(img: Image.Image, *, zone: str = "") -> Image.Image:

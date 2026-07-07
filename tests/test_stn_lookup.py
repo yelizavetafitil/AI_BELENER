@@ -134,6 +134,47 @@ class _FakeClient(StnClient):
         return CARD_HTML
 
 
+def test_search_escalated_falls_back_to_full(monkeypatch):
+    """Full search must run even when quick returns nothing."""
+
+    class _QuickEmptyClient(StnClient):
+        def __init__(self) -> None:
+            self.base = "https://example.test/"
+            self.timeout = 5
+
+        def search_quick_pages(self, query: str, *, max_pages: int = 1):
+            return []
+
+        def search_full(self, query: str):
+            if "2073-2010" in query:
+                return [
+                    {
+                        "docid": "42",
+                        "code": "СТБ 2073-2010",
+                        "name": "Бетоны",
+                        "activitydate": "2010-01-01",
+                        "status": "1",
+                    }
+                ]
+            return []
+
+        def fetch_card(self, doc_id: str) -> str:
+            return """
+            <tr><td class="doc-card-header">Обозначение</td><td>СТБ 2073-2010</td></tr>
+            <tr><td class="doc-card-header">Дата введения</td><td>01.01.2010</td></tr>
+            <tr><td class="doc-card-header">Дата отмены</td><td>—</td></tr>
+            """
+
+        def _ensure_logged_in(self) -> None:
+            self._logged_in = True
+
+    monkeypatch.setattr("belener.stn_lookup.stn_lookup_enabled", lambda: True)
+    monkeypatch.setattr("belener.stn_lookup.stn_ocr_variant_limit", lambda: 0)
+    res = lookup_one("СТБ", "СТБ 2073-2010", client=_QuickEmptyClient(), today=date(2026, 7, 6))
+    assert res.found
+    assert res.stn_code == "СТБ 2073-2010"
+
+
 def test_pick_base_not_amendment(monkeypatch):
     monkeypatch.setattr("belener.stn_lookup.stn_lookup_enabled", lambda: True)
     res = lookup_one("СНиП", "СНиП 3.05.02-88", client=_FakeClient(), today=date(2026, 6, 11))
@@ -158,15 +199,33 @@ def test_check_fund_kinds(monkeypatch):
     assert {c.kind for c in out} == {"ГОСТ", "ОСТ", "СНиП", "СТП"}
 
 
-def test_stn_table_only_found_in_ips():
+def test_tkp_search_queries_prioritize_02250():
+    qs = search_queries("ТКП", "ТКП 45-3.02-7-2005")
+    assert qs[0] == "ТКП 45-3.02-7-2005"
+    assert "02250" in qs[1]
+    assert len(qs) >= 4
+
+
+def test_tkp_spaced_number_search():
+    assert search_query("ТКП", "ТКП 45 - 3.02 - 7 - 2005") == "ТКП 45-3.02-7-2005"
+
+
+def test_stn_table_shows_not_found():
     checks = [
         StnCheckResult("ГОСТ", "ГОСТ 10704-91", "", found=True, intro_date="01.01.1993", status="актуален"),
-        StnCheckResult("ГОСТ", "ГОСТ 8969-75", "", found=False, status="нет в ИПС"),
+        StnCheckResult("ТКП", "ТКП 45-3.02-7-2005", "", found=False, status="нет в ИПС"),
     ]
     md = "\n".join(stn_checks_to_markdown(checks, check_date=date(2026, 6, 19)))
     assert "10704-91" in md
-    assert "8969-75" not in md
+    assert "45-3.02-7-2005" in md
+    assert "нет в ИПС" in md
     assert "Проверено на листе: 2" in md
+
+
+def test_stb_ocr_leading_zero_to_1097():
+    from belener.normative_refs import format_stb_number
+
+    assert format_stb_number("097-2012") == "1097-2012"
 
 
 def test_parse_card_html_ips():

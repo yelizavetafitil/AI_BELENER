@@ -263,6 +263,79 @@ def test_stb_ocr_sb_and_paren_glue():
     assert sum(1 for r in refs if "1544-2005" in r["ref"]) >= 1
 
 
+def test_stb_ocr_spaced_year_and_glued_prefix():
+    text = "СТБ2073-2010\nСТБ 2073 2010\nГОСТ 21.501-2018"
+    refs = extract_normative_refs(text)
+    stb = [r for r in refs if r.get("kind") == "СТБ"]
+    assert len(stb) >= 1
+    assert any("2073-2010" in r["ref"] for r in stb)
+    assert any(r.get("kind") == "ГОСТ" for r in refs)
+
+
+def test_stb_tnpa_list_second_item_without_prefix():
+    """Общие указания: второй пункт «- 2235-2011» без «СТБ» после OCR."""
+    text = (
+        "2 Чертежи разработаны в соответствии с действующими ТНПА:\n"
+        '- СТБ 2073-2010 "Правила выполнения чертежей генеральных планов предприятий,\n'
+        "сооружений и жилищно-гражданских объектов;\n"
+        '- 2235-2011 "Условные графические обозначения'
+    )
+    refs = extract_normative_refs(text)
+    nums = {r["ref"] for r in refs if r.get("kind") == "СТБ"}
+    assert "СТБ 2073-2010" in nums
+    assert "СТБ 2235-2011" in nums
+
+
+def test_tnpa_gost_list_without_prefix():
+    text = (
+        "2 Чертежи разработаны в соответствии с действующими ТНПА:\n"
+        "- ГОСТ 10704-91\n"
+        "- 10705-80"
+    )
+    refs = extract_normative_refs(text)
+    gost = {r["ref"] for r in refs if r.get("kind") == "ГОСТ"}
+    assert "ГОСТ 10704-91" in gost
+    assert "ГОСТ 10705-80" in gost
+
+
+def test_gp9_general_notes_both_stb():
+    text = (
+        "Общие указания\n"
+        "2 Чертежи разработаны в соответствии с действующими ТНПА:\n"
+        '- СТБ 2073-2010 "Правила выполнения чертежей генеральных планов предприятий,\n'
+        "сооружений и жилищно-гражданских объектов;\n"
+        '- 2235-2011 "Условные графические обозначения'
+    )
+    refs = extract_normative_refs(text)
+    stb = {r["ref"] for r in refs if r.get("kind") == "СТБ"}
+    assert "СТБ 2073-2010" in stb
+    assert "СТБ 2235-2011" in stb
+
+
+def test_gp9_ocr_truncated_stb_year_in_tnpa():
+    """Реальный OCR л.1: «СТБ 2235-20» — год обрезан после «20»."""
+    text = (
+        "Общие указания\n"
+        "2 Чертежи разработаны в соответствии с бедствующими ТНЛА:\n"
+        '- СТБ 2073-2010 "Правила выполнения чертеже генеральных п\n'
+        "сооружений и жилищно-гражданских объектов;\n"
+        '- СТБ 2235-20 "Условные графические обозначения'
+    )
+    refs = extract_normative_refs(text)
+    stb = {r["ref"] for r in refs if r.get("kind") == "СТБ"}
+    assert "СТБ 2073-2010" in stb
+    assert "СТБ 2235-2011" in stb
+
+
+def test_stb_truncated_year_without_sibling_not_invented():
+    """Без полного года в том же блоке ТНПА не дополняем год «из головы»."""
+    text = "2 Чертежи разработаны в соответствии с действующими ТНПА:\n- СТБ 2235-20"
+    refs = extract_normative_refs(text)
+    stb = [r["ref"] for r in refs if r.get("kind") == "СТБ"]
+    assert "2235-2011" not in " ".join(stb)
+    assert "2235-2010" not in " ".join(stb)
+
+
 def test_no_hardcoded_gost_replacement():
     """OCR-текст не переписывается под «ожидаемые» номера."""
     raw = "ГОСТ 10705-91 ГОСТ 16705-80"

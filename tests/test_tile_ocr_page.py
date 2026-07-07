@@ -9,7 +9,7 @@ from belener.tile_ocr import extract_page_tiles, page_tile_jobs, page_tile_jobs_
 
 def test_extract_page_tiles_all_jobs():
     doc = fitz.open()
-    doc.new_page(width=1200, height=800)
+    doc.new_page(width=1000, height=800)
     calls: list[str] = []
 
     def fake_ocr(doc, page_index, rect, *, zone, dpi, deadline, tile_max_sec, **kwargs):
@@ -22,9 +22,11 @@ def test_extract_page_tiles_all_jobs():
             tile_max_sec=20, overlap_frac=0.12,
         )
     doc.close()
-    assert expected == 8
-    assert done == 8
-    assert len(sources) == 8
+    assert expected == 14
+    assert done == 14
+    assert len(sources) == 14
+    assert calls[0].startswith("supp_notes")
+    assert calls[6] == "tile_1_3"
 
 
 def test_normative_tile_order_bottom_right_first():
@@ -53,8 +55,9 @@ def test_supplement_runs_after_right_tiles_on_wide_page():
             tile_max_sec=20, overlap_frac=0.12,
         )
     doc.close()
-    assert expected == 9
-    assert done == 9
+    assert expected == 15
+    assert done == 15
     assert order[0] == "tile_1_3"
     assert order[4] == "spec_right"
+    assert order[5].startswith("supp_notes")
     assert order[-1] == "tile_0_0"
