@@ -88,3 +88,86 @@ def test_multiple_occurrences_of_same_ref():
     _, marks = _highlight_on_page(page, [{"ref": "ГОСТ 10704-91"}], words=words)
     assert marks == 4
     doc.close()
+
+
+def test_ost_with_position_prefix_and_latin_oct():
+    words = [
+        (40.0, 200.0, 55.0, 215.0, "19", 0, 0, 0),
+        (60.0, 200.0, 85.0, 215.0, "OCT", 0, 0, 1),
+        (90.0, 200.0, 170.0, 215.0, "108.275.52-80", 0, 0, 2),
+    ]
+    spans = _all_word_spans_for_ref(words, "ОСТ 108.275.52-80")
+    assert spans == [(1, 2)]
+    rects = _pinpoint_rects_for_span(words, spans[0][0], spans[0][1])
+    assert len(rects) == 2
+    assert all(r.x0 >= 60 for r in rects)
+
+
+def test_gost_with_material_prefix():
+    words = [
+        (50.0, 220.0, 90.0, 235.0, "12-В", 0, 0, 0),
+        (95.0, 220.0, 130.0, 235.0, "ГОСТ", 0, 0, 1),
+        (135.0, 220.0, 195.0, 235.0, "2590-2006", 0, 0, 2),
+    ]
+    spans = _all_word_spans_for_ref(words, "ГОСТ 2590-2006")
+    assert spans == [(1, 2)]
+
+
+def test_gost_span_excludes_length_and_quantity_tokens():
+    words = [
+        (60.0, 200.0, 85.0, 215.0, "ГОСТ", 0, 0, 0),
+        (90.0, 200.0, 150.0, 215.0, "1050-88", 0, 0, 1),
+        (155.0, 200.0, 200.0, 215.0, "L-1612", 0, 0, 2),
+        (400.0, 200.0, 410.0, 215.0, "1", 0, 0, 3),
+    ]
+    spans = _all_word_spans_for_ref(words, "ГОСТ 1050-88")
+    assert spans == [(0, 1)]
+    rects = _pinpoint_rects_for_span(words, spans[0][0], spans[0][1])
+    assert len(rects) == 2
+    assert all(r.x1 <= 155 for r in rects)
+
+
+def test_fraction_cell_highlights_each_gost_on_its_line():
+    """Дробь в ячейке: числитель и знаменатель — отдельные spans."""
+    words = [
+        (80.0, 100.0, 120.0, 112.0, "4x40", 0, 0, 0),
+        (125.0, 100.0, 150.0, 112.0, "ГОСТ", 0, 0, 1),
+        (155.0, 100.0, 210.0, 112.0, "103-2006", 0, 0, 2),
+        (80.0, 118.0, 110.0, 130.0, "С235", 0, 0, 3),
+        (115.0, 118.0, 140.0, 130.0, "ГОСТ", 0, 0, 4),
+        (145.0, 118.0, 210.0, 130.0, "27772-2015", 0, 0, 5),
+    ]
+    spans103 = _all_word_spans_for_ref(words, "ГОСТ 103-2006")
+    spans277 = _all_word_spans_for_ref(words, "ГОСТ 27772-2015")
+    assert spans103 == [(1, 2)]
+    assert spans277 == [(4, 5)]
+    r103 = _pinpoint_rects_for_span(words, 1, 2)
+    r277 = _pinpoint_rects_for_span(words, 4, 5)
+    assert all(r.y1 <= 115 for r in r103)
+    assert all(r.y0 >= 115 for r in r277)
+
+
+def test_repeated_ost_rows_all_highlighted():
+    """Повторяющиеся ОСТ в соседних строках — каждая строка отдельно."""
+    words = [
+        (40.0, 100.0, 55.0, 115.0, "02", 0, 0, 0),
+        (60.0, 100.0, 85.0, 115.0, "OCT", 0, 0, 1),
+        (90.0, 100.0, 170.0, 115.0, "108.632.02-80", 0, 0, 2),
+        (40.0, 115.0, 55.0, 130.0, "02", 0, 0, 3),
+        (60.0, 115.0, 85.0, 130.0, "OCT", 0, 0, 4),
+        (90.0, 115.0, 170.0, 130.0, "108.643.01-80", 0, 0, 5),
+        (40.0, 130.0, 55.0, 145.0, "02", 0, 0, 6),
+        (60.0, 130.0, 85.0, 145.0, "OCT", 0, 0, 7),
+        (90.0, 130.0, 170.0, 145.0, "108.632.01-80", 0, 0, 8),
+    ]
+    refs = [
+        {"ref": "ОСТ 108.632.02-80"},
+        {"ref": "ОСТ 108.643.01-80"},
+        {"ref": "ОСТ 108.632.01-80"},
+    ]
+    doc = fitz.open()
+    page = doc.new_page(width=600, height=300)
+    hits, marks = _highlight_on_page(page, refs, words=words)
+    assert hits == 3
+    assert marks == 6
+    doc.close()

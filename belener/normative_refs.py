@@ -303,6 +303,14 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
             add(f"{kind}{num_fmt}", require_space_after_kind=False)
             add(f"({kind} {num_fmt})")
             add(f"({kind}{num_fmt})", require_space_after_kind=False)
+            if kind == "ОСТ":
+                add(f"OCT {num_fmt}")
+                add(f"OCT{num_fmt}", require_space_after_kind=False)
+                add(f"(OCT {num_fmt})")
+                add(f"(OCT{num_fmt})", require_space_after_kind=False)
+            elif kind == "ГОСТ":
+                add(f"GOST {num_fmt}")
+                add(f"GOST{num_fmt}", require_space_after_kind=False)
 
     return out
 
@@ -383,8 +391,9 @@ def _phrase_matches_highlight_ref(
     body, _year = _body_year_digits(kind, _sanitize_normative_ref(ref_str))
     if len(body) < 4:
         return False
-    blob_digits = re.sub(r"\D", "", blob)
-    if not blob_digits.startswith(body):
+    km = re.search(rf"(?<![a-zа-яё]){kind_re}(?![a-zа-яё])", blob, re.I)
+    after_digits = re.sub(r"\D", "", blob[km.end() :]) if km else re.sub(r"\D", "", blob)
+    if not after_digits.startswith(body):
         return False
     ref_len = len(_sanitize_normative_ref(ref_str))
     return len(blob) <= ref_len + max_extra_chars

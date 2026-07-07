@@ -32,8 +32,6 @@ _KIND_ALIASES: dict[str, frozenset[str]] = {
     "СП": frozenset({"сп", "sp"}),
 }
 
-_MAX_HIGHLIGHT_WIDTH_PT = 380.0
-
 
 def _kind_aliases(kind: str) -> frozenset[str]:
     return _KIND_ALIASES.get(kind, frozenset({kind.casefold()}))
@@ -60,6 +58,57 @@ def _word_rect(word) -> fitz.Rect:
     return fitz.Rect(word[:4])
 
 
+def _words_on_same_line(words: list, a: int, b: int) -> bool:
+    ra, rb = _word_rect(words[a]), _word_rect(words[b])
+    tolerance = max(3.5, min(ra.height, rb.height) * 0.55)
+    return abs((ra.y0 + ra.y1) * 0.5 - (rb.y0 + rb.y1) * 0.5) <= tolerance
+
+
+def _median_word_height(words: list, start: int, end: int) -> float:
+    hs = [_word_rect(words[k]).height for k in range(start, end + 1) if _word_text(words[k])]
+    if not hs:
+        return 12.0
+    hs.sort()
+    return hs[len(hs) // 2]
+
+
+def _tighten_word_rect(word, *, line_h: float) -> fitz.Rect:
+    """OCR часто раздувает bbox; поджимаем к высоте строки таблицы."""
+    r = _word_rect(word)
+    txt = _word_text(word)
+    if not txt:
+        return r
+    h = max(r.height, 0.1)
+    if h > line_h * 1.45:
+        cy = (r.y0 + r.y1) * 0.5
+        nh = min(h, line_h * 1.12)
+        r = fitz.Rect(r.x0, cy - nh * 0.5, r.x1, cy + nh * 0.5)
+    if r.width > 14:
+        inset = min(1.2, r.width * 0.03)
+        r = fitz.Rect(r.x0 + inset, r.y0, r.x1 - inset, r.y1)
+    return r
+
+
+def _rect_overlap_ratio(a: fitz.Rect, b: fitz.Rect) -> float:
+    inter = a & b
+    if inter.is_empty:
+        return 0.0
+    area = inter.get_area()
+    denom = min(a.get_area(), b.get_area())
+    return area / denom if denom > 0 else 0.0
+
+
+def _prefer_tight_rects(rects: list[fitz.Rect]) -> list[fitz.Rect]:
+    """Оставить самый плотный bbox при наложении (текст + OCR)."""
+    ranked = sorted(rects, key=lambda r: r.get_area())
+    out: list[fitz.Rect] = []
+    for r in ranked:
+        if any(_rect_overlap_ratio(r, kept) > 0.42 for kept in out):
+            continue
+        out.append(r)
+    return out
+
+
 def _word_has_kind_marker(word, kind: str) -> bool:
     text = _word_text(word)
     if not text:
@@ -70,11 +119,12 @@ def _word_has_kind_marker(word, kind: str) -> bool:
 
 
 def _rect_fingerprint(rect: fitz.Rect) -> tuple[int, int, int, int]:
+    """Округление до пункта: грубое //2 сливало соседние строки таблицы."""
     return (
-        int(rect.x0 // 2),
-        int(rect.y0 // 2),
-        int(rect.x1 // 2),
-        int(rect.y1 // 2),
+        round(rect.x0),
+        round(rect.y0),
+        round(rect.x1),
+        round(rect.y1),
     )
 
 
@@ -92,25 +142,13 @@ def _dedupe_rects(rects: list[fitz.Rect]) -> list[fitz.Rect]:
     return out
 
 
-def _clip_text(page: fitz.Page, rect: fitz.Rect) -> str:
-    pad = 2.0
-    clip = fitz.Rect(
-        rect.x0 - pad,
-        rect.y0 - pad,
-        rect.x1 + pad,
-        rect.y1 + pad,
-    ) & page.rect
-    if clip.is_empty:
-        return ""
-    try:
-        return (page.get_text("text", clip=clip) or "").strip()
-    except Exception:
-        return ""
-
-
 def _is_number_token(text: str) -> bool:
     t = (text or "").strip()
     if not t or not re.search(r"\d", t):
+        return False
+    if re.match(r"^[A-Za-zА-Яа-яЁё]-\d", t):
+        return False
+    if re.fullmatch(r"\d{1,2}", t):
         return False
     letters = re.sub(r"[^a-zа-яё]", "", t, flags=re.I)
     return len(letters) < 3
@@ -133,6 +171,8 @@ def _trim_span_to_ref_tokens(words: list, start: int, end: int, kind: str) -> tu
             break
     last = kind_i
     for k in range(kind_i + 1, end + 1):
+        if not _words_on_same_line(words, kind_i, k):
+            break
         if _is_number_token(_word_text(words[k])):
             last = k
         else:
@@ -145,16 +185,24 @@ def _span_phrase(words: list, start: int, end: int) -> str:
 
 
 def _span_matches_ref(words: list, start: int, end: int, ref_str: str) -> bool:
+    kind, _, _ = _ref_highlight_target(ref_str)
+    if kind:
+        a, b = _trim_span_to_ref_tokens(words, start, end, kind)
+        if a <= b and _word_has_kind_marker(words[a], kind):
+            phrase = _span_phrase(words, a, b)
+            if phrase and _phrase_matches_ref(phrase, ref_str):
+                return True
     phrase = _span_phrase(words, start, end)
     return bool(phrase) and _phrase_matches_ref(phrase, ref_str)
 
 
 def _pinpoint_rects_for_span(words: list, start: int, end: int) -> list[fitz.Rect]:
+    line_h = _median_word_height(words, start, end)
     rects: list[fitz.Rect] = []
     for k in range(start, end + 1):
         txt = _word_text(words[k])
         if txt:
-            rects.append(_word_rect(words[k]))
+            rects.append(_tighten_word_rect(words[k], line_h=line_h))
     return _dedupe_rects(rects)
 
 
@@ -180,6 +228,8 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
 
     for i in range(n):
         for j in range(i, min(i + 12, n)):
+            if j > i and not _words_on_same_line(words, i, j):
+                continue
             if not _span_matches_ref(words, i, j, ref_str):
                 continue
             a, b = _trim_span_to_ref_tokens(words, i, j, kind)
@@ -187,12 +237,13 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
                 continue
             if not _word_has_kind_marker(words[a], kind):
                 continue
+            if not all(_words_on_same_line(words, a, k) for k in range(a, b + 1)):
+                continue
             pair = (a, b)
             if pair in seen:
                 continue
             seen.add(pair)
             spans.append(pair)
-            break
 
     return spans
 
@@ -219,6 +270,8 @@ def _quad_to_word_rects(words: list, quad_rect: fitz.Rect, ref_str: str) -> list
                 continue
             if not all(k in idx_set for k in range(a, b + 1)):
                 continue
+            if not all(_words_on_same_line(words, a, k) for k in range(a, b + 1)):
+                continue
             pair = (a, b)
             if pair in seen:
                 continue
@@ -242,12 +295,6 @@ def _search_quad_rects(page: fitz.Page, words: list, ref_str: str) -> list[fitz.
             part = _quad_to_word_rects(words, rect, ref_str)
             if part:
                 rects.extend(part)
-            elif (
-                rect.width <= _MAX_HIGHLIGHT_WIDTH_PT
-                and rect.height <= 36
-                and _phrase_matches_ref(_clip_text(page, rect), ref_str)
-            ):
-                rects.append(rect)
     return _dedupe_rects(rects)
 
 
@@ -256,6 +303,35 @@ def _word_span_rects(words: list, ref_str: str) -> list[fitz.Rect]:
     for start, end in _all_word_spans_for_ref(words, ref_str):
         rects.extend(_pinpoint_rects_for_span(words, start, end))
     return _dedupe_rects(rects)
+
+
+def _rects_for_source(
+    page: fitz.Page | None,
+    words: list,
+    ref_str: str,
+) -> list[fitz.Rect]:
+    rects: list[fitz.Rect] = []
+    if page is not None:
+        rects.extend(_search_quad_rects(page, words, ref_str))
+    rects.extend(_word_span_rects(words, ref_str))
+    return _dedupe_rects(rects)
+
+
+def _merge_source_rects(sources: list[list], ref_str: str, page: fitz.Page | None) -> list[fitz.Rect]:
+    """Текстовый слой приоритетнее; OCR — только для пропусков."""
+    merged: list[fitz.Rect] = []
+    for idx, src in enumerate(sources):
+        if not src:
+            continue
+        found = _rects_for_source(page if idx == 0 else None, src, ref_str)
+        if idx == 0:
+            merged.extend(found)
+            continue
+        for r in found:
+            if any(_rect_overlap_ratio(r, m) > 0.38 for m in merged):
+                continue
+            merged.append(r)
+    return _prefer_tight_rects(_dedupe_rects(merged))
 
 
 def _find_pinpoint_rects(
@@ -278,15 +354,14 @@ def _mark_pinpoint_rect(page: fitz.Page, rect: fitz.Rect, used: set[tuple[int, i
     if fp in used:
         return
     used.add(fp)
-    pad = 0.5
+    pad = 0.25
     box = fitz.Rect(rect.x0 - pad, rect.y0 - pad, rect.x1 + pad, rect.y1 + pad) & page.rect
     if box.is_empty:
         return
-    # rect-annot: точный прямоугольник. highlight-annot растягивается на всю строку.
     annot = page.add_rect_annot(box)
-    annot.set_colors(stroke=(0.95, 0.75, 0.0), fill=(1.0, 1.0, 0.0))
-    annot.set_opacity(0.42)
-    annot.set_border(width=0.4)
+    annot.set_colors(stroke=(0.95, 0.78, 0.0), fill=(1.0, 1.0, 0.0))
+    annot.set_opacity(0.38)
+    annot.set_border(width=0.25)
     annot.update()
 
 
@@ -354,11 +429,8 @@ def _highlight_on_page(
         if not ref_str:
             continue
         rects: list[fitz.Rect] = []
-        if page is not None:
-            rects.extend(_search_quad_rects(page, sources[0] if sources else [], ref_str))
-        for src in sources:
-            if src:
-                rects.extend(_word_span_rects(src, ref_str))
+        if sources:
+            rects = _merge_source_rects(sources, ref_str, page)
         rects = _dedupe_rects(rects)
         if not rects:
             log.debug("preview highlight miss: %s", ref_str)
@@ -398,7 +470,7 @@ def generate_pdf_preview_pages_with_highlights(
                     words=word_sources[0] if word_sources else [],
                     extra_word_sources=word_sources[1:] or None,
                 )
-                pix = page.get_pixmap(dpi=110, annots=True)
+                pix = page.get_pixmap(dpi=144, annots=True, alpha=False)
             finally:
                 doc.close()
 

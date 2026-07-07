@@ -17,10 +17,14 @@ def test_highlight_patterns_strict():
     assert not any(t == "10705-80" for t in terms)
 
     ost = highlight_patterns_for_normative_ref("ОСТ 34-10-615-93")
-    assert all("ОСТ" in t or "ост" in t.lower() for t in ost)
+    assert all("ОСТ" in t or "ост" in t.lower() or "OCT" in t for t in ost)
     assert not any(t == "34-10-615-93" for t in ost)
     assert any("ОСТ34-10-615-93" in t.replace(" ", "") for t in ost)
     assert any(t.startswith("(") for t in ost)
+    assert any(t.startswith("OCT ") for t in ost)
+
+    ost108 = highlight_patterns_for_normative_ref("ОСТ 108.275.52-80")
+    assert any("OCT 108.275.52-80" in t for t in ost108)
 
 
 def test_highlight_parenthesized_gost_in_words():
