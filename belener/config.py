@@ -707,6 +707,19 @@ def stn_pipeline_reserve_sec(page_count: int = 1, refs_count: int = 0) -> float:
     return min(total * 0.32, max(50.0, reserve))
 
 
+def pipeline_stn_deadline(*, pipeline_t0: float, page_count: int = 1, refs_count: int = 0) -> float:
+    """Конец окна STN: не раньше чем через 15 с, даже если OCR вышел за общий лимит."""
+    import time
+
+    now = time.monotonic()
+    total_deadline = pipeline_t0 + gost_check_total_budget_sec(page_count)
+    reserve = stn_pipeline_reserve_sec(page_count, refs_count)
+    end = min(total_deadline, now + reserve)
+    if end > now + 1.0:
+        return max(now + 15.0, end)
+    return now + min(reserve, 45.0)
+
+
 def stn_batch_budget_sec() -> float:
     """Резерв времени на проверку normy.stn.by внутри общего бюджета."""
     try:
@@ -746,8 +759,8 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     total = gost_check_total_budget_sec(page_count)
     pages = max(1, int(page_count))
     if pages == 1:
-        # STN запускается после OCR — отдаём OCR почти весь лимит одного листа (до 5 мин).
-        ocr_cap = max(250.0, total * 0.93)
+        stn_tail = max(55.0, stn_batch_budget_sec() + 12.0)
+        ocr_cap = max(180.0, min(total * 0.82, total - stn_tail))
     else:
         min_stn_tail = min(55.0, stn_batch_budget_sec())
         ocr_cap = max(60.0, total - min_stn_tail)

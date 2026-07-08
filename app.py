@@ -347,7 +347,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
     import fitz
 
-    from belener.config import gost_check_total_budget_sec, stn_lookup_enabled, stn_pipeline_reserve_sec
+    from belener.config import gost_check_total_budget_sec, pipeline_stn_deadline, stn_lookup_enabled
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
 
     validity_date = check_date or date.today()
@@ -360,6 +360,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         page_count = 1
 
     budget_sec = gost_check_total_budget_sec(page_count)
+    pipeline_deadline = pipeline_t0 + budget_sec
     yield from _sse_status(_gost_pipeline_progress_status(page_count, 0, budget_sec))
 
     box: dict = {"result": None, "err": None}
@@ -367,7 +368,11 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
     def _run():
         try:
-            box["result"] = extract_normatives_pdf_path(path, filename)
+            box["result"] = extract_normatives_pdf_path(
+                path,
+                filename,
+                pipeline_deadline=pipeline_deadline,
+            )
         except Exception as e:
             app.logger.exception("normative PDF extract failed file=%s", filename)
             box["err"] = e
@@ -398,9 +403,11 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         def _stn_run():
             try:
                 refs_count = len(result.get("normative_refs") or [])
-                pipeline_deadline = pipeline_t0 + budget_sec
-                stn_reserve = stn_pipeline_reserve_sec(page_count, refs_count)
-                stn_deadline = min(pipeline_deadline, time.monotonic() + stn_reserve)
+                stn_deadline = pipeline_stn_deadline(
+                    pipeline_t0=pipeline_t0,
+                    page_count=page_count,
+                    refs_count=refs_count,
+                )
                 refined, checks = refine_and_check_normative_refs(
                     result.get("normative_refs") or [],
                     today=validity_date,
@@ -436,7 +443,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     import time
     from datetime import date
 
-    from belener.config import gost_check_total_budget_sec, stn_lookup_enabled, stn_pipeline_reserve_sec
+    from belener.config import gost_check_total_budget_sec, pipeline_stn_deadline, stn_lookup_enabled
     from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
     from belener.stn_lookup import refine_and_check_normative_refs
 
@@ -444,6 +451,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     pipeline_t0 = time.monotonic()
     page_count = 1
     budget_sec = gost_check_total_budget_sec(page_count)
+    pipeline_deadline = pipeline_t0 + budget_sec
     yield from _sse_status(_gost_pipeline_progress_status(page_count, 0, budget_sec))
 
     box: dict = {"result": None, "err": None}
@@ -451,7 +459,11 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
 
     def _run():
         try:
-            box["result"] = extract_normatives_from_image_path(path, filename)
+            box["result"] = extract_normatives_from_image_path(
+                path,
+                filename,
+                pipeline_deadline=pipeline_deadline,
+            )
         except Exception as e:
             app.logger.exception("normative image OCR failed file=%s", filename)
             box["err"] = e
@@ -474,9 +486,11 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         def _stn_run():
             try:
                 refs_count = len(result.get("normative_refs") or [])
-                pipeline_deadline = pipeline_t0 + budget_sec
-                stn_reserve = stn_pipeline_reserve_sec(page_count, refs_count)
-                stn_deadline = min(pipeline_deadline, time.monotonic() + stn_reserve)
+                stn_deadline = pipeline_stn_deadline(
+                    pipeline_t0=pipeline_t0,
+                    page_count=page_count,
+                    refs_count=refs_count,
+                )
                 refined, checks = refine_and_check_normative_refs(
                     result.get("normative_refs") or [],
                     today=validity_date,

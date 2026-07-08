@@ -16,7 +16,7 @@ TILE_OCR_MAX_SIDE = 2400
 PIPELINE = "tile_ocr"
 SUPP_SUB_COLS = 2
 SUPP_SUB_ROWS = 2
-SUPP_NOTES_ROWS = 3
+SUPP_NOTES_ROWS = 2
 
 
 def page_tile_jobs(
@@ -194,8 +194,10 @@ def _ocr_tile_tesseract(
         ocr_lang,
     )
 
-    if time.monotonic() >= deadline:
+    now = time.monotonic()
+    if now >= deadline:
         return ""
+    deadline = min(deadline, now + max(1.0, tile_max_sec))
     lang = ocr_lang()
     if fast:
         modes = (6,)
@@ -292,17 +294,19 @@ def _ocr_supplement_tiles(
     jobs = supplement_jobs if supplement_jobs is not None else page_all_supplement_jobs(page.rect)
     if not jobs:
         return out
-    per_zone = min(28.0, max(16.0, normative_supplement_budget_sec()))
+    per_zone = min(22.0, max(14.0, normative_supplement_budget_sec()))
     boost = normative_wide_right_dpi_boost() if quality else 1.0
     for key, rect in jobs:
         left = deadline - time.monotonic()
         if left < 5.0:
             log.warning("tile OCR: supplement skipped page=%s left=%.1fs", page_index + 1, left)
             break
-        zone_quality = quality and left >= 14.0
-        budget = min(per_zone, max(12.0, left - 1.0))
+        is_notes = (key or "").startswith("supp_notes")
+        zone_quality = quality and left >= 14.0 and not is_notes
+        notes_cap = min(16.0, per_zone)
+        budget = min(notes_cap if is_notes else per_zone, max(10.0 if is_notes else 12.0, left - 1.0))
         zdead = min(deadline, time.monotonic() + budget)
-        sup_dpi = min(int(dpi * boost), 400)
+        sup_dpi = min(int(dpi * (1.0 if is_notes else boost)), 320 if is_notes else 400)
         text = ocr_tile(
             doc,
             page_index,
@@ -310,9 +314,9 @@ def _ocr_supplement_tiles(
             zone=key,
             dpi=sup_dpi,
             deadline=zdead,
-            tile_max_sec=max(12.0, budget - 0.5),
+            tile_max_sec=max(10.0 if is_notes else 12.0, budget - 0.5),
             force_ocr=force_ocr,
-            fast=not zone_quality,
+            fast=not zone_quality or is_notes,
         )
         if text and text not in out:
             out.append(text)
@@ -423,13 +427,7 @@ def extract_page_tiles(
             len(supplements),
             len(left_jobs),
         )
-        attempted, _ = _ocr_job_list(
-            doc, page_index, right_jobs,
-            sources=sources, attempted=attempted, remaining_total=expected,
-            dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
-            force_ocr=force_ocr, high_quality=not multi_page,
-        )
-        if supplements and deadline - time.monotonic() >= 10:
+        if supplements and deadline - time.monotonic() >= 8:
             for text in _ocr_supplement_tiles(
                 doc, page_index, supplement_jobs=supplements, dpi=dpi, deadline=deadline,
                 tile_max_sec=tile_max_sec, force_ocr=force_ocr,
@@ -438,6 +436,12 @@ def extract_page_tiles(
                 attempted += 1
                 if text not in sources:
                     sources.append(text)
+        attempted, _ = _ocr_job_list(
+            doc, page_index, right_jobs,
+            sources=sources, attempted=attempted, remaining_total=expected,
+            dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
+            force_ocr=force_ocr, high_quality=not multi_page,
+        )
         attempted, _ = _ocr_job_list(
             doc, page_index, left_jobs,
             sources=sources, attempted=attempted, remaining_total=expected - attempted,
@@ -484,11 +488,12 @@ def extract_document_tiles(
     filename: str = "document.pdf",
     *,
     max_pages: int | None = None,
+    pipeline_deadline: float | None = None,
 ) -> dict[str, Any]:
     """OCR документа по тайлам в рамках общего бюджета времени."""
     from belener.config import (
         normative_force_tile_ocr,
-        normative_ocr_budget_sec,
+        ocr_budget_for_gost_check,
         tile_grid_for_page_count,
         tile_ocr_dpi_for_pages,
         tile_ocr_max_pages,
@@ -502,8 +507,14 @@ def extract_document_tiles(
     cap = tile_ocr_max_pages() if max_pages is None else max_pages
     pages_to_scan = min(total_pages, cap) if cap and cap > 0 else total_pages
 
-    budget = normative_ocr_budget_sec(pages_to_scan, doc=doc)
+    budget = ocr_budget_for_gost_check(pipeline_deadline=pipeline_deadline, page_count=pages_to_scan)
+    if doc is not None:
+        from belener.config import normative_ocr_budget_sec
+
+        budget = min(budget, normative_ocr_budget_sec(pages_to_scan, doc=doc))
     deadline = t0 + budget
+    if pipeline_deadline is not None:
+        deadline = min(deadline, pipeline_deadline)
     dpi = tile_ocr_dpi_for_pages(pages_to_scan)
     overlap = tile_ocr_overlap_frac()
     cols, rows = tile_grid_for_page_count(pages_to_scan)

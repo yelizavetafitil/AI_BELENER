@@ -116,6 +116,24 @@ def test_gost_27772_drops_truncated_2772():
     assert not any(re.match(r".*ГОСТ\s+2772-2015", r, re.I) for r in gosts)
 
 
+def test_stp_rd_year_suffix_preserved():
+    out = extract_normative_refs("(СТП 33240.49.101-2018)")
+    assert out and out[0]["ref"] == "СТП 33240.49.101-2018"
+    out = extract_normative_refs("( приложение РД 34.03.304-87).")
+    assert out and out[0]["ref"] == "РД 34.03.304-87"
+    merged = merge_normative_refs_from_sources(
+        "(СТП 33240.49.101-2018)",
+        "СТП 33240.49.101",
+    )
+    stp = [r for r in merged if r["kind"] == "СТП"]
+    assert stp and stp[0]["ref"] == "СТП 33240.49.101-2018"
+
+
+def test_snip_in_notes():
+    out = extract_normative_refs("требованиями СНиП 3.05.06-85")
+    assert any(r["ref"] == "СНиП 3.05.06-85" for r in out)
+
+
 def test_gost_one_digit_ocr_pair():
     from belener.normative_refs import _gost_one_digit_ocr_pair
 

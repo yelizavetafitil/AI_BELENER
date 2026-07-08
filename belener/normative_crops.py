@@ -42,8 +42,13 @@ def extract_normatives_page_tiles(doc, page_index, *, dpi, deadline, tile_max_se
     return chunks
 
 
-def extract_normatives_document_crops(doc: fitz.Document, filename: str = "document.pdf") -> dict[str, Any]:
-    tiles = extract_document_tiles(doc, filename)
+def extract_normatives_document_crops(
+    doc: fitz.Document,
+    filename: str = "document.pdf",
+    *,
+    pipeline_deadline: float | None = None,
+) -> dict[str, Any]:
+    tiles = extract_document_tiles(doc, filename, pipeline_deadline=pipeline_deadline)
     page_texts = tiles.get("page_texts") or []
     page_normative_refs = [
         _finalize_refs([text]) if str(text or "").strip() else []

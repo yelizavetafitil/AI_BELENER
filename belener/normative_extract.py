@@ -32,6 +32,7 @@ _KIND_ALIASES: dict[str, frozenset[str]] = {
     "ТКП": frozenset({"ткп", "tkp"}),
     "СНиП": frozenset({"снип", "snip"}),
     "СП": frozenset({"сп", "sp"}),
+    "РД": frozenset({"рд", "rd"}),
 }
 
 
@@ -49,11 +50,13 @@ def _kind_regex(kind: str) -> str:
         "ТКП": r"ткп|tkp",
         "СНиП": r"снип|snip",
         "СП": r"сп|sp",
+        "РД": r"рд|rd",
     }.get(kind, re.escape(kind))
 
 
 def _word_text(word) -> str:
-    return str(word[4] or "").strip()
+    raw = str(word[4] or "").strip()
+    return re.sub(r"^[\(\[\"']+|[\)\]\}\"'.,;:!?]+$", "", raw)
 
 
 def _word_rect(word) -> fitz.Rect:
@@ -98,17 +101,6 @@ def _rect_overlap_ratio(a: fitz.Rect, b: fitz.Rect) -> float:
     area = inter.get_area()
     denom = min(a.get_area(), b.get_area())
     return area / denom if denom > 0 else 0.0
-
-
-def _prefer_tight_rects(rects: list[fitz.Rect]) -> list[fitz.Rect]:
-    """Оставить самый плотный bbox при наложении (текст + OCR)."""
-    ranked = sorted(rects, key=lambda r: r.get_area())
-    out: list[fitz.Rect] = []
-    for r in ranked:
-        if any(_rect_overlap_ratio(r, kept) > 0.42 for kept in out):
-            continue
-        out.append(r)
-    return out
 
 
 def _word_has_kind_marker(word, kind: str) -> bool:
@@ -234,7 +226,7 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
                 spans.append(pair)
 
     for i in range(n):
-        for j in range(i, min(i + 12, n)):
+        for j in range(i, min(i + 14, n)):
             if j > i and not _words_on_same_line(words, i, j):
                 continue
             if not _span_matches_ref(words, i, j, ref_str):
@@ -269,6 +261,8 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
                 if _word_has_kind_marker(words[j], kind):
                     a = j
                     break
+            if not _word_has_kind_marker(words[a], kind):
+                continue
             pair = (a, k)
             if pair in seen:
                 continue
@@ -335,33 +329,80 @@ def _word_span_rects(words: list, ref_str: str) -> list[fitz.Rect]:
     return _dedupe_rects(rects)
 
 
-def _rects_for_source(
+def _expand_hit_rect(rect: fitz.Rect, *, pad: float = 5.0) -> fitz.Rect:
+    return fitz.Rect(rect.x0 - pad, rect.y0 - pad, rect.x1 + pad, rect.y1 + pad)
+
+
+def _merge_word_sources(sources: list[list]) -> list:
+    """Текстовый слой + OCR: объединить без дублей по позиции."""
+    out: list = []
+    for src in sources:
+        if not src:
+            continue
+        for w in src:
+            txt = _word_text(w)
+            if not txt:
+                continue
+            rw = _word_rect(w)
+            if rw.is_empty:
+                continue
+            duplicate = False
+            for kept in out:
+                if _word_text(kept) != txt:
+                    continue
+                if _rect_overlap_ratio(rw, _word_rect(kept)) > 0.62:
+                    duplicate = True
+                    break
+            if not duplicate:
+                out.append(w)
+    out.sort(key=lambda w: (round(_word_rect(w).y0), _word_rect(w).x0))
+    return out
+
+
+def _highlight_rects_for_ref(
     page: fitz.Page | None,
     words: list,
     ref_str: str,
 ) -> list[fitz.Rect]:
+    """Все вхождения норматива: search_for по PDF + spans по словам."""
     rects: list[fitz.Rect] = []
+    seen_fp: set[tuple[int, int, int, int]] = set()
+
+    def collect(new_rects: list[fitz.Rect]) -> None:
+        for r in _dedupe_rects(new_rects):
+            fp = _rect_fingerprint(r)
+            if fp in seen_fp:
+                continue
+            seen_fp.add(fp)
+            rects.append(r)
+
     if page is not None:
-        rects.extend(_search_quad_rects(page, words, ref_str))
-    rects.extend(_word_span_rects(words, ref_str))
-    return _dedupe_rects(rects)
+        for pattern in highlight_patterns_for_normative_ref(ref_str):
+            try:
+                hits = page.search_for(pattern, quads=True)
+            except TypeError:
+                hits = page.search_for(pattern)
+            for hit in hits or []:
+                try:
+                    hit_rect = hit.rect
+                except Exception:
+                    hit_rect = fitz.Rect(hit)
+                clip_words = page.get_text("words", clip=_expand_hit_rect(hit_rect)) or []
+                if clip_words:
+                    collect(_word_span_rects(clip_words, ref_str))
+                if words:
+                    collect(_quad_to_word_rects(words, hit_rect, ref_str))
+
+    if words:
+        collect(_word_span_rects(words, ref_str))
+
+    return rects
 
 
 def _merge_source_rects(sources: list[list], ref_str: str, page: fitz.Page | None) -> list[fitz.Rect]:
-    """Текстовый слой приоритетнее; OCR — только для пропусков."""
-    merged: list[fitz.Rect] = []
-    for idx, src in enumerate(sources):
-        if not src:
-            continue
-        found = _rects_for_source(page if idx == 0 else None, src, ref_str)
-        if idx == 0:
-            merged.extend(found)
-            continue
-        for r in found:
-            if any(_rect_overlap_ratio(r, m) > 0.38 for m in merged):
-                continue
-            merged.append(r)
-    return _prefer_tight_rects(_dedupe_rects(merged))
+    """Совместимость: объединённые слова + search_for."""
+    merged_words = _merge_word_sources(sources)
+    return _highlight_rects_for_ref(page, merged_words, ref_str)
 
 
 def _find_pinpoint_rects(
@@ -413,22 +454,6 @@ def _preview_word_sources(
         supplements_for_page_scan,
     )
 
-    _NORMATIVE_WORD = re.compile(
-        r"(?:гост|gost|ост|ost|ту|tu|ткп|tkp|стб|stb|стп|stp|снип|snip|сп|sp|рд|rd)\b",
-        re.I,
-    )
-
-    def _text_layer_usable(words: list) -> bool:
-        if not words:
-            return False
-        text = " ".join(_word_text(w) for w in words)
-        hits = sum(1 for w in words if _NORMATIVE_WORD.search(_word_text(w)))
-        if hits >= 1 and re.search(r"\d", text):
-            return True
-        if len(text) >= 400 and hits >= 1:
-            return True
-        return hits >= 2
-
     sources: list[list] = []
     doc = fitz.open(pdf_path)
     try:
@@ -437,12 +462,9 @@ def _preview_word_sources(
         if text_words:
             sources.append(text_words)
 
-        if _text_layer_usable(text_words) and len(text_words) >= 120:
-            return sources
-
         cols, rows = tile_grid_for_page_count(page_count)
         dpi = tile_ocr_dpi_for_pages(page_count)
-        tile_timeout = 12.0 if page_count <= 1 else 8.0
+        tile_timeout = 18.0 if page_count <= 1 else 10.0
         if page_is_wide(page.rect):
             jobs = page_tile_jobs_normative(page.rect, cols=cols, rows=rows)
         else:
@@ -491,6 +513,8 @@ def _highlight_on_page(
         if extra and extra not in sources:
             sources.append(extra)
 
+    merged_words = _merge_word_sources(sources)
+
     used: set[tuple[int, int, int, int]] = set()
     highlighted_refs = 0
     total_marks = 0
@@ -499,9 +523,7 @@ def _highlight_on_page(
         ref_str = (r.get("ref") or "").strip()
         if not ref_str:
             continue
-        rects: list[fitz.Rect] = []
-        if sources:
-            rects = _merge_source_rects(sources, ref_str, page)
+        rects = _highlight_rects_for_ref(page, merged_words, ref_str)
         rects = _dedupe_rects(rects)
         if not rects:
             log.debug("preview highlight miss: %s", ref_str)
@@ -533,11 +555,6 @@ def generate_pdf_preview_pages_with_highlights(
 
         tmp_dir = upload_temp_dir()
         for page_index in range(page_count):
-            page_refs = refs
-            if page_normative_refs and page_index < len(page_normative_refs):
-                pr = page_normative_refs[page_index]
-                if pr or page_count > 1:
-                    page_refs = pr
             word_sources = _preview_word_sources(
                 pdf_path,
                 page_index,
@@ -548,7 +565,7 @@ def generate_pdf_preview_pages_with_highlights(
                 page = doc[page_index]
                 highlighted_refs, total_marks = _highlight_on_page(
                     page,
-                    page_refs,
+                    refs,
                     words=word_sources[0] if word_sources else [],
                     extra_word_sources=word_sources[1:] or None,
                 )
@@ -597,27 +614,47 @@ def extract_normatives_from_document(
     *,
     source_path: str | None = None,
     allow_drawing_fallback: bool | None = None,
+    pipeline_deadline: float | None = None,
 ) -> dict[str, Any]:
     """Нормативы: сетка тайлов по листу → OCR (основной путь)."""
-    return extract_normatives_document_crops(doc, filename)
+    return extract_normatives_document_crops(doc, filename, pipeline_deadline=pipeline_deadline)
 
 
-def extract_normatives_from_image_path(path: str, filename: str | None = None) -> dict[str, Any]:
+def extract_normatives_from_image_path(
+    path: str,
+    filename: str | None = None,
+    *,
+    pipeline_deadline: float | None = None,
+) -> dict[str, Any]:
     """Изображение как одностраничный PDF → те же тайлы и OCR."""
     p = Path(path)
     doc = fitz.open(str(p))
     try:
-        return extract_normatives_document_crops(doc, filename or p.name)
+        return extract_normatives_from_document(
+            doc,
+            filename or p.name,
+            pipeline_deadline=pipeline_deadline,
+        )
     finally:
         doc.close()
 
 
-def extract_normatives_pdf_path(path: str, filename: str | None = None) -> dict[str, Any]:
+def extract_normatives_pdf_path(
+    path: str,
+    filename: str | None = None,
+    *,
+    pipeline_deadline: float | None = None,
+) -> dict[str, Any]:
     p = Path(path)
     path_str = str(p.resolve())
     doc = fitz.open(path_str)
     try:
-        return extract_normatives_from_document(doc, filename or p.name, source_path=path_str)
+        return extract_normatives_from_document(
+            doc,
+            filename or p.name,
+            source_path=path_str,
+            pipeline_deadline=pipeline_deadline,
+        )
     finally:
         doc.close()
 
@@ -706,9 +743,10 @@ def normative_refs_to_markdown(
                 
                 if error_val and status_val == "ошибка проверки":
                     status = f"{status_val} ({error_val[:60]})"
+                elif not found and str(status_val).startswith("пропущено"):
+                    status = "не проверено (время)"
                 elif not found and (
                     status_val in ("нет в ИПС", "не в фонде STN")
-                    or str(status_val).startswith("пропущено")
                 ):
                     status = "не найдено"
                 else:
@@ -743,6 +781,14 @@ def normative_refs_to_markdown(
         lines.append("")
 
     stn_error = (stn_error or "").strip()
+    if stn_checks and not stn_error:
+        skipped = sum(
+            1
+            for c in stn_checks
+            if str(c.status if hasattr(c, "status") else c.get("status") or "").startswith("пропущено")
+        )
+        if skipped == len(stn_checks) and skipped > 0:
+            stn_error = "Проверка ИПС не выполнена — не хватило времени после OCR."
     if stn_error:
         lines.extend(["", f"*⚠ {stn_error}*", ""])
 

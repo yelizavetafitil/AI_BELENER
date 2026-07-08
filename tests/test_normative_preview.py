@@ -198,3 +198,82 @@ def test_ocr_ctb_stb_highlight():
     ]
     rects = _find_pinpoint_rects(words, "СТБ 2073-2010")
     assert len(rects) == 2
+
+
+def test_stp_rd_year_highlight():
+    words = [
+        (60.0, 200.0, 95.0, 215.0, "(СТП", 0, 0, 0),
+        (100.0, 200.0, 220.0, 215.0, "33240.49.101-2018)", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "СТП 33240.49.101-2018")
+    assert len(rects) >= 2
+
+
+def test_repeated_gost_rows_both_highlighted():
+    words = [
+        (80.0, 100.0, 120.0, 112.0, "ГОСТ", 0, 0, 0),
+        (125.0, 100.0, 180.0, 112.0, "103-2006", 0, 0, 1),
+        (80.0, 118.0, 120.0, 130.0, "ГОСТ", 0, 0, 2),
+        (125.0, 118.0, 180.0, 130.0, "103-2006", 0, 0, 3),
+    ]
+    spans = _all_word_spans_for_ref(words, "ГОСТ 103-2006")
+    assert len(spans) == 2
+    doc = fitz.open()
+    page = doc.new_page(width=600, height=300)
+    _, marks = _highlight_on_page(page, [{"ref": "ГОСТ 103-2006"}], words=words)
+    assert marks == 4
+    doc.close()
+
+
+def test_rd_ref_highlight_target_and_words():
+    from belener.normative_refs import _ref_highlight_target
+
+    kind, canon, _ = _ref_highlight_target("РД 34.03.304-87")
+    assert kind == "РД"
+    assert canon
+    words = [
+        (60.0, 200.0, 85.0, 215.0, "(RD", 0, 0, 0),
+        (90.0, 200.0, 200.0, 215.0, "34.03.304-87)", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "РД 34.03.304-87")
+    assert len(rects) >= 2
+
+
+def test_all_ost_designation_rows_highlighted():
+    words = [
+        (40.0, 100.0, 55.0, 115.0, "19", 0, 0, 0),
+        (60.0, 100.0, 85.0, 115.0, "OCT", 0, 0, 1),
+        (90.0, 100.0, 170.0, 115.0, "108.275.52-80", 0, 0, 2),
+        (40.0, 115.0, 55.0, 130.0, "02", 0, 0, 3),
+        (60.0, 115.0, 85.0, 130.0, "OCT", 0, 0, 4),
+        (90.0, 115.0, 170.0, 130.0, "108.632.02-80", 0, 0, 5),
+        (40.0, 130.0, 55.0, 145.0, "02", 0, 0, 6),
+        (60.0, 130.0, 85.0, 145.0, "OCT", 0, 0, 7),
+        (90.0, 130.0, 170.0, 145.0, "108.643.01-80", 0, 0, 8),
+    ]
+    refs = [
+        {"ref": "ОСТ 108.275.52-80"},
+        {"ref": "ОСТ 108.632.02-80"},
+        {"ref": "ОСТ 108.643.01-80"},
+    ]
+    doc = fitz.open()
+    page = doc.new_page(width=600, height=300)
+    hits, marks = _highlight_on_page(page, refs, words=words)
+    assert hits == 3
+    assert marks == 6
+    doc.close()
+
+
+def test_album_number_without_kind_not_highlighted():
+    """Серия/альбом 1.400-15 без ГОСТ — не подсвечивать как норматив."""
+    words = [
+        (60.0, 200.0, 120.0, 215.0, "1.400-15", 0, 0, 0),
+        (130.0, 200.0, 170.0, 215.0, "ГОСТ", 0, 0, 1),
+        (175.0, 200.0, 240.0, 215.0, "27772-2015", 0, 0, 2),
+    ]
+    spans = _all_word_spans_for_ref(words, "ГОСТ 27772-2015")
+    assert spans == [(1, 2)]
+    spans_album = _all_word_spans_for_ref(words, "ГОСТ 1400-15")
+    assert spans_album == []
+    rects = _find_pinpoint_rects(words, "ГОСТ 27772-2015")
+    assert all(r.x0 >= 130 for r in rects)

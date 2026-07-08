@@ -60,8 +60,8 @@ _CLIP: dict[str, re.Pattern[str]] = {
     ),
     "ТУ": re.compile(r"^(\d+(?:-\d+){2,})", re.I),
     "СТБ": re.compile(r"^(\d{3,4}-\d{4})", re.I),
-    "СТП": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
-    "РД": re.compile(r"^(\d+(?:[\s.]\d+)+)", re.I),
+    "СТП": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
+    "РД": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
     "СО": re.compile(r"^(\d+(?:-\d+(?:\.\d+)+)+)", re.I),
     "СНиП": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
     "ТКП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
@@ -240,12 +240,12 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
             return
         if require_space_after_kind:
             if not re.search(
-                r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)\s",
+                r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD)\s",
                 s,
             ):
                 return
         elif not re.search(
-            r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)",
+            r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD)",
             s,
         ):
             return
@@ -262,7 +262,7 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
 
     stripped = re.sub(
         r"^(?:[\w\-А-Яа-яЁё]{1,16}\s+)+"
-        r"((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP)\s+.+)$",
+        r"((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD)\s+.+)$",
         r"\1",
         raw,
         flags=re.I,
@@ -271,7 +271,7 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
         add(stripped)
 
     kind_m = re.match(
-        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP))\s+(.+)$",
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD))\s+(.+)$",
         stripped,
         re.I,
     )
@@ -287,6 +287,7 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
             "TKP": "ТКП",
             "SNIP": "СНиП",
             "SP": "СП",
+            "RD": "РД",
         }
         kind = kind_map.get(kind_raw.upper(), kind_raw.upper())
         num = _clip_num(rest, kind)
@@ -311,6 +312,24 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
             elif kind == "ГОСТ":
                 add(f"GOST {num_fmt}")
                 add(f"GOST{num_fmt}", require_space_after_kind=False)
+            elif kind == "РД":
+                add(f"RD {num_fmt}")
+                add(f"RD{num_fmt}", require_space_after_kind=False)
+                add(f"(RD {num_fmt})")
+                add(f"(RD{num_fmt})", require_space_after_kind=False)
+            elif kind == "СТП":
+                add(f"STP {num_fmt}")
+                add(f"STP{num_fmt}", require_space_after_kind=False)
+                add(f"(STP {num_fmt})")
+            elif kind == "СНиП":
+                add(f"SNIP {num_fmt}")
+                add(f"SNIP{num_fmt}", require_space_after_kind=False)
+            if kind in ("СТП", "РД", "СНиП"):
+                body, year = _body_year_digits(kind, f"{kind} {rest}")
+                if year and len(year) >= 2:
+                    num_base = format_stp_number(body) if kind in ("СТП", "РД") else body
+                    add(f"{kind} {num_base}")
+                    add(f"({kind} {num_fmt})")
 
     return out
 
@@ -324,12 +343,23 @@ def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
     """(kind, canonical_number, dedupe_key) для сопоставления попаданий."""
     s = _sanitize_normative_ref(ref)
     kind_m = re.match(
-        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP))\s+",
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD))\s+",
         s,
         re.I,
     )
     kind = kind_m.group(1).upper() if kind_m else ""
-    kind_map = {"GOST": "ГОСТ", "OST": "ОСТ", "OCT": "ОСТ", "TU": "ТУ", "STB": "СТБ", "STP": "СТП", "TKP": "ТКП", "SNIP": "СНиП", "SP": "СП"}
+    kind_map = {
+        "GOST": "ГОСТ",
+        "OST": "ОСТ",
+        "OCT": "ОСТ",
+        "TU": "ТУ",
+        "STB": "СТБ",
+        "STP": "СТП",
+        "TKP": "ТКП",
+        "SNIP": "СНиП",
+        "SP": "СП",
+        "RD": "РД",
+    }
     kind = kind_map.get(kind, kind)
     canon = _canonical_number(kind, s) if kind else ""
     return kind, canon, _dedupe_key(s)
@@ -375,6 +405,15 @@ def _normalize_highlight_phrase(phrase: str, kind: str) -> str:
         "СТБ": [
             (r"(?<![a-zа-яё])(?:CTB|CT5|CTE|CIb|CIB)(?![a-zа-яё])", "СТБ"),
         ],
+        "СТП": [
+            (r"(?<![a-zа-яё])(?:CTN|STN|\(СТП|\(STP)(?![a-zа-яё])", "СТП"),
+        ],
+        "РД": [
+            (r"(?<![a-zа-яё])(?:\(РД|\(RD)(?![a-zа-яё])", "РД"),
+        ],
+        "СНиП": [
+            (r"(?<![a-zа-яё])(?:CHN|CHiP|CHИП|СНiП)(?![a-zа-яё])", "СНиП"),
+        ],
     }
     for pat, repl in per_kind.get(kind, []):
         s = re.sub(pat, repl, s, flags=re.I)
@@ -387,11 +426,11 @@ def _highlight_kind_re(kind: str) -> str:
         "ОСТ": r"ост|ost|\[?oct|\(?oct",
         "ТУ": r"ту|tu",
         "СТБ": r"стб|stb|ctb|ct5|cte|cib",
-        "СТП": r"стп|stp",
+        "СТП": r"стп|stp|ctn|stn|\(?stp",
         "ТКП": r"ткп|tkp|tkn",
-        "СНиП": r"снип|snip",
+        "СНиП": r"снип|snip|chn|\(?snip",
         "СП": r"сп|sp",
-        "РД": r"рд|rd",
+        "РД": r"рд|rd|\(?rd",
     }.get(kind, re.escape(kind))
 
 
@@ -404,9 +443,9 @@ def word_looks_like_kind_token(text: str, kind: str) -> bool:
         "ОСТ": frozenset({"ост", "ost", "oct"}),
         "ТУ": frozenset({"ту", "tu"}),
         "СТБ": frozenset({"стб", "stb", "ctb", "ct5", "cte", "cib"}),
-        "СТП": frozenset({"стп", "stp"}),
+        "СТП": frozenset({"стп", "stp", "ctn", "stn"}),
         "ТКП": frozenset({"ткп", "tkp", "tkn"}),
-        "СНиП": frozenset({"снип", "snip"}),
+        "СНиП": frozenset({"снип", "snip", "chn"}),
         "СП": frozenset({"сп", "sp"}),
         "РД": frozenset({"рд", "rd"}),
     }
@@ -465,15 +504,20 @@ def _text_contains_normative_ref(text: str, *, kind: str, canon: str, dedupe: st
 
 def format_stp_number(num: str) -> str:
     s = _light_clean(num)
-    compact = re.sub(r"[\s.]", "", s)
+    ym = re.search(r"-(\d{2,4})$", s)
+    year_suffix = ym.group(0) if ym else ""
+    body = s[: ym.start()] if ym else s
+    compact = re.sub(r"[\s.]", "", body)
     m = re.match(r"^34(\d{2})(\d{3})$", compact)
     if m:
-        return f"34.{m.group(1)}.{m.group(2)}"
-    prev = None
-    while prev != s:
-        prev = s
-        s = re.sub(r"(\d)\s+(\d)", r"\1.\2", s)
-    return s
+        body = f"34.{m.group(1)}.{m.group(2)}"
+    else:
+        prev = None
+        body = body
+        while prev != body:
+            prev = body
+            body = re.sub(r"(\d)\s+(\d)", r"\1.\2", body)
+    return f"{body}{year_suffix}"
 
 
 def _is_noise_gost_prefix(prefix: str) -> bool:
@@ -724,7 +768,7 @@ def dedupe_normative_year_variants(
         year_pen = 0 if len(year) >= 4 else (1 if len(year) == 2 else 2)
         dot_pen = str(ref).count(".") if kind == "ГОСТ" else 0
         ref_len = len(_light_clean(ref))
-        return (in_src, -votes, year_pen, dot_pen, -ref_len)
+        return (in_src, year_pen, -votes, dot_pen, -ref_len)
 
     out: list[dict[str, str]] = []
     for base in order:
@@ -976,6 +1020,7 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
         best_ref = max(
             by_ref.keys(),
             key=lambda r: (
+                len(_body_year_digits(kind, r)[1]),
                 _ref_vote_count(kind, r, uniq),
                 _dot_score(kind, r),
                 _gost_variant_quality(r) if kind == "ГОСТ" else 0,
@@ -994,6 +1039,8 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
         ref = str(item.get("ref") or "")
         if kind == "ГОСТ":
             ref = _repair_gost_ref_from_sources(kind, ref, uniq)
+        elif kind in ("СТП", "РД", "СНиП"):
+            ref = _repair_dotted_ref_from_sources(kind, ref, uniq)
         repaired.append({**item, "ref": ref})
     return dedupe_normative_list(repaired)
 
@@ -1035,6 +1082,59 @@ def _repair_gost_ref_from_sources(kind: str, ref: str, sources: list[str]) -> st
         ),
     )
     return _normalize_gost_ref_display(str(best.get("ref") or ref))
+
+
+def _repair_dotted_ref_from_sources(kind: str, ref: str, sources: list[str]) -> str:
+    """СТП/РД/СНиП: выбрать вариант с полным годом (-2018, -87) по голосам тайлов."""
+    if kind not in ("СТП", "РД", "СНиП") or not ref or not sources:
+        return ref
+    body, year = _body_year_digits(kind, ref)
+    if not body:
+        return ref
+    pool: list[dict[str, str]] = []
+    for src in sources:
+        pool.extend(extract_normative_refs(src))
+    pool.extend(extract_normative_refs("\n\n".join(sources)))
+    same_body = [
+        item
+        for item in pool
+        if str(item.get("kind") or "") == kind
+        and _body_year_digits(kind, str(item.get("ref") or ""))[0] == body
+    ]
+    if not same_body:
+        blob = _ocr_loosen_normative_spacing("\n".join(sources))
+        kind_re = {"СТП": r"стп|stp", "РД": r"рд|rd", "СНиП": r"снип|snip"}[kind]
+        best_blob: str | None = None
+        for m in re.finditer(
+            rf"(?i)(?:{kind_re})\s*([\d\.]+)-(\d{{4}}|\d{{2}})\b",
+            blob,
+        ):
+            if re.sub(r"\D", "", m.group(1)) != body:
+                continue
+            yr = m.group(2)
+            num = format_stp_number(f"{m.group(1)}-{yr}") if kind in ("СТП", "РД") else f"{m.group(1)}-{yr}"
+            candidate = f"{kind} {num}"
+            if _num_complete(num, kind):
+                if best_blob is None or len(yr) > len(_body_year_digits(kind, best_blob)[1]):
+                    best_blob = candidate
+        if best_blob:
+            return _sanitize_normative_ref(best_blob)
+        return ref
+    best = max(
+        same_body,
+        key=lambda c: (
+            len(_body_year_digits(kind, str(c.get("ref") or ""))[1]),
+            _ref_vote_count(kind, str(c.get("ref") or ""), sources),
+            len(_light_clean(str(c.get("ref") or ""))),
+        ),
+    )
+    out = str(best.get("ref") or ref)
+    if kind in ("СТП", "РД"):
+        out = _sanitize_normative_ref(out)
+        m = re.match(rf"^(?:{kind})\s+(.+)$", _light_clean(out), re.I)
+        if m:
+            out = f"{kind} {format_stp_number(m.group(1))}"
+    return out
 
 
 def _flatten_gost_ocr_dot(num: str) -> str:
@@ -1346,6 +1446,16 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     )
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
     s = re.sub(r"(?i)(с\s*н\s*и\s*п|snip)", "СНиП", s)
+    s = re.sub(
+        r"(?i)(СНиП|SNIP)\s*\n+\s*(\d[\d\.]+-\d{2,4})",
+        r"\1 \2",
+        s,
+    )
+    s = re.sub(
+        r"(?i)(требованиями|согласно|в\s+соответствии\s+с)\s+(СНиП|SNIP)\s+(\d[\d\.]+-\d{2,4})",
+        r"\2 \3",
+        s,
+    )
     s = re.sub(r"(?i)(т\s*к\s*п|tkp)\s*\+5", r"ТКП 45", s)
     s = re.sub(r"(?i)т\s*к\s*п", "ТКП", s)
     s = re.sub(r"(?i)(гост|gost)(\d)", r"\1 \2", s)
