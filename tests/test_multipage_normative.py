@@ -14,9 +14,9 @@ def test_budget_scales_with_page_count():
     one = gost_check_total_budget_sec(1)
     twelve = gost_check_total_budget_sec(12)
     hundred = gost_check_total_budget_sec(100)
-    assert one >= 220.0
+    assert one == 300.0
     assert twelve > one
-    assert twelve == one + 11 * 50.0
+    assert twelve == one + 11 * 21.0
     assert hundred > twelve
     assert hundred <= 2400.0
     assert normative_ocr_budget_sec(12) >= normative_ocr_budget_sec(1)

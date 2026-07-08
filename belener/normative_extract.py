@@ -13,10 +13,12 @@ from typing import Any
 import fitz
 
 from belener.normative_crops import extract_normatives_document_crops
+from belener.config import upload_temp_dir
 from belener.normative_refs import (
     _phrase_matches_highlight_ref,
     _ref_highlight_target,
     highlight_patterns_for_normative_ref,
+    word_looks_like_kind_token,
 )
 
 log = logging.getLogger("belener.normative_extract")
@@ -115,6 +117,8 @@ def _word_has_kind_marker(word, kind: str) -> bool:
         return False
     if text.casefold() in _kind_aliases(kind):
         return True
+    if word_looks_like_kind_token(text, kind):
+        return True
     return bool(re.search(rf"(?<![a-zа-яё]){_kind_regex(kind)}(?![a-zа-яё])", text, re.I))
 
 
@@ -158,6 +162,9 @@ def _phrase_matches_ref(phrase: str, ref_str: str) -> bool:
     kind, canon, dedupe = _ref_highlight_target(ref_str)
     if not kind or not canon:
         return False
+    from belener.normative_refs import _normalize_highlight_phrase
+
+    phrase = _normalize_highlight_phrase(phrase, kind)
     return _phrase_matches_highlight_ref(
         phrase, kind=kind, canon=canon, dedupe=dedupe, ref_str=ref_str
     )
@@ -240,6 +247,29 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
             if not all(_words_on_same_line(words, a, k) for k in range(a, b + 1)):
                 continue
             pair = (a, b)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            spans.append(pair)
+
+    from belener.normative_refs import _body_year_digits
+
+    body, _year = _body_year_digits(kind, ref_str)
+    if body and len(body) >= 4:
+        for k in range(n):
+            token = _word_text(words[k])
+            if not token or not _is_number_token(token):
+                continue
+            if not _phrase_matches_ref(f"{kind} {token}", ref_str):
+                continue
+            a = k
+            for j in range(k - 1, max(-1, k - 6), -1):
+                if not _words_on_same_line(words, j, k):
+                    break
+                if _word_has_kind_marker(words[j], kind):
+                    a = j
+                    break
+            pair = (a, k)
             if pair in seen:
                 continue
             seen.add(pair)
@@ -365,9 +395,39 @@ def _mark_pinpoint_rect(page: fitz.Page, rect: fitz.Rect, used: set[tuple[int, i
     annot.update()
 
 
-def _preview_word_sources(pdf_path: str, page_index: int) -> list[list]:
-    """Слова листа для подсветки: текстовый слой + OCR (надёжно на всех страницах)."""
+def _preview_word_sources(
+    pdf_path: str,
+    page_index: int,
+    *,
+    page_count: int = 1,
+) -> list[list]:
+    """Слова листа для подсветки: текстовый слой + Tesseract по той же сетке, что и извлечение."""
     import gc
+
+    from belener.config import tile_grid_for_page_count, tile_ocr_dpi_for_pages
+    from belener.ocr import tesseract_words_from_rect
+    from belener.tile_ocr import (
+        page_is_wide,
+        page_tile_jobs,
+        page_tile_jobs_normative,
+        supplements_for_page_scan,
+    )
+
+    _NORMATIVE_WORD = re.compile(
+        r"(?:гост|gost|ост|ost|ту|tu|ткп|tkp|стб|stb|стп|stp|снип|snip|сп|sp|рд|rd)\b",
+        re.I,
+    )
+
+    def _text_layer_usable(words: list) -> bool:
+        if not words:
+            return False
+        text = " ".join(_word_text(w) for w in words)
+        hits = sum(1 for w in words if _NORMATIVE_WORD.search(_word_text(w)))
+        if hits >= 1 and re.search(r"\d", text):
+            return True
+        if len(text) >= 400 and hits >= 1:
+            return True
+        return hits >= 2
 
     sources: list[list] = []
     doc = fitz.open(pdf_path)
@@ -376,27 +436,38 @@ def _preview_word_sources(pdf_path: str, page_index: int) -> list[list]:
         text_words = page.get_text("words") or []
         if text_words:
             sources.append(text_words)
-        best_ocr: list = []
-        for dpi in (220, 180, 260, 140):
-            try:
-                gc.collect()
-                try:
-                    fitz.TOOLS.store_shrink(100)
-                except Exception:
-                    pass
-                tp = page.get_textpage_ocr(language="rus+eng", dpi=dpi, full=True)
-                try:
-                    ocr_words = page.get_text("words", textpage=tp) or []
-                finally:
-                    del tp
-                if len(ocr_words) > len(best_ocr):
-                    best_ocr = ocr_words
-                if best_ocr and len(best_ocr) >= max(12, len(text_words)):
-                    break
-            except Exception as e:
-                log.warning("preview OCR page=%s dpi=%s: %s", page_index + 1, dpi, e)
-        if best_ocr and best_ocr not in sources:
-            sources.append(best_ocr)
+
+        if _text_layer_usable(text_words) and len(text_words) >= 120:
+            return sources
+
+        cols, rows = tile_grid_for_page_count(page_count)
+        dpi = tile_ocr_dpi_for_pages(page_count)
+        tile_timeout = 12.0 if page_count <= 1 else 8.0
+        if page_is_wide(page.rect):
+            jobs = page_tile_jobs_normative(page.rect, cols=cols, rows=rows)
+        else:
+            jobs = page_tile_jobs(page.rect, cols=cols, rows=rows)
+        jobs.extend(supplements_for_page_scan(page.rect, page_count))
+        ocr_words: list = []
+        for _zone, rect in jobs:
+            chunk = tesseract_words_from_rect(
+                doc,
+                page_index,
+                rect,
+                dpi=dpi,
+                timeout=tile_timeout,
+            )
+            if chunk:
+                ocr_words.extend(chunk)
+        if ocr_words:
+            sources.append(ocr_words)
+        log.debug(
+            "preview words page=%s text=%s ocr=%s tiles=%s",
+            page_index + 1,
+            len(text_words),
+            len(ocr_words),
+            len(jobs),
+        )
     finally:
         doc.close()
         gc.collect()
@@ -448,6 +519,8 @@ def _highlight_on_page(
 def generate_pdf_preview_pages_with_highlights(
     pdf_path: str,
     refs: list[dict],
+    *,
+    page_normative_refs: list[list[dict]] | None = None,
 ) -> list[dict[str, Any]]:
     """Превью каждого листа PDF с жёлтой подсветкой нормативов из ответа."""
     pages_out: list[dict[str, Any]] = []
@@ -458,15 +531,24 @@ def generate_pdf_preview_pages_with_highlights(
         if page_count == 0:
             return pages_out
 
-        os.makedirs("/app/data/tmp", exist_ok=True)
+        tmp_dir = upload_temp_dir()
         for page_index in range(page_count):
-            word_sources = _preview_word_sources(pdf_path, page_index)
+            page_refs = refs
+            if page_normative_refs and page_index < len(page_normative_refs):
+                pr = page_normative_refs[page_index]
+                if pr or page_count > 1:
+                    page_refs = pr
+            word_sources = _preview_word_sources(
+                pdf_path,
+                page_index,
+                page_count=page_count,
+            )
             doc = fitz.open(pdf_path)
             try:
                 page = doc[page_index]
                 highlighted_refs, total_marks = _highlight_on_page(
                     page,
-                    refs,
+                    page_refs,
                     words=word_sources[0] if word_sources else [],
                     extra_word_sources=word_sources[1:] or None,
                 )
@@ -475,7 +557,7 @@ def generate_pdf_preview_pages_with_highlights(
                 doc.close()
 
             fname = f"preview_{uuid.uuid4().hex}.jpg"
-            out_path = f"/app/data/tmp/{fname}"
+            out_path = os.path.join(tmp_dir, fname)
             pix.save(out_path)
             pages_out.append(
                 {
@@ -553,6 +635,7 @@ def normative_refs_to_markdown(
     pages_processed: int = 0,
     budget_exhausted: bool = False,
     source_path: str = "",
+    page_normative_refs: list[list[dict]] | None = None,
 ) -> str:
     lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
     if filename:
@@ -664,7 +747,11 @@ def normative_refs_to_markdown(
         lines.extend(["", f"*⚠ {stn_error}*", ""])
 
     if source_path and os.path.isfile(source_path):
-        preview_pages = generate_pdf_preview_pages_with_highlights(source_path, refs)
+        preview_pages = generate_pdf_preview_pages_with_highlights(
+            source_path,
+            refs,
+            page_normative_refs=page_normative_refs,
+        )
         if preview_pages:
             if len(preview_pages) == 1:
                 lines.append("### Предпросмотр листа")
@@ -718,4 +805,5 @@ def normative_result_to_markdown(
         pages_processed=int(result.get("pages_processed") or 0),
         budget_exhausted=bool(result.get("budget_exhausted")),
         source_path=source_path,
+        page_normative_refs=list(result.get("page_normative_refs") or []),
     )

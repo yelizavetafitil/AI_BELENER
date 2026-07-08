@@ -44,6 +44,11 @@ def extract_normatives_page_tiles(doc, page_index, *, dpi, deadline, tile_max_se
 
 def extract_normatives_document_crops(doc: fitz.Document, filename: str = "document.pdf") -> dict[str, Any]:
     tiles = extract_document_tiles(doc, filename)
+    page_texts = tiles.get("page_texts") or []
+    page_normative_refs = [
+        _finalize_refs([text]) if str(text or "").strip() else []
+        for text in page_texts
+    ]
     refs = _finalize_refs(tiles["all_sources"])
     return {
         "ok": True,
@@ -56,8 +61,9 @@ def extract_normatives_document_crops(doc: fitz.Document, filename: str = "docum
         "elapsed_sec": tiles.get("elapsed_sec", 0.0),
         "pipeline": f"{PIPELINE}+normative",
         "normative_refs": refs,
+        "page_normative_refs": page_normative_refs,
         "vision_model": None,
-        "source_text_chars": sum(len(s) for s in tiles["page_texts"]),
+        "source_text_chars": sum(len(s) for s in page_texts),
         "page_texts": tiles["all_sources"],
         "drawing": None,
     }

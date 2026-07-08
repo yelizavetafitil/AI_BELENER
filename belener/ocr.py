@@ -300,6 +300,93 @@ def _tesseract_cli(
         return ""
 
 
+def tesseract_words_from_rect(
+    doc: fitz.Document,
+    page_index: int,
+    rect: fitz.Rect,
+    *,
+    dpi: int = 260,
+    lang: str | None = None,
+    psm: int = 6,
+    timeout: float | None = None,
+) -> list[tuple]:
+    """Слова с bbox в координатах страницы (формат fitz get_text words)."""
+    import csv
+    import io
+
+    if rect is None or rect.is_empty:
+        return []
+    img = _render_clip(doc, page_index, rect, dpi=dpi)
+    if img is None:
+        return []
+    img = _preprocess_image(img, zone="preview")
+    lang_use = lang or ocr_lang()
+    tout = ocr_timeout_sec() if timeout is None else max(1, int(timeout))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    try:
+        proc = subprocess.run(
+            [
+                "tesseract",
+                "stdin",
+                "stdout",
+                "tsv",
+                "-l",
+                lang_use,
+                "--oem",
+                "1",
+                "--psm",
+                str(psm),
+            ],
+            input=buf.getvalue(),
+            capture_output=True,
+            timeout=tout,
+        )
+    except subprocess.TimeoutExpired:
+        return []
+    except OSError:
+        return []
+    if proc.returncode not in (0, None):
+        return []
+    try:
+        raw = proc.stdout.decode("utf-8", errors="replace")
+    except Exception:
+        return []
+    img_w, img_h = img.size
+    scale_x = float(rect.width) / max(img_w, 1)
+    scale_y = float(rect.height) / max(img_h, 1)
+    ox, oy = float(rect.x0), float(rect.y0)
+    words: list[tuple] = []
+    for row in csv.DictReader(io.StringIO(raw), delimiter="\t"):
+        if str(row.get("level") or "") != "5":
+            continue
+        text = (row.get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            left = int(row["left"])
+            top = int(row["top"])
+            width = int(row["width"])
+            height = int(row["height"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        words.append(
+            (
+                ox + left * scale_x,
+                oy + top * scale_y,
+                ox + (left + width) * scale_x,
+                oy + (top + height) * scale_y,
+                text,
+                0,
+                0,
+                0,
+            )
+        )
+    return words
+
+
 def _tesseract_fitz(doc: fitz.Document, page_index: int, clip: fitz.Rect, *, dpi: int, lang: str) -> str:
     tess = tessdata_dir()
     if tess is None:

@@ -210,7 +210,7 @@ def _ocr_tile_tesseract(
         left = deadline - time.monotonic()
         if left < 0.5:
             break
-        cap = 18.0 if fast else 60.0
+        cap = 18.0 if fast else 32.0
         tout = min(left, tile_max_sec, cap)
         t = _tesseract_cli(img, lang=lang, psm=psm, dpi=dpi, timeout=tout, zone="tile")
         if t:
@@ -296,10 +296,11 @@ def _ocr_supplement_tiles(
     boost = normative_wide_right_dpi_boost() if quality else 1.0
     for key, rect in jobs:
         left = deadline - time.monotonic()
-        if left < 8.0:
+        if left < 5.0:
             log.warning("tile OCR: supplement skipped page=%s left=%.1fs", page_index + 1, left)
             break
-        budget = min(per_zone, max(16.0, left - 1.0))
+        zone_quality = quality and left >= 14.0
+        budget = min(per_zone, max(12.0, left - 1.0))
         zdead = min(deadline, time.monotonic() + budget)
         sup_dpi = min(int(dpi * boost), 400)
         text = ocr_tile(
@@ -309,9 +310,9 @@ def _ocr_supplement_tiles(
             zone=key,
             dpi=sup_dpi,
             deadline=zdead,
-            tile_max_sec=max(14.0, budget - 0.5),
+            tile_max_sec=max(12.0, budget - 0.5),
             force_ocr=force_ocr,
-            fast=not quality,
+            fast=not zone_quality,
         )
         if text and text not in out:
             out.append(text)
@@ -358,10 +359,13 @@ def _ocr_job_list(
             break
         done += 1
         left_count = max(1, remaining_total - (done - attempted))
-        mult = 1.4 if high_quality else 1.0
-        per_tile = max(15.0, min(65.0, (left - 1.5) / left_count * mult))
+        tight = left / left_count < 22.0
+        use_hq = high_quality and not tight
+        use_fast = tight or (not use_hq and left / left_count < 30.0)
+        mult = 1.2 if use_hq else 1.0
+        per_tile = max(10.0, min(38.0 if use_hq else 26.0, (left - 2.0) / left_count * mult))
         zdead = min(deadline, time.monotonic() + min(tile_max_sec * mult, per_tile))
-        tdpi = min(int(dpi * boost), 400) if high_quality else dpi
+        tdpi = min(int(dpi * boost), 400) if use_hq else dpi
         text = ocr_tile(
             doc,
             page_index,
@@ -371,7 +375,7 @@ def _ocr_job_list(
             deadline=zdead,
             tile_max_sec=per_tile,
             force_ocr=force_ocr,
-            fast=False,
+            fast=use_fast,
         )
         if text and text not in sources:
             sources.append(text)

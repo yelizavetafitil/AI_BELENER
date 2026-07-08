@@ -171,3 +171,30 @@ def test_repeated_ost_rows_all_highlighted():
     assert hits == 3
     assert marks == 6
     doc.close()
+
+
+def test_ocr_foct_gost_highlight():
+    words = [
+        (60.0, 200.0, 90.0, 215.0, "FOCT", 0, 0, 0),
+        (95.0, 200.0, 160.0, 215.0, "27772-2015", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "ГОСТ 27772-2015")
+    assert len(rects) == 2
+
+
+def test_ocr_tkn_tkp_highlight():
+    words = [
+        (60.0, 200.0, 85.0, 215.0, "TKN", 0, 0, 0),
+        (90.0, 200.0, 200.0, 215.0, "45-2.01-111-2008", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "ТКП 45-2.01-111-2008")
+    assert len(rects) == 2
+
+
+def test_ocr_ctb_stb_highlight():
+    words = [
+        (60.0, 200.0, 85.0, 215.0, "CTB", 0, 0, 0),
+        (90.0, 200.0, 160.0, 215.0, "2073-2010", 0, 0, 1),
+    ]
+    rects = _find_pinpoint_rects(words, "СТБ 2073-2010")
+    assert len(rects) == 2

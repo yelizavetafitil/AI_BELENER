@@ -650,18 +650,18 @@ def tile_ocr_time_budget_sec() -> float:
         raw = (
             os.environ.get("PDF_TILE_OCR_TIME_BUDGET")
             or os.environ.get("PDF_NORMATIVE_TIME_BUDGET")
-            or "165"
+            or "280"
         )
-        return max(30.0, min(float(str(raw).strip()), 220.0))
+        return max(30.0, min(float(str(raw).strip()), 600.0))
     except ValueError:
-        return 165.0
+        return 280.0
 
 
 def gost_check_extra_per_page_sec() -> float:
     try:
-        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "50").strip()))
+        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "21").strip()))
     except ValueError:
-        return 50.0
+        return 21.0
 
 
 def gost_check_total_budget_max_sec() -> float:
@@ -674,9 +674,9 @@ def gost_check_total_budget_max_sec() -> float:
 
 def gost_check_total_budget_sec(page_count: int = 1) -> float:
     try:
-        base = max(60.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET", "220").strip()))
+        base = max(60.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET", "300").strip()))
     except ValueError:
-        base = 220.0
+        base = 300.0
     pages = max(1, int(page_count))
     extra = gost_check_extra_per_page_sec() * max(0, pages - 1)
     return min(base + extra, gost_check_total_budget_max_sec())
@@ -742,14 +742,15 @@ def normative_supplement_budget_sec() -> float:
 
 
 def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> float:
-    """Бюджет OCR в общем лимите; для 1 листа резервируем время на STN."""
+    """Бюджет OCR в общем лимите; для 1 листа OCR идёт до STN."""
     total = gost_check_total_budget_sec(page_count)
     pages = max(1, int(page_count))
     if pages == 1:
-        min_stn_tail = stn_pipeline_reserve_sec(pages, 0)
+        # STN запускается после OCR — отдаём OCR почти весь лимит одного листа (до 5 мин).
+        ocr_cap = max(250.0, total * 0.93)
     else:
         min_stn_tail = min(55.0, stn_batch_budget_sec())
-    ocr_cap = max(60.0, total - min_stn_tail)
+        ocr_cap = max(60.0, total - min_stn_tail)
 
     from belener.tile_ocr import page_tile_jobs, supplements_for_page_scan
 
@@ -773,7 +774,7 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     per_tile = 11.0 if pages == 1 else (9.5 if pages <= 12 else 8.0)
     min_needed = tiles_total * per_tile + (normative_supplement_budget_sec() if pages <= 4 else 10.0)
     single = tile_ocr_time_budget_sec()
-    return max(45.0, min(max(single, min_needed), ocr_cap, total * 0.96))
+    return max(45.0, min(max(single, min_needed), ocr_cap, total * 0.98))
 
 
 def tile_ocr_max_pages() -> int:
