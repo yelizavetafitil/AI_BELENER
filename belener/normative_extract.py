@@ -723,11 +723,12 @@ def _preview_word_sources(
     cached_words: list | None = None,
     deadline: float | None = None,
 ) -> list[list]:
-    """Слова листа для подсветки: текстовый слой + тайлы + полностраничный OCR."""
+    """Слова листа для подсветки: текстовый слой + тайлы; без повторного OCR если слова уже есть."""
     import gc
     import time
 
     sources: list[list] = []
+    cached_count = len(cached_words or [])
     doc = fitz.open(pdf_path)
     try:
         page = doc[page_index]
@@ -742,19 +743,34 @@ def _preview_word_sources(
         if cached_words:
             sources.append(cached_words)
 
-        need_ocr = not usable_text or sum(len(s) for s in sources) < 30
-        if need_ocr:
-            dl = deadline if deadline is not None else time.monotonic() + 120.0
-            ocr_words = _preview_words_for_page(
-                doc,
-                page_index,
-                page_count=page_count,
-                deadline=dl,
+        word_total = sum(len(s) for s in sources)
+        if cached_count >= 50 or word_total >= 50:
+            log.debug(
+                "preview words page=%s cached=%s total=%s (skip extra OCR)",
+                page_index + 1,
+                cached_count,
+                word_total,
             )
-            if ocr_words:
-                sources.append(ocr_words)
+            return sources
 
-        if sum(len(s) for s in sources) < 30:
+        now = time.monotonic()
+        if deadline is not None and now >= deadline:
+            return sources
+
+        if word_total < 30:
+            dl = deadline if deadline is not None else now + 25.0
+            if dl > now + 1.0:
+                ocr_words = _preview_words_for_page(
+                    doc,
+                    page_index,
+                    page_count=page_count,
+                    deadline=dl,
+                )
+                if ocr_words:
+                    sources.append(ocr_words)
+
+        word_total = sum(len(s) for s in sources)
+        if word_total < 30 and (deadline is None or time.monotonic() < deadline - 8.0):
             full_words = _fullpage_ocr_words(page, page_index=page_index)
             if full_words:
                 sources.append(full_words)
@@ -822,6 +838,7 @@ def generate_pdf_preview_pages_with_highlights(
     page_preview_words: list[list] | None = None,
     page_tile_zones: list[list] | None = None,
     preview_word_deadline: float | None = None,
+    pipeline_deadline: float | None = None,
 ) -> list[dict[str, Any]]:
     """Превью каждого листа PDF с жёлтой подсветкой нормативов из ответа."""
     import time
@@ -840,8 +857,10 @@ def generate_pdf_preview_pages_with_highlights(
             if page_preview_words and page_index < len(page_preview_words):
                 cached = page_preview_words[page_index] or None
             dl = preview_word_deadline
+            if dl is None:
+                dl = pipeline_deadline
             if dl is None and not cached:
-                dl = time.monotonic() + (90.0 if page_count <= 1 else 35.0)
+                dl = time.monotonic() + (25.0 if page_count <= 1 else 15.0)
             tile_zones = None
             if page_tile_zones and page_index < len(page_tile_zones):
                 tile_zones = page_tile_zones[page_index] or None
@@ -868,17 +887,21 @@ def generate_pdf_preview_pages_with_highlights(
                     tile_zones=tile_zones,
                 )
                 if total_marks == 0 and refs:
-                    extra = _fullpage_ocr_words(page, page_index=page_index)
-                    if extra:
-                        sources.append(extra)
-                        highlighted_refs, total_marks, rects = _collect_highlight_rects(
-                            page,
-                            refs,
-                            sources,
-                            doc=doc,
-                            page_index=page_index,
-                            tile_zones=tile_zones,
-                        )
+                    import time as _time
+
+                    if pipeline_deadline is None or _time.monotonic() < pipeline_deadline - 12.0:
+                        if sum(len(s) for s in sources) < 50:
+                            extra = _fullpage_ocr_words(page, page_index=page_index)
+                            if extra:
+                                sources.append(extra)
+                                highlighted_refs, total_marks, rects = _collect_highlight_rects(
+                                    page,
+                                    refs,
+                                    sources,
+                                    doc=doc,
+                                    page_index=page_index,
+                                    tile_zones=tile_zones,
+                                )
                 preview_img = _render_preview_image_with_highlights(page, rects, dpi=144)
             finally:
                 doc.close()

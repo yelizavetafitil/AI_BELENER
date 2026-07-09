@@ -340,6 +340,25 @@ def _heartbeat_while(event: threading.Event, *, page_count: int, budget_sec: flo
         yield from _sse_status(_gost_pipeline_progress_status(page_count, elapsed, budget_sec))
 
 
+def _heartbeat_while_all(
+    events: list[threading.Event],
+    *,
+    page_count: int,
+    budget_sec: float,
+    t0: float,
+):
+    """Ждать несколько фоновых задач (STN + превью параллельно)."""
+    import time
+
+    while True:
+        if all(ev.is_set() for ev in events):
+            break
+        elapsed = int(time.monotonic() - t0)
+        yield from _sse_status(_gost_pipeline_progress_status(page_count, elapsed, budget_sec))
+        if not any(ev.wait(timeout=12) for ev in events):
+            continue
+
+
 def stream_extract_pdf_normative(path: str, filename: str, question: str, *, check_date=None):
     """PDF → OCR страниц (плитки) → таблица нормативов + проверка ГОСТ на STN."""
     import time
@@ -347,7 +366,12 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
 
     import fitz
 
-    from belener.config import gost_check_total_budget_sec, pipeline_stn_deadline, stn_lookup_enabled
+    from belener.config import (
+        gost_check_total_budget_sec,
+        pipeline_post_ocr_deadline,
+        pipeline_stn_deadline,
+        stn_lookup_enabled,
+    )
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
 
     validity_date = check_date or date.today()
@@ -392,13 +416,42 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         return
 
     from belener.stn_lookup import refine_and_check_normative_refs
+    from belener.normative_extract import generate_pdf_preview_pages_with_highlights
 
     stn_checks = []
+    preview_box: dict = {"pages": None}
+    post_done = threading.Event()
+    stn_done = threading.Event()
+    preview_done = threading.Event()
+
+    def _maybe_post_done() -> None:
+        if stn_done.is_set() and preview_done.is_set():
+            post_done.set()
+
+    page_count = int(result.get("page_count") or page_count)
+    budget_sec = gost_check_total_budget_sec(page_count)
+    post_deadline = pipeline_post_ocr_deadline(pipeline_t0=pipeline_t0, page_count=page_count)
+
+    def _preview_run():
+        try:
+            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
+                path,
+                result.get("normative_refs") or [],
+                page_normative_refs=result.get("page_normative_refs"),
+                page_preview_words=result.get("page_preview_words"),
+                page_tile_zones=result.get("page_tile_zones"),
+                pipeline_deadline=post_deadline,
+            )
+        except Exception as e:
+            app.logger.warning("preview generation failed file=%s: %s", filename, e)
+        finally:
+            preview_done.set()
+            _maybe_post_done()
+
+    threading.Thread(target=_preview_run, daemon=True).start()
+
     if stn_lookup_enabled():
-        page_count = int(result.get("page_count") or page_count)
-        budget_sec = gost_check_total_budget_sec(page_count)
         stn_box: dict = {"err": None}
-        stn_done = threading.Event()
 
         def _stn_run():
             try:
@@ -422,32 +475,20 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
                 stn_box["err"] = e
             finally:
                 stn_done.set()
+                _maybe_post_done()
 
         threading.Thread(target=_stn_run, daemon=True).start()
-        yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+    else:
+        stn_done.set()
+        _maybe_post_done()
 
-    from belener.normative_extract import generate_pdf_preview_pages_with_highlights
-
-    preview_box: dict = {"pages": None}
-    preview_done = threading.Event()
-
-    def _preview_run():
-        try:
-            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
-                path,
-                result.get("normative_refs") or [],
-                page_normative_refs=result.get("page_normative_refs"),
-                page_preview_words=result.get("page_preview_words"),
-                page_tile_zones=result.get("page_tile_zones"),
-            )
-        except Exception as e:
-            app.logger.warning("preview generation failed file=%s: %s", filename, e)
-        finally:
-            preview_done.set()
-
-    threading.Thread(target=_preview_run, daemon=True).start()
-    yield from _sse_status("Формирование превью с подсветкой…")
-    yield from _heartbeat_while(preview_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+    yield from _sse_status("Проверка ИПС и превью с подсветкой…")
+    yield from _heartbeat_while_all(
+        [post_done],
+        page_count=page_count,
+        budget_sec=budget_sec,
+        t0=pipeline_t0,
+    )
 
     include_ctx = "контекст" in (question or "").casefold()
     report = normative_result_to_markdown(
@@ -467,8 +508,17 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     import time
     from datetime import date
 
-    from belener.config import gost_check_total_budget_sec, pipeline_stn_deadline, stn_lookup_enabled
-    from belener.normative_extract import extract_normatives_from_image_path, normative_result_to_markdown
+    from belener.config import (
+        gost_check_total_budget_sec,
+        pipeline_post_ocr_deadline,
+        pipeline_stn_deadline,
+        stn_lookup_enabled,
+    )
+    from belener.normative_extract import (
+        extract_normatives_from_image_path,
+        generate_pdf_preview_pages_with_highlights,
+        normative_result_to_markdown,
+    )
     from belener.stn_lookup import refine_and_check_normative_refs
 
     validity_date = check_date or date.today()
@@ -504,9 +554,34 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     result = box["result"] or {}
     include_ctx = "контекст" in (question or "").casefold()
     stn_checks = []
-    if stn_lookup_enabled():
-        stn_done = threading.Event()
+    preview_box: dict = {"pages": None}
+    post_done = threading.Event()
+    stn_done = threading.Event()
+    preview_done = threading.Event()
+    post_deadline = pipeline_post_ocr_deadline(pipeline_t0=pipeline_t0, page_count=page_count)
 
+    def _maybe_post_done() -> None:
+        if stn_done.is_set() and preview_done.is_set():
+            post_done.set()
+
+    def _preview_run():
+        try:
+            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
+                path,
+                result.get("normative_refs") or [],
+                page_preview_words=result.get("page_preview_words"),
+                page_tile_zones=result.get("page_tile_zones"),
+                pipeline_deadline=post_deadline,
+            )
+        except Exception as e:
+            app.logger.warning("preview generation failed file=%s: %s", filename, e)
+        finally:
+            preview_done.set()
+            _maybe_post_done()
+
+    threading.Thread(target=_preview_run, daemon=True).start()
+
+    if stn_lookup_enabled():
         def _stn_run():
             try:
                 refs_count = len(result.get("normative_refs") or [])
@@ -528,31 +603,20 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
                 result["stn_error"] = _ollama_user_message(e)
             finally:
                 stn_done.set()
+                _maybe_post_done()
 
         threading.Thread(target=_stn_run, daemon=True).start()
-        yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+    else:
+        stn_done.set()
+        _maybe_post_done()
 
-    from belener.normative_extract import generate_pdf_preview_pages_with_highlights
-
-    preview_box: dict = {"pages": None}
-    preview_done = threading.Event()
-
-    def _preview_run():
-        try:
-            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
-                path,
-                result.get("normative_refs") or [],
-                page_preview_words=result.get("page_preview_words"),
-                page_tile_zones=result.get("page_tile_zones"),
-            )
-        except Exception as e:
-            app.logger.warning("preview generation failed file=%s: %s", filename, e)
-        finally:
-            preview_done.set()
-
-    threading.Thread(target=_preview_run, daemon=True).start()
-    yield from _sse_status("Формирование превью с подсветкой…")
-    yield from _heartbeat_while(preview_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+    yield from _sse_status("Проверка ИПС и превью с подсветкой…")
+    yield from _heartbeat_while_all(
+        [post_done],
+        page_count=page_count,
+        budget_sec=budget_sec,
+        t0=pipeline_t0,
+    )
 
     report = normative_result_to_markdown(
         result,

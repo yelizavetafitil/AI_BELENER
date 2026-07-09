@@ -720,6 +720,16 @@ def pipeline_stn_deadline(*, pipeline_t0: float, page_count: int = 1, refs_count
     return now + min(reserve, 45.0)
 
 
+def pipeline_preview_deadline(*, pipeline_t0: float, page_count: int = 1) -> float:
+    """Жёсткий конец превью — внутри общего лимита на лист."""
+    return pipeline_t0 + gost_check_total_budget_sec(page_count)
+
+
+def pipeline_post_ocr_deadline(*, pipeline_t0: float, page_count: int = 1) -> float:
+    """Окно после OCR: STN и превью параллельно до конца бюджета."""
+    return pipeline_preview_deadline(pipeline_t0=pipeline_t0, page_count=page_count)
+
+
 def stn_batch_budget_sec() -> float:
     """Резерв времени на проверку normy.stn.by внутри общего бюджета."""
     try:
@@ -759,8 +769,8 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     total = gost_check_total_budget_sec(page_count)
     pages = max(1, int(page_count))
     if pages == 1:
-        stn_tail = max(55.0, stn_batch_budget_sec() + 12.0)
-        ocr_cap = max(180.0, min(total * 0.82, total - stn_tail))
+        post_ocr_tail = max(75.0, stn_batch_budget_sec() + 22.0)
+        ocr_cap = max(165.0, min(total * 0.72, total - post_ocr_tail))
     else:
         min_stn_tail = min(55.0, stn_batch_budget_sec())
         ocr_cap = max(60.0, total - min_stn_tail)
