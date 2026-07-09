@@ -33,6 +33,7 @@ _KIND_ALIASES: dict[str, frozenset[str]] = {
     "СНиП": frozenset({"снип", "snip", "chn", "chip"}),
     "СП": frozenset({"сп", "sp"}),
     "РД": frozenset({"рд", "rd", "pa"}),
+    "СО": frozenset({"со", "co", "so"}),
 }
 
 
@@ -51,6 +52,7 @@ def _kind_regex(kind: str) -> str:
         "СНиП": r"снип|snip|chn|chip",
         "СП": r"сп|sp",
         "РД": r"рд|rd|pa",
+        "СО": r"со|co|so",
     }.get(kind, re.escape(kind))
 
 
@@ -58,6 +60,15 @@ def _word_text(word) -> str:
     raw = str(word[4] or "").strip()
     text = re.sub(r"^[\(\[\"']+|[\)\]\}\"'.,;:!?]+$", "", raw)
     return re.sub(r",(?=\d)", ".", text)
+
+
+def _word_text_sane(word) -> bool:
+    txt = _word_text(word)
+    if not txt or len(txt) > 120:
+        return False
+    if "\n" in txt or "\t" in txt:
+        return False
+    return True
 
 
 def _number_body_matches_ref(word, ref_str: str, kind: str) -> bool:
@@ -165,6 +176,29 @@ def _is_number_token(text: str) -> bool:
         return False
     letters = re.sub(r"[^a-zа-яё]", "", t, flags=re.I)
     return len(letters) < 3
+
+
+_SNIP_NUMBER_RE = re.compile(r"^\d{1,2}\.\d{2}\.\d{2}-\d{2,4}$")
+_STP_RD_NUMBER_RE = re.compile(r"^\d+(?:\.\d+){2,}-\d{2,4}$")
+_TKP_NUMBER_RE = re.compile(r"^\d{2}(?:[.\-]\d+)+-\d{2,4}$")
+_SP_NUMBER_RE = re.compile(r"^\d{2}\.\d{2,3}\.?\d{0,5}-\d{4}$")
+_TU_NUMBER_RE = re.compile(r"^\d{1,3}(?:-\d+){2,}-\d{2,4}$")
+
+_BARE_NUMBER_KIND_PATTERNS: dict[str, re.Pattern[str]] = {
+    "СНиП": _SNIP_NUMBER_RE,
+    "СТП": _STP_RD_NUMBER_RE,
+    "РД": _STP_RD_NUMBER_RE,
+    "ТКП": _TKP_NUMBER_RE,
+    "СП": _SP_NUMBER_RE,
+    "ТУ": _TU_NUMBER_RE,
+}
+
+
+def _bare_number_token_ok(kind: str, text: str) -> bool:
+    """Номер без маркера типа — только для узких форматов (не ГОСТ/ОСТ)."""
+    t = re.sub(r",(?=\d)", ".", (text or "").strip())
+    rx = _BARE_NUMBER_KIND_PATTERNS.get(kind)
+    return bool(rx and rx.match(t))
 
 
 def _phrase_matches_ref(phrase: str, ref_str: str) -> bool:
@@ -288,7 +322,8 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
 
     if body and len(body) >= 4:
         for k in range(n):
-            if not _number_body_matches_ref(words[k], ref_str, kind):
+            token = _word_text(words[k])
+            if not token or not _number_body_matches_ref(words[k], ref_str, kind):
                 continue
             kind_i = k
             found_kind = False
@@ -300,6 +335,11 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
                     found_kind = True
                     break
             if not found_kind:
+                if _bare_number_token_ok(kind, token):
+                    pair = (k, k)
+                    if pair not in seen:
+                        seen.add(pair)
+                        spans.append(pair)
                 continue
             pair = (kind_i, k)
             if pair in seen:
@@ -378,9 +418,9 @@ def _merge_word_sources(sources: list[list]) -> list:
         if not src:
             continue
         for w in src:
-            txt = _word_text(w)
-            if not txt:
+            if not _word_text_sane(w):
                 continue
+            txt = _word_text(w)
             rw = _word_rect(w)
             if rw.is_empty:
                 continue
@@ -632,6 +672,32 @@ def _collect_highlight_rects(
     return highlighted_refs, len(all_rects), all_rects
 
 
+def _fullpage_ocr_words(page: fitz.Page, *, page_index: int = 0) -> list:
+    """Полностраничный OCR (как в старых версиях) — запасной путь для подсветки."""
+    import gc
+
+    best: list = []
+    for dpi in (220, 180, 260, 140):
+        try:
+            gc.collect()
+            try:
+                fitz.TOOLS.store_shrink(100)
+            except Exception:
+                pass
+            tp = page.get_textpage_ocr(language="rus+eng", dpi=dpi, full=True)
+            try:
+                ocr_words = page.get_text("words", textpage=tp) or []
+            finally:
+                del tp
+            if len(ocr_words) > len(best):
+                best = ocr_words
+            if best and len(best) >= 40:
+                break
+        except Exception as exc:
+            log.debug("fullpage preview OCR page=%s dpi=%s: %s", page_index + 1, dpi, exc)
+    return best
+
+
 def _preview_words_for_page(
     doc: fitz.Document,
     page_index: int,
@@ -657,37 +723,48 @@ def _preview_word_sources(
     cached_words: list | None = None,
     deadline: float | None = None,
 ) -> list[list]:
-    """Слова листа для подсветки: текстовый слой + Tesseract по той же сетке, что и извлечение."""
+    """Слова листа для подсветки: текстовый слой + тайлы + полностраничный OCR."""
     import gc
     import time
 
     sources: list[list] = []
-    if cached_words:
-        sources.append(cached_words)
-        return sources
-
     doc = fitz.open(pdf_path)
     try:
         page = doc[page_index]
-        text_words = page.get_text("words") or []
-        if text_words:
-            sources.append(text_words)
+        from belener.scanned import page_text_layer_usable
 
-        dl = deadline if deadline is not None else time.monotonic() + (120.0 if not text_words else 60.0)
-        ocr_words = _preview_words_for_page(
-            doc,
-            page_index,
-            page_count=page_count,
-            deadline=dl,
-        )
-        if ocr_words:
-            sources.append(ocr_words)
+        usable_text = page_text_layer_usable(doc, page_index)
+        if usable_text:
+            text_words = page.get_text("words") or []
+            if text_words:
+                sources.append(text_words)
+
+        if cached_words:
+            sources.append(cached_words)
+
+        need_ocr = not usable_text or sum(len(s) for s in sources) < 30
+        if need_ocr:
+            dl = deadline if deadline is not None else time.monotonic() + 120.0
+            ocr_words = _preview_words_for_page(
+                doc,
+                page_index,
+                page_count=page_count,
+                deadline=dl,
+            )
+            if ocr_words:
+                sources.append(ocr_words)
+
+        if sum(len(s) for s in sources) < 30:
+            full_words = _fullpage_ocr_words(page, page_index=page_index)
+            if full_words:
+                sources.append(full_words)
+
         log.debug(
-            "preview words page=%s text=%s ocr=%s scan=%s",
+            "preview words page=%s sources=%s total=%s scan=%s",
             page_index + 1,
-            len(text_words),
-            len(ocr_words),
-            not text_words,
+            len(sources),
+            sum(len(s) for s in sources),
+            not usable_text,
         )
     finally:
         doc.close()
@@ -790,6 +867,18 @@ def generate_pdf_preview_pages_with_highlights(
                     page_index=page_index,
                     tile_zones=tile_zones,
                 )
+                if total_marks == 0 and refs:
+                    extra = _fullpage_ocr_words(page, page_index=page_index)
+                    if extra:
+                        sources.append(extra)
+                        highlighted_refs, total_marks, rects = _collect_highlight_rects(
+                            page,
+                            refs,
+                            sources,
+                            doc=doc,
+                            page_index=page_index,
+                            tile_zones=tile_zones,
+                        )
                 preview_img = _render_preview_image_with_highlights(page, rects, dpi=144)
             finally:
                 doc.close()
@@ -897,7 +986,7 @@ def normative_refs_to_markdown(
     page_preview_words: list[list] | None = None,
     preview_pages: list[dict[str, Any]] | None = None,
 ) -> str:
-    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
+    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, РД, СНиП, ТУ, ТКП, СТБ и др.)", ""]
     if filename:
         lines.append(f"**Файл:** {filename}")
     if page_count > 1:

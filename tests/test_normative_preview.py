@@ -275,6 +275,18 @@ def test_rd_pa_ocr_year_mismatch_highlight():
     assert len(rects) >= 2
 
 
+def test_snip_bare_number_highlight():
+    from belener.normative_extract import _find_pinpoint_rects
+
+    words = [
+        (10.0, 200.0, 90.0, 212.0, "3.05.06-85", 0, 0, 0),
+    ]
+    spans = _all_word_spans_for_ref(words, "СНиП 3.05.06-85")
+    assert spans == [(0, 0)]
+    rects = _find_pinpoint_rects(words, "СНиП 3.05.06-85")
+    assert len(rects) == 1
+
+
 def test_stp_ctn_comma_number_highlight():
     words = [
         (10.0, 100.0, 35.0, 112.0, "CTN", 0, 0, 0),

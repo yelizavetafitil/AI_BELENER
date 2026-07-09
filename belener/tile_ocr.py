@@ -521,6 +521,7 @@ def collect_page_preview_words(
     deadline: float | None = None,
 ) -> list:
     """Слова с bbox для подсветки на сканах (последовательный Tesseract по тайлам)."""
+    from belener.config import tile_grid_for_page_count, tile_ocr_dpi_for_pages
     from belener.ocr import tesseract_words_from_rect
 
     page = doc[page_index]
@@ -548,6 +549,12 @@ def collect_page_preview_words(
         if words:
             ocr_words.extend(words)
     return ocr_words
+
+
+def _page_has_usable_text(doc: fitz.Document, page_index: int) -> bool:
+    from belener.scanned import page_text_layer_usable
+
+    return page_text_layer_usable(doc, page_index)
 
 
 def extract_document_tiles(
@@ -621,8 +628,8 @@ def extract_document_tiles(
             rows=rows,
             force_ocr=force_ocr,
             document_pages=pages_to_scan,
-            word_sink=(pw := []) if not (doc[i].get_text("words") or []) else None,
-            zone_sink=(zs := []) if not (doc[i].get_text("words") or []) else None,
+            word_sink=(pw := []),
+            zone_sink=(zs := []),
         )
         tiles_done += page_done
         pages_processed += 1
@@ -634,13 +641,16 @@ def extract_document_tiles(
             budget_exhausted = True
             log.warning("tile OCR: partial page=%s tiles=%s/%s", i + 1, page_done, page_expected)
         text_words = doc[i].get_text("words") or []
-        if text_words:
-            page_preview_words.append(list(text_words))
-            page_tile_zones.append([])
-        elif pw:
-            page_preview_words.append(pw)
+        combined: list = []
+        if _page_has_usable_text(doc, i):
+            combined.extend(text_words)
+        if pw:
+            combined.extend(pw)
+        if combined:
+            page_preview_words.append(combined)
             page_tile_zones.append(zs)
-            log.info("tile OCR preview words page=%s count=%s zones=%s", i + 1, len(pw), len(zs))
+            if pw and not _page_has_usable_text(doc, i):
+                log.info("tile OCR preview words page=%s count=%s zones=%s", i + 1, len(pw), len(zs))
         elif time.monotonic() < deadline + 30:
             pw2 = collect_page_preview_words(
                 doc,

@@ -365,7 +365,7 @@ function clearFeed() {
     <div class="welcome-hero">
       <div class="welcome-badge">Локальная обработка · данные не уходят в облако</div>
       <h1 class="welcome-title">Проверка ГОСТ<br>на чертеже</h1>
-      <p class="welcome-sub">Загрузите PDF или скан — система найдёт ГОСТ, ОСТ, СТП, ТУ и СТБ на всех листах и проверит актуальность на normy.stn.by. Ответ приходит сразу по готовности; лимит по времени — до ~10 мин на 8 листов, не более 40 мин на запрос.</p>
+      <p class="welcome-sub">Загрузите PDF или скан — система найдёт ГОСТ, ОСТ, СТП, РД, СНиП, ТУ, ТКП, СТБ и др. на всех листах и проверит актуальность на normy.stn.by. Ответ приходит сразу по готовности; лимит по времени — до ~10 мин на 8 листов, не более 40 мин на запрос.</p>
     </div>
     <div class="steps">
       <div class="step-card"><div class="step-num">1</div><div class="step-body"><div class="step-title">Загрузите файл</div><div class="step-desc">PDF, скан или изображение листа</div></div></div>

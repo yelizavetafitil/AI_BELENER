@@ -134,6 +134,12 @@ def test_snip_in_notes():
     assert any(r["ref"] == "СНиП 3.05.06-85" for r in out)
 
 
+def test_snip_bare_number_in_parentheses():
+    text = "электротехнические устройства (3.05.06-85)"
+    out = extract_normative_refs(text)
+    assert any(r["kind"] == "СНиП" and r["ref"] == "СНиП 3.05.06-85" for r in out)
+
+
 def test_gost_one_digit_ocr_pair():
     from belener.normative_refs import _gost_one_digit_ocr_pair
 

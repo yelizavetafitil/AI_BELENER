@@ -14,6 +14,13 @@ _TYPE_END = _WB_R
 
 _NUM_BODY = r"[\d\s.\-–—\+]+"
 
+_SNIP_BARE_NUM = re.compile(
+    r"(?<![\d.])(?P<num>\d{1,2}\.\d{2}\.\d{2}-\d{2,4})(?![\d.])"
+)
+_SNIP_CONTEXT_HINT = re.compile(
+    r"(?i)устройства|требования|соответствии|согласно|электротехн|нормам|снип|\(|\[",
+)
+
 # Индекс позиции перед ОСТ: 01–20, не «60» из М16х60
 _LEAD_OST = r"(?:(?<![\d.\-xх×])(?P<lead>0[1-9]|1[0-9]|20)\s+)?"
 
@@ -339,16 +346,50 @@ def search_terms_for_normative_ref(ref: str) -> list[str]:
     return highlight_patterns_for_normative_ref(ref)
 
 
-def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
-    """(kind, canonical_number, dedupe_key) для сопоставления попаданий."""
-    s = _sanitize_normative_ref(ref)
-    kind_m = re.match(
-        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СП|SP|РД|RD))\s+",
-        s,
-        re.I,
-    )
-    kind = kind_m.group(1).upper() if kind_m else ""
-    kind_map = {
+def _normalize_kind_label(raw: str) -> str:
+    """Единая подпись типа: GOST→ГОСТ, SNIP→СНиП, .upper() не ломает «СНиП»."""
+    t = (raw or "").strip()
+    if not t:
+        return ""
+    compact = re.sub(r"\s+", "", t).casefold()
+    by_fold = {
+        "гост": "ГОСТ",
+        "gost": "ГОСТ",
+        "ост": "ОСТ",
+        "ost": "ОСТ",
+        "oct": "ОСТ",
+        "ту": "ТУ",
+        "tu": "ТУ",
+        "стб": "СТБ",
+        "stb": "СТБ",
+        "стп": "СТП",
+        "stp": "СТП",
+        "ткп": "ТКП",
+        "tkp": "ТКП",
+        "снип": "СНиП",
+        "snip": "СНиП",
+        "сп": "СП",
+        "sp": "СП",
+        "рд": "РД",
+        "rd": "РД",
+        "со": "СО",
+        "co": "СО",
+        "so": "СО",
+        "iso": "ISO",
+        "iec": "IEC",
+        "din": "DIN",
+        "en": "EN",
+        "api": "API",
+        "astm": "ASTM",
+        "нпб": "НПБ",
+        "npb": "НПБ",
+        "всн": "ВСН",
+        "vsn": "ВСН",
+    }
+    if compact in by_fold:
+        return by_fold[compact]
+    upper = t.upper()
+    by_upper = {
         "GOST": "ГОСТ",
         "OST": "ОСТ",
         "OCT": "ОСТ",
@@ -357,10 +398,46 @@ def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
         "STP": "СТП",
         "TKP": "ТКП",
         "SNIP": "СНиП",
+        "СНИП": "СНиП",
         "SP": "СП",
         "RD": "РД",
+        "CO": "СО",
+        "SO": "СО",
+        "ISO": "ISO",
+        "IEC": "IEC",
+        "DIN": "DIN",
+        "EN": "EN",
+        "API": "API",
+        "ASTM": "ASTM",
+        "NPB": "НПБ",
+        "VSN": "ВСН",
+        "ГОСТ": "ГОСТ",
+        "ОСТ": "ОСТ",
+        "ТУ": "ТУ",
+        "СТБ": "СТБ",
+        "СТП": "СТП",
+        "ТКП": "ТКП",
+        "СНиП": "СНиП",
+        "СП": "СП",
+        "РД": "РД",
+        "СО": "СО",
+        "НПБ": "НПБ",
+        "ВСН": "ВСН",
     }
-    kind = kind_map.get(kind, kind)
+    return by_upper.get(upper, t)
+
+
+def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
+    """(kind, canonical_number, dedupe_key) для сопоставления попаданий."""
+    s = _sanitize_normative_ref(ref)
+    kind_m = re.match(
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|"
+        r"СНиП|SNIP|СП|SP|РД|RD|СО|CO|SO|"
+        r"ISO|IEC|DIN|EN|API|ASTM|НПБ|NPB|ВСН|VSN))\s+",
+        s,
+        re.I,
+    )
+    kind = _normalize_kind_label(kind_m.group(1)) if kind_m else ""
     canon = _canonical_number(kind, s) if kind else ""
     return kind, canon, _dedupe_key(s)
 
@@ -409,7 +486,7 @@ def _normalize_highlight_phrase(phrase: str, kind: str) -> str:
             (r"(?<![a-zа-яё])(?:CTN|STN|\(СТП|\(STP)(?![a-zа-яё])", "СТП"),
         ],
         "РД": [
-            (r"(?<![a-zа-яё])(?:\(РД|\(RD)(?![a-zа-яё])", "РД"),
+            (r"(?<![a-zа-яё])(?:\(РД|\(RD|PA)(?![a-zа-яё])", "РД"),
         ],
         "СНиП": [
             (r"(?<![a-zа-яё])(?:CHN|CHiP|CHИП|СНiП)(?![a-zа-яё])", "СНиП"),
@@ -430,7 +507,8 @@ def _highlight_kind_re(kind: str) -> str:
         "ТКП": r"ткп|tkp|tkn",
         "СНиП": r"снип|snip|chn|\(?snip",
         "СП": r"сп|sp",
-        "РД": r"рд|rd|\(?rd",
+        "РД": r"рд|rd|pa|\(?rd",
+        "СО": r"со|co|so",
     }.get(kind, re.escape(kind))
 
 
@@ -445,9 +523,10 @@ def word_looks_like_kind_token(text: str, kind: str) -> bool:
         "СТБ": frozenset({"стб", "stb", "ctb", "ct5", "cte", "cib"}),
         "СТП": frozenset({"стп", "stp", "ctn", "stn"}),
         "ТКП": frozenset({"ткп", "tkp", "tkn"}),
-        "СНиП": frozenset({"снип", "snip", "chn"}),
+        "СНиП": frozenset({"снип", "snip", "chn", "chip"}),
         "СП": frozenset({"сп", "sp"}),
-        "РД": frozenset({"рд", "rd"}),
+        "РД": frozenset({"рд", "rd", "pa"}),
+        "СО": frozenset({"со", "co", "so"}),
     }
     bare = re.sub(r"^[\[\(]+|[\]\)]+$", "", t).casefold()
     if bare in aliases.get(kind, frozenset({kind.casefold()})):
@@ -1447,6 +1526,13 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     s = re.sub(r"(?i)(?<=\s)с\s+(?=СО\s+\d)", "", s)
     s = re.sub(r"(?i)(с\s*н\s*и\s*п|snip)", "СНиП", s)
     s = re.sub(
+        r"(?i)((?:электротехническ\w*|устройства|требованиями|"
+        r"в\s+соответствии\s+с|согласно)\s*(?:\(\s*)?)"
+        r"(\d{1,2}\.\d{2}\.\d{2}-\d{2,4})",
+        r"\1СНиП \2",
+        s,
+    )
+    s = re.sub(
         r"(?i)(СНиП|SNIP)\s*\n+\s*(\d[\d\.]+-\d{2,4})",
         r"\1 \2",
         s,
@@ -1498,7 +1584,7 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
         num = format_stb_number(num)
     elif kind == "ТКП":
         num = format_tkp_number(num)
-    elif kind in ("СТП", "РД"):
+    elif kind in ("СТП", "РД", "СНиП"):
         num = format_stp_number(num)
 
     type_start = m.start("type")
@@ -1564,6 +1650,43 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     return _sanitize_normative_ref(ref)
 
 
+def _is_snip_bare_number(num: str) -> bool:
+    return bool(re.fullmatch(r"\d{1,2}\.\d{2}\.\d{2}-\d{2,4}", _light_clean(num)))
+
+
+def _snip_bare_context_ok(text: str, start: int, end: int, num: str) -> bool:
+    win = _window(text, start, end, radius=90)
+    if is_noise_span(win, num) or not _SNIP_CONTEXT_HINT.search(win):
+        return False
+    before = text[max(0, start - 8) : start]
+    if re.search(r"(?i)(?:снип|snip)\s*$", before):
+        return False
+    return accept_by_context(win, num, prefix="СНиП")
+
+
+def _extract_implicit_snip_refs(text: str) -> list[dict[str, str]]:
+    """СНиП без префикса в заметках: (3.05.06-85) после «устройства» и т.п."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for m in _SNIP_BARE_NUM.finditer(text):
+        num = _light_clean(m.group("num"))
+        if not _is_snip_bare_number(num) or not _num_complete(num, "СНиП"):
+            continue
+        if not _snip_bare_context_ok(text, m.start(), m.end(), num):
+            continue
+        num = format_stp_number(num)
+        ref = _sanitize_normative_ref(f"СНиП {num}")
+        if not ref:
+            continue
+        key = _canonical_key("СНиП", ref)
+        if key in seen:
+            continue
+        seen.add(key)
+        ctx = re.sub(r"\s+", " ", _window(text, m.start(), m.end()).strip())[:160]
+        out.append({"kind": "СНиП", "ref": ref, "context": ctx or ref})
+    return out
+
+
 def _parse_match(m: re.Match[str], text: str, kind: str) -> dict[str, str] | None:
     ref = _ref_from_match(m, text, kind)
     if not ref:
@@ -1611,6 +1734,13 @@ def extract_normative_refs(text: str) -> list[dict[str, str]]:
             best[key]["ref"] = _pick_better_ref(
                 best[key]["ref"], item["ref"], kind=item_kind
             )
+            continue
+        best[key] = item
+        order.append(key)
+
+    for item in _extract_implicit_snip_refs(text):
+        key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+        if key in best:
             continue
         best[key] = item
         order.append(key)
