@@ -264,6 +264,72 @@ def test_all_ost_designation_rows_highlighted():
     doc.close()
 
 
+def test_rd_pa_ocr_year_mismatch_highlight():
+    words = [
+        (10.0, 100.0, 30.0, 112.0, "PA", 0, 0, 0),
+        (35.0, 100.0, 120.0, 112.0, "34.03.304-87", 0, 0, 1),
+    ]
+    from belener.normative_extract import _find_pinpoint_rects
+
+    rects = _find_pinpoint_rects(words, "РД 34.03.304-67")
+    assert len(rects) >= 2
+
+
+def test_stp_ctn_comma_number_highlight():
+    words = [
+        (10.0, 100.0, 35.0, 112.0, "CTN", 0, 0, 0),
+        (40.0, 100.0, 150.0, 112.0, "33240.49,101-2018", 0, 0, 1),
+    ]
+    from belener.normative_extract import _find_pinpoint_rects
+
+    rects = _find_pinpoint_rects(words, "СТП 33240.49.101-2018")
+    assert len(rects) >= 2
+    import fitz
+
+    from belener.normative_extract import _filter_pinpoint_rects
+
+    page = fitz.Rect(0, 0, 1200, 800)
+    big = fitz.Rect(100, 50, 700, 400)
+    small = fitz.Rect(200, 100, 320, 118)
+    out = _filter_pinpoint_rects([big, small], page)
+    assert len(out) == 1
+    assert out[0].width < 150
+
+
+def test_zone_text_mentions_ref():
+    from belener.normative_extract import _zone_text_mentions_ref
+
+    assert _zone_text_mentions_ref("асфальт по СТБ 1033-2016", "СТБ 1033-2016")
+    assert not _zone_text_mentions_ref("бетон B15", "СТБ 1033-2016")
+
+
+def test_preview_scan_uses_pil_highlights():
+    """На image-only PDF жёлтый рисуем поверх pixmap (PIL), не через annots."""
+    import fitz
+
+    from belener.normative_extract import (
+        _collect_highlight_rects,
+        _render_preview_image_with_highlights,
+    )
+
+    doc = fitz.open()
+    page = doc.new_page(width=600, height=300)
+    words = [
+        (72.0, 100.0, 110.0, 115.0, "ГОСТ", 0, 0, 0),
+        (115.0, 100.0, 180.0, 115.0, "8267-93", 0, 0, 1),
+    ]
+    refs = [{"ref": "ГОСТ 8267-93"}]
+    _, _, rects = _collect_highlight_rects(page, refs, [words])
+    img = _render_preview_image_with_highlights(page, rects, dpi=120)
+    yellow = sum(
+        1
+        for px in img.getdata()
+        if px[0] > 200 and px[1] > 180 and px[2] < 140
+    )
+    assert yellow > 20
+    doc.close()
+
+
 def test_album_number_without_kind_not_highlighted():
     """Серия/альбом 1.400-15 без ГОСТ — не подсвечивать как норматив."""
     words = [

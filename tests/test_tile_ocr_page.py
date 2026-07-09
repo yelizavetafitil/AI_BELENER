@@ -22,11 +22,11 @@ def test_extract_page_tiles_all_jobs():
             tile_max_sec=20, overlap_frac=0.12,
         )
     doc.close()
-    assert expected == 14
-    assert done == 14
-    assert len(sources) == 14
+    assert expected == 12
+    assert done == 12
+    assert len(sources) == 12
     assert calls[0].startswith("supp_notes")
-    assert calls[6] == "tile_1_3"
+    assert calls[4] == "tile_1_3"
 
 
 def test_normative_tile_order_bottom_right_first():
@@ -55,9 +55,9 @@ def test_supplement_runs_after_right_tiles_on_wide_page():
             tile_max_sec=20, overlap_frac=0.12,
         )
     doc.close()
-    assert expected == 15
-    assert done == 15
-    assert order[0] == "tile_1_3"
-    assert order[4] == "spec_right"
-    assert order[5].startswith("supp_notes")
+    assert expected == 13
+    assert done == 13
+    assert order[0] == "spec_right"
+    assert order[1].startswith("supp_notes")
+    assert order[5] == "tile_1_3"
     assert order[-1] == "tile_0_0"

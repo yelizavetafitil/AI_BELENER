@@ -426,6 +426,29 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         threading.Thread(target=_stn_run, daemon=True).start()
         yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
 
+    from belener.normative_extract import generate_pdf_preview_pages_with_highlights
+
+    preview_box: dict = {"pages": None}
+    preview_done = threading.Event()
+
+    def _preview_run():
+        try:
+            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
+                path,
+                result.get("normative_refs") or [],
+                page_normative_refs=result.get("page_normative_refs"),
+                page_preview_words=result.get("page_preview_words"),
+                page_tile_zones=result.get("page_tile_zones"),
+            )
+        except Exception as e:
+            app.logger.warning("preview generation failed file=%s: %s", filename, e)
+        finally:
+            preview_done.set()
+
+    threading.Thread(target=_preview_run, daemon=True).start()
+    yield from _sse_status("Формирование превью с подсветкой…")
+    yield from _heartbeat_while(preview_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+
     include_ctx = "контекст" in (question or "").casefold()
     report = normative_result_to_markdown(
         result,
@@ -433,6 +456,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         stn_checks=stn_checks,
         check_date=validity_date,
         source_path=path,
+        preview_pages=preview_box.get("pages"),
     )
     yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
@@ -507,12 +531,36 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
 
         threading.Thread(target=_stn_run, daemon=True).start()
         yield from _heartbeat_while(stn_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+
+    from belener.normative_extract import generate_pdf_preview_pages_with_highlights
+
+    preview_box: dict = {"pages": None}
+    preview_done = threading.Event()
+
+    def _preview_run():
+        try:
+            preview_box["pages"] = generate_pdf_preview_pages_with_highlights(
+                path,
+                result.get("normative_refs") or [],
+                page_preview_words=result.get("page_preview_words"),
+                page_tile_zones=result.get("page_tile_zones"),
+            )
+        except Exception as e:
+            app.logger.warning("preview generation failed file=%s: %s", filename, e)
+        finally:
+            preview_done.set()
+
+    threading.Thread(target=_preview_run, daemon=True).start()
+    yield from _sse_status("Формирование превью с подсветкой…")
+    yield from _heartbeat_while(preview_done, page_count=page_count, budget_sec=budget_sec, t0=pipeline_t0)
+
     report = normative_result_to_markdown(
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
         check_date=validity_date,
         source_path=path,
+        preview_pages=preview_box.get("pages"),
     )
     yield from _chunk_sse_text(report)
     yield "data: [DONE]\n\n"
@@ -1376,6 +1424,23 @@ def ico_image():
 @app.route("/name.png")
 def name_image():
     return send_from_directory(ROOT_DIR, "name.png")
+
+
+@app.route("/api/status")
+def api_status():
+    from belener.config import stn_lookup_enabled
+
+    login = (os.environ.get("PDF_STN_LOGIN") or "").strip()
+    password = (os.environ.get("PDF_STN_PASSWORD") or "").strip()
+    return jsonify(
+        {
+            "gost_only": True,
+            "stn": {
+                "enabled": stn_lookup_enabled(),
+                "configured": bool(login and password),
+            },
+        }
+    )
 
 
 @app.route("/api/models")

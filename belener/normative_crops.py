@@ -67,6 +67,8 @@ def extract_normatives_document_crops(
         "pipeline": f"{PIPELINE}+normative",
         "normative_refs": refs,
         "page_normative_refs": page_normative_refs,
+        "page_preview_words": tiles.get("page_preview_words") or [],
+        "page_tile_zones": tiles.get("page_tile_zones") or [],
         "vision_model": None,
         "source_text_chars": sum(len(s) for s in page_texts),
         "page_texts": tiles["all_sources"],

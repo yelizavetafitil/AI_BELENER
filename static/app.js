@@ -316,7 +316,6 @@ async function newChat() {
 }
 
 async function openChat(id) {
-  if (isStreaming) return;
   currentConvId = id;
   clearFeed();
   highlightActiveChat();

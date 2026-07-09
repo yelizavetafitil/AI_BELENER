@@ -286,8 +286,11 @@ def _ocr_supplement_tiles(
     tile_max_sec: float,
     force_ocr: bool = False,
     quality: bool = True,
+    word_sink: list | None = None,
+    zone_sink: list | None = None,
 ) -> list[str]:
     from belener.config import normative_supplement_budget_sec, normative_wide_right_dpi_boost
+    from belener.ocr import tesseract_words_from_rect
 
     page = doc[page_index]
     out: list[str] = []
@@ -320,6 +323,15 @@ def _ocr_supplement_tiles(
         )
         if text and text not in out:
             out.append(text)
+        if zone_sink is not None and text:
+            zone_sink.append((key, fitz.Rect(rect), text))
+        if word_sink is not None and text and left >= 8.0:
+            wleft = min(12.0, max(6.0, left - 2.0))
+            words = tesseract_words_from_rect(
+                doc, page_index, rect, dpi=sup_dpi, timeout=wleft,
+            )
+            if words:
+                word_sink.extend(words)
     return out
 
 
@@ -350,8 +362,11 @@ def _ocr_job_list(
     tile_max_sec: float,
     force_ocr: bool,
     high_quality: bool,
+    word_sink: list | None = None,
+    zone_sink: list | None = None,
 ) -> tuple[int, int]:
     from belener.config import normative_wide_right_dpi_boost
+    from belener.ocr import tesseract_words_from_rect
 
     boost = normative_wide_right_dpi_boost() if high_quality else 1.0
     done = attempted
@@ -383,6 +398,15 @@ def _ocr_job_list(
         )
         if text and text not in sources:
             sources.append(text)
+        if zone_sink is not None and text:
+            zone_sink.append((key, fitz.Rect(rect), text))
+        if word_sink is not None and text and left >= 8.0:
+            wleft = min(12.0, max(6.0, left - 2.0))
+            words = tesseract_words_from_rect(
+                doc, page_index, rect, dpi=tdpi, timeout=wleft,
+            )
+            if words:
+                word_sink.extend(words)
     return done, left_count
 
 
@@ -398,6 +422,8 @@ def extract_page_tiles(
     rows: int = TILE_ROWS,
     force_ocr: bool = False,
     document_pages: int = 1,
+    word_sink: list | None = None,
+    zone_sink: list | None = None,
 ) -> tuple[list[str], int, int]:
     page = doc[page_index]
     wide = page_is_wide(page.rect)
@@ -431,7 +457,7 @@ def extract_page_tiles(
             for text in _ocr_supplement_tiles(
                 doc, page_index, supplement_jobs=supplements, dpi=dpi, deadline=deadline,
                 tile_max_sec=tile_max_sec, force_ocr=force_ocr,
-                quality=sup_quality,
+                quality=sup_quality, word_sink=word_sink, zone_sink=zone_sink,
             ):
                 attempted += 1
                 if text not in sources:
@@ -441,19 +467,21 @@ def extract_page_tiles(
             sources=sources, attempted=attempted, remaining_total=expected,
             dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
             force_ocr=force_ocr, high_quality=not multi_page,
+            word_sink=word_sink, zone_sink=zone_sink,
         )
         attempted, _ = _ocr_job_list(
             doc, page_index, left_jobs,
             sources=sources, attempted=attempted, remaining_total=expected - attempted,
             dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
             force_ocr=force_ocr, high_quality=False,
+            word_sink=word_sink, zone_sink=zone_sink,
         )
     else:
         if supplements and deadline - time.monotonic() >= 8:
             for text in _ocr_supplement_tiles(
                 doc, page_index, supplement_jobs=supplements, dpi=dpi, deadline=deadline,
                 tile_max_sec=tile_max_sec, force_ocr=force_ocr,
-                quality=sup_quality,
+                quality=sup_quality, word_sink=word_sink, zone_sink=zone_sink,
             ):
                 attempted += 1
                 if text not in sources:
@@ -467,6 +495,7 @@ def extract_page_tiles(
                 sources=sources, attempted=attempted, remaining_total=expected - attempted,
                 dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
                 force_ocr=force_ocr, high_quality=True,
+                word_sink=word_sink, zone_sink=zone_sink,
             )
         if other_jobs:
             attempted, _ = _ocr_job_list(
@@ -474,6 +503,7 @@ def extract_page_tiles(
                 sources=sources, attempted=attempted, remaining_total=expected - attempted,
                 dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
                 force_ocr=force_ocr, high_quality=False,
+                word_sink=word_sink, zone_sink=zone_sink,
             )
 
     return sources, attempted, expected
@@ -481,6 +511,43 @@ def extract_page_tiles(
 
 def merge_page_text(tile_chunks: list[str]) -> str:
     return "\n\n".join(t for t in tile_chunks if str(t or "").strip())
+
+
+def collect_page_preview_words(
+    doc: fitz.Document,
+    page_index: int,
+    *,
+    page_count: int = 1,
+    deadline: float | None = None,
+) -> list:
+    """Слова с bbox для подсветки на сканах (последовательный Tesseract по тайлам)."""
+    from belener.ocr import tesseract_words_from_rect
+
+    page = doc[page_index]
+    cols, rows = tile_grid_for_page_count(page_count)
+    dpi = tile_ocr_dpi_for_pages(page_count)
+    tile_timeout = 18.0 if page_count <= 1 else 10.0
+    if page_is_wide(page.rect):
+        jobs = page_tile_jobs_normative(page.rect, cols=cols, rows=rows)
+    else:
+        jobs = page_tile_jobs(page.rect, cols=cols, rows=rows)
+    jobs.extend(supplements_for_page_scan(page.rect, page_count))
+
+    ocr_words: list = []
+    for _zone, rect in jobs:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
+        left = 18.0 if deadline is None else max(4.0, deadline - time.monotonic())
+        words = tesseract_words_from_rect(
+            doc,
+            page_index,
+            rect,
+            dpi=dpi,
+            timeout=min(tile_timeout, left),
+        )
+        if words:
+            ocr_words.extend(words)
+    return ocr_words
 
 
 def extract_document_tiles(
@@ -527,6 +594,8 @@ def extract_document_tiles(
     tile_max = max(12.0, min(60.0, (budget - 8) / max(1, pages_to_scan * max(1, tiles_per_page))))
 
     page_tiles: list[list[str]] = []
+    page_preview_words: list[list] = []
+    page_tile_zones: list[list] = []
     all_sources: list[str] = []
     pages_processed = 0
     tiles_expected = 0
@@ -552,6 +621,8 @@ def extract_document_tiles(
             rows=rows,
             force_ocr=force_ocr,
             document_pages=pages_to_scan,
+            word_sink=(pw := []) if not (doc[i].get_text("words") or []) else None,
+            zone_sink=(zs := []) if not (doc[i].get_text("words") or []) else None,
         )
         tiles_done += page_done
         pages_processed += 1
@@ -562,6 +633,26 @@ def extract_document_tiles(
         if page_done < page_expected:
             budget_exhausted = True
             log.warning("tile OCR: partial page=%s tiles=%s/%s", i + 1, page_done, page_expected)
+        text_words = doc[i].get_text("words") or []
+        if text_words:
+            page_preview_words.append(list(text_words))
+            page_tile_zones.append([])
+        elif pw:
+            page_preview_words.append(pw)
+            page_tile_zones.append(zs)
+            log.info("tile OCR preview words page=%s count=%s zones=%s", i + 1, len(pw), len(zs))
+        elif time.monotonic() < deadline + 30:
+            pw2 = collect_page_preview_words(
+                doc,
+                i,
+                page_count=pages_to_scan,
+                deadline=time.monotonic() + min(45.0, max(15.0, deadline - time.monotonic() + 25)),
+            )
+            page_preview_words.append(pw2)
+            page_tile_zones.append(zs)
+        else:
+            page_preview_words.append([])
+            page_tile_zones.append(zs)
         if deadline - time.monotonic() < 4:
             budget_exhausted = True
             if i + 1 < pages_to_scan:
@@ -602,6 +693,8 @@ def extract_document_tiles(
         "budget_exhausted": budget_exhausted,
         "tile_cols": cols,
         "tile_rows": rows,
+        "page_preview_words": page_preview_words,
+        "page_tile_zones": page_tile_zones,
     }
 
 

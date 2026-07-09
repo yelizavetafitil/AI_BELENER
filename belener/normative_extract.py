@@ -28,11 +28,11 @@ _KIND_ALIASES: dict[str, frozenset[str]] = {
     "ОСТ": frozenset({"ост", "ost", "oct"}),
     "ТУ": frozenset({"ту", "tu"}),
     "СТБ": frozenset({"стб", "stb"}),
-    "СТП": frozenset({"стп", "stp"}),
+    "СТП": frozenset({"стп", "stp", "ctn", "stn"}),
     "ТКП": frozenset({"ткп", "tkp"}),
-    "СНиП": frozenset({"снип", "snip"}),
+    "СНиП": frozenset({"снип", "snip", "chn", "chip"}),
     "СП": frozenset({"сп", "sp"}),
-    "РД": frozenset({"рд", "rd"}),
+    "РД": frozenset({"рд", "rd", "pa"}),
 }
 
 
@@ -46,17 +46,34 @@ def _kind_regex(kind: str) -> str:
         "ОСТ": r"ост|ost|oct",
         "ТУ": r"ту|tu",
         "СТБ": r"стб|stb",
-        "СТП": r"стп|stp",
+        "СТП": r"стп|stp|ctn|stn",
         "ТКП": r"ткп|tkp",
-        "СНиП": r"снип|snip",
+        "СНиП": r"снип|snip|chn|chip",
         "СП": r"сп|sp",
-        "РД": r"рд|rd",
+        "РД": r"рд|rd|pa",
     }.get(kind, re.escape(kind))
 
 
 def _word_text(word) -> str:
     raw = str(word[4] or "").strip()
-    return re.sub(r"^[\(\[\"']+|[\)\]\}\"'.,;:!?]+$", "", raw)
+    text = re.sub(r"^[\(\[\"']+|[\)\]\}\"'.,;:!?]+$", "", raw)
+    return re.sub(r",(?=\d)", ".", text)
+
+
+def _number_body_matches_ref(word, ref_str: str, kind: str) -> bool:
+    """Номер без маркера типа: 34.03.304-87 ↔ РД 34.03.304-67 (год OCR может отличаться)."""
+    from belener.normative_refs import _body_year_digits, _sanitize_normative_ref
+
+    tok = _word_text(word) if not isinstance(word, str) else re.sub(r",(?=\d)", ".", word)
+    if not tok or not re.search(r"\d", tok):
+        return False
+    ref_body, _ref_year = _body_year_digits(kind, _sanitize_normative_ref(ref_str))
+    tok_body, _tok_year = _body_year_digits(kind, f"{kind} {tok}")
+    ref_d = re.sub(r"\D", "", ref_body)
+    tok_d = re.sub(r"\D", "", tok_body)
+    if len(ref_d) < 4 or not tok_d:
+        return False
+    return tok_d == ref_d
 
 
 def _word_rect(word) -> fitz.Rect:
@@ -269,6 +286,27 @@ def _all_word_spans_for_ref(words: list, ref_str: str) -> list[tuple[int, int]]:
             seen.add(pair)
             spans.append(pair)
 
+    if body and len(body) >= 4:
+        for k in range(n):
+            if not _number_body_matches_ref(words[k], ref_str, kind):
+                continue
+            kind_i = k
+            found_kind = False
+            for j in range(k - 1, max(-1, k - 4), -1):
+                if not _words_on_same_line(words, j, k):
+                    break
+                if _word_has_kind_marker(words[j], kind):
+                    kind_i = j
+                    found_kind = True
+                    break
+            if not found_kind:
+                continue
+            pair = (kind_i, k)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            spans.append(pair)
+
     return spans
 
 
@@ -436,25 +474,198 @@ def _mark_pinpoint_rect(page: fitz.Page, rect: fitz.Rect, used: set[tuple[int, i
     annot.update()
 
 
+def _draw_highlight_shapes(page: fitz.Page, rects: list[fitz.Rect]) -> int:
+    """Жёлтые рамки на сканах: shape рисуется в pixmap, annots на image-only PDF не видны."""
+    shape = page.new_shape()
+    drawn = 0
+    seen: set[tuple[int, int, int, int]] = set()
+    for rect in rects:
+        if rect is None or rect.is_empty:
+            continue
+        fp = _rect_fingerprint(rect)
+        if fp in seen:
+            continue
+        seen.add(fp)
+        pad = 0.5
+        box = fitz.Rect(rect.x0 - pad, rect.y0 - pad, rect.x1 + pad, rect.y1 + pad) & page.rect
+        if box.is_empty or box.width < 1 or box.height < 1:
+            continue
+        shape.draw_rect(box)
+        drawn += 1
+    if drawn:
+        shape.finish(color=(0.95, 0.78, 0.0), fill=(1.0, 1.0, 0.0), fill_opacity=0.42, width=0.2)
+        shape.commit(overlay=True)
+    return drawn
+
+
+def _render_preview_image_with_highlights(
+    page: fitz.Page,
+    rects: list[fitz.Rect],
+    *,
+    dpi: int = 144,
+):
+    """JPEG-превью: жёлтые рамки рисуем поверх pixmap (надёжно на image-only PDF)."""
+    from PIL import Image, ImageDraw
+
+    pix = page.get_pixmap(dpi=dpi, annots=False)
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    if not rects:
+        return img
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    scale = dpi / 72.0
+    seen: set[tuple[int, int, int, int]] = set()
+    for rect in rects:
+        if rect is None or rect.is_empty:
+            continue
+        fp = _rect_fingerprint(rect)
+        if fp in seen:
+            continue
+        seen.add(fp)
+        x0 = int(rect.x0 * scale) - 2
+        y0 = int(rect.y0 * scale) - 2
+        x1 = int(rect.x1 * scale) + 2
+        y1 = int(rect.y1 * scale) + 2
+        draw.rectangle(
+            [x0, y0, x1, y1],
+            fill=(255, 235, 0, 160),
+            outline=(220, 150, 0, 255),
+            width=2,
+        )
+    return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+
+
+def _filter_pinpoint_rects(rects: list[fitz.Rect], page_rect: fitz.Rect | None) -> list[fitz.Rect]:
+    """Отсечь раздутые bbox (зоны тайлов, ошибочный OCR) — только точечная подсветка."""
+    if not rects:
+        return []
+    pr = page_rect
+    max_w = min(210.0, (pr.width * 0.32) if pr and not pr.is_empty else 210.0)
+    max_h = min(42.0, (pr.height * 0.07) if pr and not pr.is_empty else 42.0)
+    max_area = max_w * max_h * 1.8
+    out: list[fitz.Rect] = []
+    for rect in rects:
+        if rect is None or rect.is_empty:
+            continue
+        if rect.width > max_w or rect.height > max_h:
+            continue
+        if rect.width * rect.height > max_area:
+            continue
+        out.append(rect)
+    return _dedupe_rects(out)
+
+
+def _zone_text_mentions_ref(text: str, ref_str: str) -> bool:
+    import re
+
+    from belener.normative_refs import _sanitize_normative_ref
+
+    ref_norm = re.sub(r"[\s\-–—]+", "", _sanitize_normative_ref(ref_str).casefold())
+    if len(ref_norm) < 5:
+        return False
+    blob = re.sub(r"[\s\-–—]+", "", str(text or "").casefold())
+    return ref_norm in blob or ref_norm[:-1] in blob or ref_norm[:-2] in blob
+
+
+def _ocr_words_for_ref_zones(
+    doc: fitz.Document,
+    page_index: int,
+    ref_str: str,
+    tile_zones: list,
+    *,
+    dpi: int = 320,
+) -> list:
+    """Точечный OCR только в зонах, где текст тайла уже содержит норматив."""
+    from belener.ocr import tesseract_words_from_rect
+
+    words: list = []
+    for _zone, rect, text in tile_zones:
+        if not text or rect is None or rect.is_empty:
+            continue
+        if not _zone_text_mentions_ref(text, ref_str):
+            continue
+        batch = tesseract_words_from_rect(doc, page_index, rect, dpi=dpi, timeout=10.0)
+        if batch:
+            words.extend(batch)
+    return words
+
+
+def _collect_highlight_rects(
+    page: fitz.Page | None,
+    refs: list[dict],
+    sources: list[list],
+    *,
+    doc: fitz.Document | None = None,
+    page_index: int = 0,
+    tile_zones: list | None = None,
+) -> tuple[int, int, list[fitz.Rect]]:
+    """Собрать все bbox для нормативов из таблицы ответа (только точечные)."""
+    merged_words = _merge_word_sources(sources)
+    page_rect = page.rect if page is not None else None
+    seen_fp: set[tuple[int, int, int, int]] = set()
+    all_rects: list[fitz.Rect] = []
+    highlighted_refs = 0
+
+    for r in refs:
+        ref_str = (r.get("ref") or "").strip()
+        if not ref_str:
+            continue
+        rects = _highlight_rects_for_ref(page, merged_words, ref_str)
+        rects = _filter_pinpoint_rects(_dedupe_rects(rects), page_rect)
+        if not rects and tile_zones and doc is not None:
+            extra = _ocr_words_for_ref_zones(doc, page_index, ref_str, tile_zones)
+            if extra:
+                merged_extra = _merge_word_sources([merged_words, extra])
+                rects = _highlight_rects_for_ref(page, merged_extra, ref_str)
+                rects = _filter_pinpoint_rects(_dedupe_rects(rects), page_rect)
+        if not rects:
+            log.debug("preview highlight miss: %s", ref_str)
+            continue
+        highlighted_refs += 1
+        for rect in rects:
+            fp = _rect_fingerprint(rect)
+            if fp in seen_fp:
+                continue
+            seen_fp.add(fp)
+            all_rects.append(rect)
+
+    return highlighted_refs, len(all_rects), all_rects
+
+
+def _preview_words_for_page(
+    doc: fitz.Document,
+    page_index: int,
+    *,
+    page_count: int = 1,
+    deadline: float | None = None,
+) -> list:
+    from belener.tile_ocr import collect_page_preview_words
+
+    return collect_page_preview_words(
+        doc,
+        page_index,
+        page_count=page_count,
+        deadline=deadline,
+    )
+
+
 def _preview_word_sources(
     pdf_path: str,
     page_index: int,
     *,
     page_count: int = 1,
+    cached_words: list | None = None,
+    deadline: float | None = None,
 ) -> list[list]:
     """Слова листа для подсветки: текстовый слой + Tesseract по той же сетке, что и извлечение."""
     import gc
-
-    from belener.config import tile_grid_for_page_count, tile_ocr_dpi_for_pages
-    from belener.ocr import tesseract_words_from_rect
-    from belener.tile_ocr import (
-        page_is_wide,
-        page_tile_jobs,
-        page_tile_jobs_normative,
-        supplements_for_page_scan,
-    )
+    import time
 
     sources: list[list] = []
+    if cached_words:
+        sources.append(cached_words)
+        return sources
+
     doc = fitz.open(pdf_path)
     try:
         page = doc[page_index]
@@ -462,33 +673,21 @@ def _preview_word_sources(
         if text_words:
             sources.append(text_words)
 
-        cols, rows = tile_grid_for_page_count(page_count)
-        dpi = tile_ocr_dpi_for_pages(page_count)
-        tile_timeout = 18.0 if page_count <= 1 else 10.0
-        if page_is_wide(page.rect):
-            jobs = page_tile_jobs_normative(page.rect, cols=cols, rows=rows)
-        else:
-            jobs = page_tile_jobs(page.rect, cols=cols, rows=rows)
-        jobs.extend(supplements_for_page_scan(page.rect, page_count))
-        ocr_words: list = []
-        for _zone, rect in jobs:
-            chunk = tesseract_words_from_rect(
-                doc,
-                page_index,
-                rect,
-                dpi=dpi,
-                timeout=tile_timeout,
-            )
-            if chunk:
-                ocr_words.extend(chunk)
+        dl = deadline if deadline is not None else time.monotonic() + (120.0 if not text_words else 60.0)
+        ocr_words = _preview_words_for_page(
+            doc,
+            page_index,
+            page_count=page_count,
+            deadline=dl,
+        )
         if ocr_words:
             sources.append(ocr_words)
         log.debug(
-            "preview words page=%s text=%s ocr=%s tiles=%s",
+            "preview words page=%s text=%s ocr=%s scan=%s",
             page_index + 1,
             len(text_words),
             len(ocr_words),
-            len(jobs),
+            not text_words,
         )
     finally:
         doc.close()
@@ -543,8 +742,13 @@ def generate_pdf_preview_pages_with_highlights(
     refs: list[dict],
     *,
     page_normative_refs: list[list[dict]] | None = None,
+    page_preview_words: list[list] | None = None,
+    page_tile_zones: list[list] | None = None,
+    preview_word_deadline: float | None = None,
 ) -> list[dict[str, Any]]:
     """Превью каждого листа PDF с жёлтой подсветкой нормативов из ответа."""
+    import time
+
     pages_out: list[dict[str, Any]] = []
     try:
         probe = fitz.open(pdf_path)
@@ -555,27 +759,44 @@ def generate_pdf_preview_pages_with_highlights(
 
         tmp_dir = upload_temp_dir()
         for page_index in range(page_count):
+            cached = None
+            if page_preview_words and page_index < len(page_preview_words):
+                cached = page_preview_words[page_index] or None
+            dl = preview_word_deadline
+            if dl is None and not cached:
+                dl = time.monotonic() + (90.0 if page_count <= 1 else 35.0)
+            tile_zones = None
+            if page_tile_zones and page_index < len(page_tile_zones):
+                tile_zones = page_tile_zones[page_index] or None
             word_sources = _preview_word_sources(
                 pdf_path,
                 page_index,
                 page_count=page_count,
+                cached_words=cached,
+                deadline=dl,
             )
             doc = fitz.open(pdf_path)
             try:
                 page = doc[page_index]
-                highlighted_refs, total_marks = _highlight_on_page(
+                sources: list[list] = []
+                for src in word_sources:
+                    if src and src not in sources:
+                        sources.append(src)
+                highlighted_refs, total_marks, rects = _collect_highlight_rects(
                     page,
                     refs,
-                    words=word_sources[0] if word_sources else [],
-                    extra_word_sources=word_sources[1:] or None,
+                    sources,
+                    doc=doc,
+                    page_index=page_index,
+                    tile_zones=tile_zones,
                 )
-                pix = page.get_pixmap(dpi=144, annots=True, alpha=False)
+                preview_img = _render_preview_image_with_highlights(page, rects, dpi=144)
             finally:
                 doc.close()
 
             fname = f"preview_{uuid.uuid4().hex}.jpg"
             out_path = os.path.join(tmp_dir, fname)
-            pix.save(out_path)
+            preview_img.save(out_path, format="JPEG", quality=92)
             pages_out.append(
                 {
                     "page": page_index + 1,
@@ -673,6 +894,8 @@ def normative_refs_to_markdown(
     budget_exhausted: bool = False,
     source_path: str = "",
     page_normative_refs: list[list[dict]] | None = None,
+    page_preview_words: list[list] | None = None,
+    preview_pages: list[dict[str, Any]] | None = None,
 ) -> str:
     lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, ТУ и др.)", ""]
     if filename:
@@ -708,10 +931,15 @@ def normative_refs_to_markdown(
         checks_map = {}
         if stn_checks:
             for c in stn_checks:
-                # Handle both dicts and StnCheckResult objects
                 try:
                     ref_val = c.ref if hasattr(c, "ref") else c.get("ref")
+                    kind_val = c.kind if hasattr(c, "kind") else c.get("kind")
                     checks_map[ref_val] = c
+                    from belener.stn_lookup import _norm_code, search_query
+
+                    norm_key = _norm_code(search_query(str(kind_val or ""), str(ref_val or "")))
+                    if norm_key:
+                        checks_map[norm_key] = c
                 except Exception:
                     pass
 
@@ -726,6 +954,10 @@ def normative_refs_to_markdown(
             kind = n.get('kind') or '—'
             ref = n.get('ref') or '—'
             c = checks_map.get(ref)
+            if c is None and kind and ref:
+                from belener.stn_lookup import _norm_code, search_query
+
+                c = checks_map.get(_norm_code(search_query(kind, ref)))
 
             ips_link = "—"
             intro = "—"
@@ -745,6 +977,13 @@ def normative_refs_to_markdown(
                     status = f"{status_val} ({error_val[:60]})"
                 elif not found and str(status_val).startswith("пропущено"):
                     status = "не проверено (время)"
+                elif not found and (
+                    "IPS" in str(status_val)
+                    or "вход" in str(status_val).casefold()
+                    or "логин" in str(status_val).casefold()
+                    or "пароль" in str(status_val).casefold()
+                ):
+                    status = status_val
                 elif not found and (
                     status_val in ("нет в ИПС", "не в фонде STN")
                 ):
@@ -775,13 +1014,30 @@ def normative_refs_to_markdown(
         lines.append("</div>")
         lines.append("")
         
-        found_ips = sum(1 for c in checks_map.values() if (c.found if hasattr(c, "found") else str(c.get("found")) == "1"))
-        active = sum(1 for c in checks_map.values() if (c.status if hasattr(c, "status") else c.get("status")) == "актуален")
+        found_ips = sum(
+            1
+            for c in (stn_checks or [])
+            if (c.found if hasattr(c, "found") else str(c.get("found")) == "1")
+        )
+        active = sum(
+            1
+            for c in (stn_checks or [])
+            if (c.status if hasattr(c, "status") else c.get("status")) == "актуален"
+        )
         lines.append(f"*Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; актуально: {active}*")
         lines.append("")
 
     stn_error = (stn_error or "").strip()
     if stn_checks and not stn_error:
+        login_like = sum(
+            1
+            for c in stn_checks
+            if "IPS" in str(c.status if hasattr(c, "status") else c.get("status") or "")
+            or "вход" in str(c.status if hasattr(c, "status") else c.get("status") or "").casefold()
+        )
+        if login_like == len(stn_checks) and login_like > 0:
+            first = stn_checks[0]
+            stn_error = first.status if hasattr(first, "status") else str(first.get("status") or "")
         skipped = sum(
             1
             for c in stn_checks
@@ -792,38 +1048,39 @@ def normative_refs_to_markdown(
     if stn_error:
         lines.extend(["", f"*⚠ {stn_error}*", ""])
 
-    if source_path and os.path.isfile(source_path):
+    if preview_pages is None and source_path and os.path.isfile(source_path):
         preview_pages = generate_pdf_preview_pages_with_highlights(
             source_path,
             refs,
             page_normative_refs=page_normative_refs,
+            page_preview_words=page_preview_words,
         )
-        if preview_pages:
-            if len(preview_pages) == 1:
-                lines.append("### Предпросмотр листа")
-            else:
-                lines.append(f"### Предпросмотр листов ({len(preview_pages)})")
-            for entry in preview_pages:
-                page_no = int(entry.get("page") or 0)
-                preview_url = str(entry.get("url") or "")
-                if not preview_url:
-                    continue
-                preview_id = f"preview-{uuid.uuid4().hex[:8]}"
-                lines.append(f'<h4 class="pdf-preview-sheet-title">Лист {page_no}</h4>')
-                lines.append(
-                    f'<div class="pdf-preview-tools">'
-                    f'<a class="stn-link" href="{preview_url}" target="_blank">Открыть лист {page_no}</a>'
-                    f'<div class="preview-zoom-buttons">'
-                    f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="out">-</button>'
-                    f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="reset">100%</button>'
-                    f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="in">+</button>'
-                    f'</div></div>'
-                )
-                lines.append(
-                    f'<div class="pdf-preview-container"><img id="{preview_id}" src="{preview_url}" '
-                    f'alt="Предпросмотр листа {page_no}" class="pdf-preview-img" data-scale="1"></div>'
-                )
-            lines.append("")
+    if preview_pages:
+        if len(preview_pages) == 1:
+            lines.append("### Предпросмотр листа")
+        else:
+            lines.append(f"### Предпросмотр листов ({len(preview_pages)})")
+        for entry in preview_pages:
+            page_no = int(entry.get("page") or 0)
+            preview_url = str(entry.get("url") or "")
+            if not preview_url:
+                continue
+            preview_id = f"preview-{uuid.uuid4().hex[:8]}"
+            lines.append(f'<h4 class="pdf-preview-sheet-title">Лист {page_no}</h4>')
+            lines.append(
+                f'<div class="pdf-preview-tools">'
+                f'<a class="stn-link" href="{preview_url}" target="_blank">Открыть лист {page_no}</a>'
+                f'<div class="preview-zoom-buttons">'
+                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="out">-</button>'
+                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="reset">100%</button>'
+                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="in">+</button>'
+                f'</div></div>'
+            )
+            lines.append(
+                f'<div class="pdf-preview-container"><img id="{preview_id}" src="{preview_url}" '
+                f'alt="Предпросмотр листа {page_no}" class="pdf-preview-img" data-scale="1"></div>'
+            )
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -835,6 +1092,7 @@ def normative_result_to_markdown(
     stn_checks: list | None = None,
     check_date: date | None = None,
     source_path: str = "",
+    preview_pages: list[dict[str, Any]] | None = None,
 ) -> str:
     checks = stn_checks
     if checks is None:
@@ -852,4 +1110,6 @@ def normative_result_to_markdown(
         budget_exhausted=bool(result.get("budget_exhausted")),
         source_path=source_path,
         page_normative_refs=list(result.get("page_normative_refs") or []),
+        page_preview_words=list(result.get("page_preview_words") or []),
+        preview_pages=preview_pages,
     )

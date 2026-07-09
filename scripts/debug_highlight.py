@@ -25,15 +25,18 @@ def check(path: str) -> None:
     print("===", name)
     print("refs", len(refs), [x.get("ref") for x in refs])
     print("budget_exhausted", r.get("budget_exhausted"), "tiles", r.get("tiles_done"), "/", r.get("tiles_expected"))
-    ws = _preview_word_sources(path, 0, page_count=1)
-    print("preview sources", [len(s) for s in ws])
-    ocr = ws[-1]
+    ws = r.get("page_preview_words") or []
+    pw = ws[0] if ws else []
+    print("preview words cached", len(pw))
     for ref in refs:
         rs = ref.get("ref") or ""
-        n = len(_find_pinpoint_rects(ocr, rs))
+        n = len(_find_pinpoint_rects(pw, rs))
         print("  highlight", rs, n)
     previews = generate_pdf_preview_pages_with_highlights(
-        path, refs, page_normative_refs=r.get("page_normative_refs")
+        path,
+        refs,
+        page_normative_refs=r.get("page_normative_refs"),
+        page_preview_words=r.get("page_preview_words"),
     )
     marks = sum(int(p.get("marks") or 0) for p in previews)
     print("preview marks", marks)

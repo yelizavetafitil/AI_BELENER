@@ -4,6 +4,7 @@ from pathlib import Path
 from belener.stn_lookup import (
     StnCheckResult,
     StnClient,
+    StnLoginError,
     _digits_compatible,
     _iter_ocr_digit_variants,
     check_normative_refs_stn,
@@ -238,6 +239,34 @@ def test_parse_card_html_ips():
     assert "ТКП 45-4.03-267-2012" in fields["Обозначение"]
     assert fields["Дата введения"] == "01.12.2012"
     assert fields["Дата отмены"] == "21.09.2020"
+
+
+def test_bad_login_reports_ips_error_not_silent_not_found(monkeypatch):
+    c = StnClient(login="bad-user", password="bad-pass")
+    monkeypatch.setattr(c, "_verify_ips_session", lambda: False)
+    try:
+        c.login("bad-user", "bad-pass")
+        assert False, "expected StnLoginError"
+    except StnLoginError as e:
+        assert "IPS" in str(e)
+    assert not c._logged_in
+    res = lookup_one("ГОСТ", "ГОСТ 27772-2015", client=c, today=date(2026, 7, 8))
+    assert not res.found
+    assert "IPS" in res.status
+    assert res.status != "нет в ИПС"
+
+
+def test_missing_credentials_show_login_hint(monkeypatch):
+    monkeypatch.setattr("belener.stn_lookup.stn_lookup_enabled", lambda: True)
+
+    class _NoCredsClient(StnClient):
+        def __init__(self) -> None:
+            super().__init__(login="", password="")
+
+    refs = [{"kind": "ГОСТ", "ref": "ГОСТ 27772-2015"}]
+    _, checks = refine_and_check_normative_refs(refs, client=_NoCredsClient(), today=date(2026, 7, 8))
+    assert len(checks) == 1
+    assert "PDF_STN_LOGIN" in checks[0].status
 
 
 def test_tkp_not_found_without_ips(monkeypatch):

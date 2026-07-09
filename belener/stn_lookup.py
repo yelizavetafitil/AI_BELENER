@@ -31,6 +31,11 @@ from belener.config import (
 
 log = logging.getLogger("belener.stn_lookup")
 
+
+class StnLoginError(RuntimeError):
+    """Не удалось войти в IPS normy.stn.by."""
+
+
 # Приоритетные типы фонда STN (остальные тоже пробуем искать).
 STN_FUND_KINDS: frozenset[str] = frozenset(
     {"ГОСТ", "ОСТ", "СТБ", "СТП", "СНиП", "ТКП", "СП", "ТР"}
@@ -462,6 +467,7 @@ class StnClient:
         self._logged_in = False
         self._login_user = (login or "").strip()
         self._login_pass = (password or "").strip()
+        self._login_error = ""
         self._http_lock = threading.RLock()
 
     @property
@@ -492,6 +498,28 @@ class StnClient:
             raise last_err
         raise RuntimeError("STN request failed")
 
+    def _verify_ips_session(self) -> bool:
+        """Проверка, что authorization.php создал рабочую сессию IPS."""
+        payload = {
+            **_STN_FORM_EMPTY,
+            **_STN_DOCTYPES,
+            "codename": "27772",
+            "mode": "true",
+            "page": "0",
+        }
+        body = urllib.parse.urlencode(payload, encoding="utf-8").encode("utf-8")
+        portal = self.base + "ips.php"
+        req = urllib.request.Request(
+            self.base + "ips_list.php",
+            data=body,
+            headers={**self._headers(referer=portal), "X-Requested-With": "XMLHttpRequest"},
+            method="POST",
+        )
+        with self._open(req) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        _rows, session_ok = _parse_list_response(raw)
+        return session_ok
+
     def _ensure_logged_in(self) -> None:
         if getattr(self, "_logged_in", False):
             return
@@ -521,6 +549,11 @@ class StnClient:
         with self._open(warm) as resp:
             resp.read()
         self._logged_in = True
+        if not self._verify_ips_session():
+            self._logged_in = False
+            self._login_error = "неверный логин или пароль IPS (normy.stn.by)"
+            raise StnLoginError(self._login_error)
+        self._login_error = ""
 
     def _headers(self, *, referer: str | None = None) -> dict[str, str]:
         h = {
@@ -689,7 +722,16 @@ def lookup_one(
         if deadline is not None and time.monotonic() >= deadline:
             out.status = "пропущено (бюджет времени)"
             return out
-        cli._ensure_logged_in()
+        try:
+            cli._ensure_logged_in()
+        except StnLoginError as e:
+            out.status = str(e)
+            out.error = str(e)
+            return out
+        if getattr(cli, "_login_user", "") and getattr(cli, "_login_pass", "") and not cli._logged_in:
+            out.status = cli._login_error or "ошибка входа IPS"
+            out.error = out.status
+            return out
         match, used_q = _lookup_match(kind, ref, client=cli, queries=queries, deadline=deadline)
         variant_retry = False
         if not match:
@@ -787,10 +829,50 @@ def refine_and_check_normative_refs(
         return list(refs or []), []
 
     shared_cli = client or _default_client()
+    login_error = ""
     try:
         shared_cli._ensure_logged_in()
-    except Exception as e:
+    except StnLoginError as e:
+        login_error = str(e)
         log.warning("STN login failed: %s", e)
+    except Exception as e:
+        login_error = str(e)
+        log.warning("STN login failed: %s", e)
+
+    if login_error and getattr(shared_cli, "_login_user", "") and getattr(shared_cli, "_login_pass", ""):
+        checks = [
+            StnCheckResult(
+                kind=str(item.get("kind") or "").strip(),
+                ref=str(item.get("ref") or "").strip(),
+                query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
+                found=False,
+                status=login_error,
+                error=login_error,
+            )
+            for item in items
+        ]
+        log.info("STN batch: login failed for %s refs", len(checks))
+        return list(refs or []), checks
+
+    has_cred_fields = hasattr(shared_cli, "_login_user") and hasattr(shared_cli, "_login_pass")
+    if has_cred_fields and (not shared_cli._login_user or not shared_cli._login_pass):
+        login_error = (
+            "нужен вход IPS: укажите PDF_STN_LOGIN и PDF_STN_PASSWORD в .env и перезапустите web"
+        )
+        checks = [
+            StnCheckResult(
+                kind=str(item.get("kind") or "").strip(),
+                ref=str(item.get("ref") or "").strip(),
+                query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
+                found=False,
+                status=login_error,
+                error=login_error,
+            )
+            for item in items
+        ]
+        log.info("STN batch: IPS credentials missing for %s refs", len(checks))
+        return list(refs or []), checks
+
     workers = min(stn_parallel_workers(), len(items))
     refined_map: dict[tuple[str, str], dict[str, str]] = {}
     checks_map: dict[tuple[str, str], StnCheckResult] = {}
