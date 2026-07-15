@@ -148,7 +148,7 @@ def test_modern_snip_reclassified_as_sp():
     assert any(r["kind"] == "СНиП" and "3.05.06-85" in r["ref"] for r in out)
 
 
-def test_pue_tpr_and_gost_comma_ocr():
+def test_pue_not_extracted_tpr_and_gost_comma_ocr():
     text = (
         "по ПУЭ и Правилам (ПТЭ), ПТБ. "
         "ТПР-00-1.22 Альбом 1. "
@@ -156,8 +156,7 @@ def test_pue_tpr_and_gost_comma_ocr():
         "РДС 10-231-96."
     )
     out = extract_normative_refs(text)
-    assert any(r["kind"] == "ПУЭ" for r in out)
-    assert any(r["kind"] == "ПТЭ" for r in out) or any(r["kind"] == "ПТБ" for r in out)
+    assert not any(r["kind"] in ("ПУЭ", "ПТЭ", "ПТБ") for r in out)
     assert any(r["kind"] == "ТПР" and "00-1.22" in r["ref"].replace(" ", "") for r in out)
     assert any(r["kind"] == "ГОСТ" and "12.3.036-84" in r["ref"] for r in out)
     assert any(r["kind"] == "РДС" and "10-231" in r["ref"] for r in out)

@@ -16,7 +16,6 @@ _FUZZY_SN = re.compile(r"(?i)(?<![a-zа-яё])(?:сн|ch)(?![иiпpnн]|ип|ip)
 _FUZZY_NRR = re.compile(r"(?i)(?<![a-zа-яё])(?:нрр|hrr|nrr)(?![a-zа-яё])")
 _FUZZY_TPR = re.compile(r"(?i)(?<![a-zа-яё])(?:тпр|tpr)(?![a-zа-яё])")
 _FUZZY_RDS = re.compile(r"(?i)(?<![a-zа-яё])(?:рдс|rds)(?![a-zа-яё])")
-_FUZZY_PUE = re.compile(r"(?i)(?<![a-zа-яё])(?:пуэ|pue)(?![a-zа-яё])")
 _FUZZY_SP = re.compile(r"(?i)(?<![a-zа-яё0-9])(?:сп|sp)(?![a-zа-яё0-9])")
 _FUZZY_TU = re.compile(r"(?i)(?<![a-zа-яё])(?:ту|tu)(?=\s*\d)")
 _FUZZY_RD = re.compile(r"(?i)(?<![a-zа-яё])(?:рд|rd|pa)(?=\s*[\d(])")
@@ -49,10 +48,6 @@ _PREFIX_KIND: dict[str, str] = {
     "tpr": "ТПР",
     "рдс": "РДС",
     "rds": "РДС",
-    "пуэ": "ПУЭ",
-    "pue": "ПУЭ",
-    "птэ": "ПТЭ",
-    "птб": "ПТБ",
     "ткп": "ТКП",
     "tkp": "ТКП",
     "сп": "СП",
@@ -85,7 +80,6 @@ def fuzzy_normative_text(text: str) -> str:
     s = _FUZZY_NRR.sub("НРР", s)
     s = _FUZZY_TPR.sub("ТПР", s)
     s = _FUZZY_RDS.sub("РДС", s)
-    s = _FUZZY_PUE.sub("ПУЭ", s)
     s = _FUZZY_SP.sub("СП", s)
     s = _FUZZY_TU.sub("ТУ", s)
     s = _FUZZY_RD.sub("РД", s)

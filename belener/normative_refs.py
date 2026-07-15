@@ -79,9 +79,6 @@ _CLIP: dict[str, re.Pattern[str]] = {
     "НРР": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
     "ТПР": re.compile(r"^(-?\d[\d.\-–—]*\d)", re.I),
     "РДС": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*(?:-\d{2,4})?)", re.I),
-    "ПУЭ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
-    "ПТЭ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
-    "ПТБ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
     "ТКП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "СП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "ISO": re.compile(r"^(\d+(?:-\d+)+)", re.I),
@@ -102,19 +99,6 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     for kind, type_rx, lead in _TYPE_SPECS
 ]
 
-# Виды без обязательного номера: «по ПУЭ», «согласно ПТЭ».
-for _kind, _type_rx in (
-    ("ПУЭ", rf"{_WB_L}(?:ПУЭ|PUE){_TYPE_END}"),
-    ("ПТЭ", rf"{_WB_L}(?:ПТЭ|PTE){_TYPE_END}"),
-    ("ПТБ", rf"{_WB_L}(?:ПТБ|PTB){_TYPE_END}"),
-):
-    _PATTERNS.append(
-        (
-            _kind,
-            re.compile(rf"(?P<type>{_type_rx})(?:\s*(?P<num>{_NUM_BODY}))?", re.I),
-        )
-    )
-
 # Материал перед ГОСТ: 25х2, 16-В, В-20 — не «5-70» (обрыв OCR)
 _MAT_BEFORE = re.compile(
     r"([\d]+[xх×][\d\-–—]+|[\d]+[\-–—][А-Яа-яA-Za-z][\w\-–—]*|[А-Яа-яA-Za-z][\w\-–—]*)\s+$",
@@ -132,15 +116,12 @@ def _light_clean(raw: str) -> str:
 
 def _clip_num(raw: str, kind: str) -> str:
     s = _light_clean(raw)
-    if kind in ("ПУЭ", "ПТЭ", "ПТБ") and not s:
-        return ""
     s = re.split(r"(?=[A-Za-zА-Яа-яёЁ]{2,})", s)[0].strip()
     rx = _CLIP.get(kind)
     if rx:
-        m = rx.match(s) if s else rx.match("")
+        m = rx.match(s)
         if m:
-            captured = m.group(1) if m.lastindex and m.group(1) is not None else ""
-            s = _light_clean(captured)
+            s = _light_clean(m.group(1))
     return s
 
 
@@ -170,11 +151,6 @@ def _year_plausible(num: str, kind: str) -> bool:
 
 def _num_complete(num: str, kind: str) -> bool:
     n = _light_clean(num)
-    if kind in ("ПУЭ", "ПТЭ", "ПТБ"):
-        # Допустимо без издания: «по ПУЭ».
-        if not n:
-            return True
-        return _digits_count(n) >= 1 and _year_plausible(n, kind)
     if not n or _digits_count(n) < 3:
         return False
     if not _year_plausible(n, kind):
@@ -1739,10 +1715,7 @@ def _window(text: str, start: int, end: int, *, radius: int = 80) -> str:
 def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     num_raw = m.group("num") or ""
     num = _clip_num(num_raw, kind)
-    if kind in ("ПУЭ", "ПТЭ", "ПТБ"):
-        if not _num_complete(num, kind):
-            return None
-    elif not num or not _num_complete(num, kind):
+    if not num or not _num_complete(num, kind):
         return None
     if kind == "ОСТ":
         num = format_ost_number(num)
@@ -1762,37 +1735,32 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     elif kind == "ГОСТ":
         span_start = _material_start(text, type_start)
 
-    if kind in ("ПУЭ", "ПТЭ", "ПТБ") and not num:
-        end = m.end("type")
-        type_label = _light_clean(m.group("type") or kind)
-        ref = type_label
-    else:
-        num_in_raw = num_raw[: len(num)] if num_raw.startswith(num.replace(" ", "")) else num
-        for i in range(len(num_raw), 0, -1):
-            if _light_clean(num_raw[:i]).replace(" ", "") == num.replace(" ", ""):
-                num_in_raw = num_raw[:i]
-                break
+    num_in_raw = num_raw[: len(num)] if num_raw.startswith(num.replace(" ", "")) else num
+    for i in range(len(num_raw), 0, -1):
+        if _light_clean(num_raw[:i]).replace(" ", "") == num.replace(" ", ""):
+            num_in_raw = num_raw[:i]
+            break
 
-        end = m.start("num") + len(num_in_raw) if m.group("num") is not None else m.end("type")
-        type_label = _light_clean(m.group("type") or kind)
-        if kind == "ОСТ":
-            ref = _light_clean(f"{type_label} {num}")
-        elif kind in ("СТП", "РД"):
-            ref = _light_clean(f"{type_label} {num}")
-        elif kind == "ГОСТ":
-            raw = _light_clean(text[span_start:end])
-            mg = re.match(r"^(.*?)(?:ГОСТ|GOST)\s", raw, re.I | re.S)
-            prefix = _light_clean(mg.group(1)) if mg else ""
-            if prefix and (_is_noise_gost_prefix(prefix) or _is_steel_grade_prefix(prefix)):
-                prefix = ""
-            if prefix and len(prefix) <= 24:
-                ref = _light_clean(f"{prefix} ГОСТ {num}")
-            else:
-                ref = _light_clean(f"ГОСТ {num}")
+    end = m.start("num") + len(num_in_raw)
+    type_label = _light_clean(m.group("type") or kind)
+    if kind == "ОСТ":
+        ref = _light_clean(f"{type_label} {num}")
+    elif kind in ("СТП", "РД"):
+        ref = _light_clean(f"{type_label} {num}")
+    elif kind == "ГОСТ":
+        raw = _light_clean(text[span_start:end])
+        mg = re.match(r"^(.*?)(?:ГОСТ|GOST)\s", raw, re.I | re.S)
+        prefix = _light_clean(mg.group(1)) if mg else ""
+        if prefix and (_is_noise_gost_prefix(prefix) or _is_steel_grade_prefix(prefix)):
+            prefix = ""
+        if prefix and len(prefix) <= 24:
+            ref = _light_clean(f"{prefix} ГОСТ {num}")
         else:
-            ref = _light_clean(text[span_start:end])
-            if not ref:
-                ref = _light_clean(f"{type_label} {num}")
+            ref = _light_clean(f"ГОСТ {num}")
+    else:
+        ref = _light_clean(text[span_start:end])
+        if not ref:
+            ref = _light_clean(f"{type_label} {num}")
 
     if kind == "ГОСТ" and re.match(r"^\d{1,3}\s+(?:ГОСТ|GOST)", ref, re.I):
         ref = re.sub(r"^\d{1,3}\s+", "", ref, count=1)
@@ -1814,8 +1782,6 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     if not _ref_has_one_type(ref):
         if kind == "ГОСТ":
             ref = _sanitize_normative_ref(f"ГОСТ {num}")
-        elif kind in ("ПУЭ", "ПТЭ", "ПТБ"):
-            ref = kind
         if not _ref_has_one_type(ref):
             return None
 
