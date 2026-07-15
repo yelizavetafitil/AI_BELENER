@@ -791,13 +791,24 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
         elif pages <= 12:
             sup_per_page = 1
         else:
-            sup_per_page = 1
+            sup_per_page = 0
         tiles_total = pages * (cols * rows + sup_per_page)
 
-    per_tile = 11.0 if pages == 1 else (9.5 if pages <= 12 else 8.0)
+    full_page = cols * rows <= 1
+    if pages == 1:
+        per_tile = 11.0
+    elif full_page:
+        # A4-скан целиком: ~20–24 с/лист на Tesseract; иначе хвост тома обрезается.
+        per_tile = 24.0 if pages <= 50 else 20.0
+    elif pages <= 12:
+        per_tile = 9.5
+    else:
+        per_tile = 8.0
     min_needed = tiles_total * per_tile + (normative_supplement_budget_sec() if pages <= 4 else 10.0)
     single = tile_ocr_time_budget_sec()
-    return max(45.0, min(max(single, min_needed), ocr_cap, total * 0.98))
+    # На длинных томах не упираемся в PDF_TILE_OCR_TIME_BUDGET (обычно 280 с).
+    floor = single if pages <= 8 else max(single, min_needed * 0.85)
+    return max(45.0, min(max(floor, min_needed), ocr_cap, total * 0.98))
 
 
 def tile_ocr_max_pages() -> int:
@@ -810,16 +821,15 @@ def tile_ocr_max_pages() -> int:
 
 
 def tile_grid_for_page_count(page_count: int) -> tuple[int, int]:
+    """Сетка OCR: с 13+ листов — целая страница, иначе не успеваем весь том."""
     n = max(1, int(page_count))
     if n <= 1:
         return 4, 2
     if n <= 5:
         return 3, 2
-    if n <= 20:
+    if n <= 12:
         return 2, 2
-    if n <= 50:
-        return 2, 1
-    return 1, 2
+    return 1, 1
 
 
 def tile_ocr_dpi_for_pages(page_count: int) -> int:
@@ -831,9 +841,12 @@ def tile_ocr_dpi_for_pages(page_count: int) -> int:
         return max(260, min(base, 300))
     if n <= 20:
         return max(240, min(base, 280))
+    if n <= 24:
+        return max(200, min(base, 240))
+    # Длинные тома 1×1: чуть ниже DPI — успеть все страницы.
     if n <= 50:
-        return max(220, min(base, 260))
-    return max(200, min(base, 240))
+        return max(190, min(base, 210))
+    return max(180, min(base, 200))
 
 
 def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None, page_count: int = 1) -> float:

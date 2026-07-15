@@ -316,11 +316,59 @@ def tesseract_words_from_rect(
 
     if rect is None or rect.is_empty:
         return []
+
+    # PyMuPDF OCR сохраняет кириллицу; Tesseract TSV на многих сборках отдаёт латиницу-похожие символы.
+    tess = tessdata_dir()
+    lang_use = lang or ocr_lang()
+    if tess is not None:
+        tmp = fitz.open()
+        try:
+            with _FITZ_LOCK:
+                page = tmp.new_page(width=rect.width, height=rect.height)
+                page.show_pdf_page(page.rect, doc, page_index, clip=rect)
+            tp = None
+            try:
+                tp = page.get_textpage_ocr(
+                    flags=0,
+                    language=lang_use,
+                    dpi=dpi,
+                    full=True,
+                    tessdata=tess,
+                )
+                raw_words = page.get_text("words", textpage=tp) or []
+            finally:
+                if tp is not None:
+                    del tp
+            ox, oy = float(rect.x0), float(rect.y0)
+            words = []
+            for w in raw_words:
+                text = str(w[4] or "").strip()
+                if not text:
+                    continue
+                words.append(
+                    (
+                        ox + float(w[0]),
+                        oy + float(w[1]),
+                        ox + float(w[2]),
+                        oy + float(w[3]),
+                        text,
+                        0,
+                        0,
+                        0,
+                    )
+                )
+            cyr = sum(1 for w in words for c in w[4] if "\u0400" <= c <= "\u04FF")
+            if words and (cyr > 0 or len(words) >= 8):
+                return words
+        except Exception:
+            pass
+        finally:
+            tmp.close()
+
     img = _render_clip(doc, page_index, rect, dpi=dpi)
     if img is None:
         return []
     img = _preprocess_image(img, zone="preview")
-    lang_use = lang or ocr_lang()
     tout = ocr_timeout_sec() if timeout is None else max(1, int(timeout))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -341,6 +389,7 @@ def tesseract_words_from_rect(
             input=buf.getvalue(),
             capture_output=True,
             timeout=tout,
+            env={**os.environ, "LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"},
         )
     except subprocess.TimeoutExpired:
         return []

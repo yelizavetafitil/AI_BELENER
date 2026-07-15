@@ -30,6 +30,8 @@ def page_tile_jobs(
     pr = page_rect
     if pr.is_empty:
         return []
+    if cols <= 1 and rows <= 1:
+        return [("tile_0_0", fitz.Rect(pr))]
     step_w = pr.width / cols
     step_h = pr.height / rows
     pad_x = step_w * overlap_frac
@@ -158,6 +160,9 @@ def page_all_supplement_jobs(page_rect: fitz.Rect, *, notes_rows: int | None = N
 def supplements_for_page_scan(page_rect: fitz.Rect, document_pages: int) -> list[tuple[str, fitz.Rect]]:
     """Меньше доп. зон на больших PDF — укладываемся в бюджет по листам."""
     n = max(1, int(document_pages))
+    # Длинный том: полный лист (или грубая сетка) без дублирующих zone OCR.
+    if n > 12:
+        return []
     jobs = list(page_supplement_jobs(page_rect))
     if n <= 4:
         jobs.extend(page_notes_jobs(page_rect))
@@ -442,7 +447,10 @@ def extract_page_tiles(
     sources: list[str] = []
     attempted = 0
     multi_page = int(document_pages) > 4
-    sup_quality = not multi_page
+    long_doc = int(document_pages) > 12
+    # На длинных томах не гоняем «качественный» multi-PSM — иначе не успеваем все листы.
+    sup_quality = not multi_page and not long_doc
+    page_hq = not long_doc
 
     if wide:
         right_jobs, left_jobs = _split_grid_jobs(jobs, cols)
@@ -466,7 +474,7 @@ def extract_page_tiles(
             doc, page_index, right_jobs,
             sources=sources, attempted=attempted, remaining_total=expected,
             dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
-            force_ocr=force_ocr, high_quality=not multi_page,
+            force_ocr=force_ocr, high_quality=page_hq and not multi_page,
             word_sink=word_sink, zone_sink=zone_sink,
         )
         attempted, _ = _ocr_job_list(
@@ -494,7 +502,7 @@ def extract_page_tiles(
                 doc, page_index, hq_jobs,
                 sources=sources, attempted=attempted, remaining_total=expected - attempted,
                 dpi=dpi, deadline=deadline, tile_max_sec=tile_max_sec,
-                force_ocr=force_ocr, high_quality=True,
+                force_ocr=force_ocr, high_quality=page_hq,
                 word_sink=word_sink, zone_sink=zone_sink,
             )
         if other_jobs:
@@ -597,8 +605,15 @@ def extract_document_tiles(
             page_all_supplement_jobs(doc[0].rect)
         )
     else:
-        tiles_per_page = cols * rows
-    tile_max = max(12.0, min(60.0, (budget - 8) / max(1, pages_to_scan * max(1, tiles_per_page))))
+        tiles_per_page = max(1, cols * rows)
+    # Ровный лимит на лист: иначе первые титульные съедают бюджет и ГОСТ/СНиП на хвосте теряются.
+    per_page_cap = max(12.0 if pages_to_scan > 12 else 8.0, (budget - 6.0) / max(1, pages_to_scan))
+    if pages_to_scan > 12:
+        per_page_cap = max(per_page_cap, 16.0)
+    tile_max = max(8.0, min(60.0 if pages_to_scan <= 1 else 22.0, per_page_cap / max(1, tiles_per_page)))
+    if pages_to_scan > 12 and cols <= 1 and rows <= 1:
+        # Один полный лист A4: даём почти весь страничный бюджет тайлу.
+        tile_max = max(tile_max, min(22.0, per_page_cap - 1.0))
 
     page_tiles: list[list[str]] = []
     page_preview_words: list[list] = []
@@ -610,26 +625,35 @@ def extract_document_tiles(
     budget_exhausted = False
 
     for i in range(pages_to_scan):
-        if deadline - time.monotonic() < 4:
+        left_total = deadline - time.monotonic()
+        pages_left = pages_to_scan - i
+        if left_total < 3:
             budget_exhausted = True
             log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
             break
         page_rect = doc[i].rect
-        tiles_expected += len(page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap))
-        tiles_expected += len(supplements_for_page_scan(page_rect, pages_to_scan))
+        page_jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap)
+        page_supps = supplements_for_page_scan(page_rect, pages_to_scan)
+        tiles_expected += len(page_jobs) + len(page_supps)
+        # Жёсткий дедлайн страницы — не тратим чужой бюджет на титул/содержание.
+        page_share = left_total / max(1, pages_left)
+        page_deadline = min(deadline, time.monotonic() + max(6.0, min(per_page_cap + 4.0, page_share)))
+        use_preview_words = pages_to_scan <= 12
+        pw: list = []
+        zs: list = []
         chunks, page_done, page_expected = extract_page_tiles(
             doc,
             i,
             dpi=dpi,
-            deadline=deadline,
+            deadline=page_deadline,
             tile_max_sec=tile_max,
             overlap_frac=overlap,
             cols=cols,
             rows=rows,
             force_ocr=force_ocr,
             document_pages=pages_to_scan,
-            word_sink=(pw := []),
-            zone_sink=(zs := []),
+            word_sink=pw if use_preview_words else None,
+            zone_sink=zs if use_preview_words else None,
         )
         tiles_done += page_done
         pages_processed += 1
@@ -651,7 +675,7 @@ def extract_document_tiles(
             page_tile_zones.append(zs)
             if pw and not _page_has_usable_text(doc, i):
                 log.info("tile OCR preview words page=%s count=%s zones=%s", i + 1, len(pw), len(zs))
-        elif time.monotonic() < deadline + 30:
+        elif use_preview_words and time.monotonic() < deadline + 30:
             pw2 = collect_page_preview_words(
                 doc,
                 i,
@@ -662,8 +686,8 @@ def extract_document_tiles(
             page_tile_zones.append(zs)
         else:
             page_preview_words.append([])
-            page_tile_zones.append(zs)
-        if deadline - time.monotonic() < 4:
+            page_tile_zones.append([])
+        if deadline - time.monotonic() < 3:
             budget_exhausted = True
             if i + 1 < pages_to_scan:
                 log.warning("tile OCR: budget low after page=%s/%s", i + 1, pages_to_scan)

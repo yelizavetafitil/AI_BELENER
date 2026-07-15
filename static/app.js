@@ -274,6 +274,45 @@ function fixMarkdown(md) {
   });
 }
 
+/** marked не парсит ** внутри HTML — починка уже отрисованного ответа (текущий чат). */
+function beautifyNormativeHtml(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const t = node.nodeValue;
+    if (!t || t.indexOf('**') < 0 && t.indexOf('*') < 0) continue;
+    if (!node.parentElement || node.parentElement.closest('code, pre, a, script')) continue;
+    let html = t
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    if (html === t) continue;
+    const wrap = document.createElement('span');
+    wrap.innerHTML = html;
+    node.parentNode.replaceChild(wrap, node);
+  }
+  root.querySelectorAll('.normative-preview-shell').forEach(shell => {
+    const group = shell.dataset.previewGroup;
+    if (!group) return;
+    const pages = [...shell.querySelectorAll(`.normative-preview-page[data-group="${group}"]`)];
+    const active = pages.find(p => p.classList.contains('is-active')) || pages[0];
+    const label = root.querySelector(`.preview-page-label[data-group="${group}"]`);
+    if (active && label) {
+      const idx = pages.indexOf(active) + 1;
+      label.textContent = `${idx} / ${pages.length} · лист ${active.dataset.page}`;
+    }
+  });
+}
+
+function renderAssistantMarkdown(md) {
+  const html = marked.parse(fixMarkdown(md));
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  beautifyNormativeHtml(box);
+  return box.innerHTML;
+}
+
 // ── conversations ─────────────────────────────────────────────────────────────
 
 async function loadConversations() {
@@ -328,7 +367,7 @@ async function openChat(id) {
   for (const m of msgs) {
     const ac = addMessage(m.role, m.role === 'user' ? m.content : '', m.file_name || null, m.file_url || null);
     if (m.role === 'assistant') {
-      ac.innerHTML = marked.parse(fixMarkdown(m.content));
+      ac.innerHTML = renderAssistantMarkdown(m.content);
       addCodeBtns(ac);
       addMsgCopy(ac, ac.innerHTML);
       addReportActions(ac, ac.innerHTML);
@@ -754,7 +793,7 @@ async function sendMessage() {
           if (o.text) {
             if (first) { progress.remove(); first = false; }
             raw += o.text;
-            ac.innerHTML = marked.parse(fixMarkdown(raw)) + '<span class="cursor"></span>';
+            ac.innerHTML = renderAssistantMarkdown(raw) + '<span class="cursor"></span>';
             addCodeBtns(ac); scrollEnd();
           }
         } catch(e) {}
@@ -770,7 +809,7 @@ async function sendMessage() {
   const cur = ac.querySelector('.cursor'); if (cur) cur.remove();
   if (first) { progress.remove(); }
   if (raw) {
-    ac.innerHTML = marked.parse(fixMarkdown(raw));
+    ac.innerHTML = renderAssistantMarkdown(raw);
     addCodeBtns(ac);
     addMsgCopy(ac, ac.innerHTML);
     addReportActions(ac, ac.innerHTML);
@@ -953,6 +992,8 @@ loadConversations();
 loadCurrentUser();
 loadSystemStatus();
 ta.focus();
+// Починить уже открытый ответ (жирный текст, подпись листа) без нового скана.
+document.querySelectorAll('.msg.assistant .msg-content').forEach(beautifyNormativeHtml);
 
 // Останавливаем автоскролл если пользователь уходит вверх
 document.getElementById('chat-area').addEventListener('scroll', () => {
@@ -960,19 +1001,71 @@ document.getElementById('chat-area').addEventListener('scroll', () => {
   userScrolled = a.scrollHeight - a.scrollTop - a.clientHeight > 80;
 });
 
+function showNormativePreviewPage(groupId, pageNo) {
+  const pages = [...document.querySelectorAll(`.normative-preview-page[data-group="${groupId}"]`)];
+  if (!pages.length) return false;
+  let target = pages.find(p => String(p.dataset.page) === String(pageNo));
+  if (!target) return false;
+  pages.forEach(p => {
+    const on = p === target;
+    p.classList.toggle('is-active', on);
+    p.hidden = !on;
+  });
+  const label = document.querySelector(`.preview-page-label[data-group="${groupId}"]`);
+  if (label) {
+    const idx = pages.indexOf(target) + 1;
+    label.textContent = `${idx} / ${pages.length} · лист ${target.dataset.page}`;
+  }
+  return true;
+}
+
+function shiftNormativePreview(groupId, delta) {
+  const pages = [...document.querySelectorAll(`.normative-preview-page[data-group="${groupId}"]`)];
+  if (!pages.length) return;
+  const cur = pages.findIndex(p => p.classList.contains('is-active'));
+  const next = (cur + delta + pages.length) % pages.length;
+  showNormativePreviewPage(groupId, pages[next].dataset.page);
+}
+
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.preview-zoom-btn');
-  if (!btn) return;
-  const targetId = btn.dataset.target;
-  const img = document.getElementById(targetId);
-  if (!img) return;
-  const action = btn.dataset.action;
-  const current = Number(img.dataset.scale || '1');
-  let next = current;
-  if (action === 'in') next = Math.min(4, current + 0.2);
-  if (action === 'out') next = Math.max(0.5, current - 0.2);
-  if (action === 'reset') next = 1;
-  img.dataset.scale = String(next);
-  img.style.transform = `scale(${next})`;
+  const zoomBtn = e.target.closest('.preview-zoom-btn');
+  if (zoomBtn) {
+    const targetId = zoomBtn.dataset.target;
+    const img = document.getElementById(targetId);
+    if (!img) return;
+    const action = zoomBtn.dataset.action;
+    const current = Number(img.dataset.scale || '1');
+    let next = current;
+    if (action === 'in') next = Math.min(4, current + 0.2);
+    if (action === 'out') next = Math.max(0.5, current - 0.2);
+    if (action === 'reset') next = 1;
+    img.dataset.scale = String(next);
+    img.style.transform = `scale(${next})`;
+    return;
+  }
+
+  const pageBtn = e.target.closest('.preview-page-btn');
+  if (pageBtn) {
+    const group = pageBtn.dataset.group;
+    if (!group) return;
+    shiftNormativePreview(group, pageBtn.dataset.action === 'prev' ? -1 : 1);
+    return;
+  }
+
+  const row = e.target.closest('.normative-table-container tr[data-preview-page]');
+  if (row && !e.target.closest('a')) {
+    const pageNo = row.dataset.previewPage;
+    const workspace = row.closest('.normative-workspace');
+    const shell = workspace && workspace.querySelector('.normative-preview-shell');
+    const group = shell && shell.dataset.previewGroup;
+    if (group && pageNo) {
+      const ok = showNormativePreviewPage(group, pageNo);
+      if (ok) {
+        workspace.querySelectorAll('.normative-table-container tr.row-preview-focus')
+          .forEach(tr => tr.classList.remove('row-preview-focus'));
+        row.classList.add('row-preview-focus');
+      }
+    }
+  }
 });
 

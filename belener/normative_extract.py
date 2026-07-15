@@ -31,6 +31,8 @@ _KIND_ALIASES: dict[str, frozenset[str]] = {
     "СТП": frozenset({"стп", "stp", "ctn", "stn"}),
     "ТКП": frozenset({"ткп", "tkp"}),
     "СНиП": frozenset({"снип", "snip", "chn", "chip"}),
+    "СН": frozenset({"сн", "ch"}),
+    "НРР": frozenset({"нрр", "hrr", "nrr"}),
     "СП": frozenset({"сп", "sp"}),
     "РД": frozenset({"рд", "rd", "pa"}),
     "СО": frozenset({"со", "co", "so"}),
@@ -50,6 +52,8 @@ def _kind_regex(kind: str) -> str:
         "СТП": r"стп|stp|ctn|stn",
         "ТКП": r"ткп|tkp",
         "СНиП": r"снип|snip|chn|chip",
+        "СН": r"сн|ch",
+        "НРР": r"нрр|hrr|nrr",
         "СП": r"сп|sp",
         "РД": r"рд|rd|pa",
         "СО": r"со|co|so",
@@ -830,6 +834,45 @@ def _highlight_on_page(
     return highlighted_refs, total_marks
 
 
+def _preview_page_indices(
+    page_count: int,
+    page_normative_refs: list[list[dict]] | None,
+) -> list[int]:
+    """Какие листы рисовать в превью: с нормативами; иначе все в рамках лимита."""
+    n = max(0, int(page_count))
+    if n <= 0:
+        return []
+    if n == 1:
+        return [0]
+    if page_normative_refs:
+        idxs = [
+            i
+            for i, prefs in enumerate(page_normative_refs)
+            if i < n and prefs
+        ]
+        if idxs:
+            return idxs
+    # Нет раскладки по листам — все страницы (короткие PDF) или все до разумного лимита.
+    return list(range(n))
+
+
+def _pages_by_ref(page_normative_refs: list[list[dict]] | None) -> dict[str, list[int]]:
+    """ref → номера листов (1-based), где обозначение встретилось."""
+    out: dict[str, list[int]] = {}
+    if not page_normative_refs:
+        return out
+    for i, prefs in enumerate(page_normative_refs):
+        page_no = i + 1
+        for item in prefs or []:
+            ref = str(item.get("ref") or "").strip()
+            if not ref:
+                continue
+            pages = out.setdefault(ref, [])
+            if page_no not in pages:
+                pages.append(page_no)
+    return out
+
+
 def generate_pdf_preview_pages_with_highlights(
     pdf_path: str,
     refs: list[dict],
@@ -840,7 +883,7 @@ def generate_pdf_preview_pages_with_highlights(
     preview_word_deadline: float | None = None,
     pipeline_deadline: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Превью каждого листа PDF с жёлтой подсветкой нормативов из ответа."""
+    """Превью листов PDF с жёлтой подсветкой нормативов из ответа."""
     import time
 
     pages_out: list[dict[str, Any]] = []
@@ -852,7 +895,10 @@ def generate_pdf_preview_pages_with_highlights(
             return pages_out
 
         tmp_dir = upload_temp_dir()
-        for page_index in range(page_count):
+        for page_index in _preview_page_indices(page_count, page_normative_refs):
+            if pipeline_deadline is not None and time.monotonic() >= pipeline_deadline - 2.0:
+                log.warning("preview: stop at page=%s (deadline)", page_index + 1)
+                break
             cached = None
             if page_preview_words and page_index < len(page_preview_words):
                 cached = page_preview_words[page_index] or None
@@ -878,25 +924,26 @@ def generate_pdf_preview_pages_with_highlights(
                 for src in word_sources:
                     if src and src not in sources:
                         sources.append(src)
+                page_refs = refs
+                if page_normative_refs and page_index < len(page_normative_refs) and page_normative_refs[page_index]:
+                    page_refs = page_normative_refs[page_index]
                 highlighted_refs, total_marks, rects = _collect_highlight_rects(
                     page,
-                    refs,
+                    page_refs or refs,
                     sources,
                     doc=doc,
                     page_index=page_index,
                     tile_zones=tile_zones,
                 )
-                if total_marks == 0 and refs:
-                    import time as _time
-
-                    if pipeline_deadline is None or _time.monotonic() < pipeline_deadline - 12.0:
+                if total_marks == 0 and (page_refs or refs):
+                    if pipeline_deadline is None or time.monotonic() < pipeline_deadline - 12.0:
                         if sum(len(s) for s in sources) < 50:
                             extra = _fullpage_ocr_words(page, page_index=page_index)
                             if extra:
                                 sources.append(extra)
                                 highlighted_refs, total_marks, rects = _collect_highlight_rects(
                                     page,
-                                    refs,
+                                    page_refs or refs,
                                     sources,
                                     doc=doc,
                                     page_index=page_index,
@@ -1009,28 +1056,34 @@ def normative_refs_to_markdown(
     page_preview_words: list[list] | None = None,
     preview_pages: list[dict[str, Any]] | None = None,
 ) -> str:
-    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, РД, СНиП, ТУ, ТКП, СТБ и др.)", ""]
+    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, РД, СНиП, СН, НРР, ТУ, ТКП, СТБ, СП и др.)", ""]
+    lines.append('<div class="normative-workspace">')
+    lines.append('<div class="normative-workspace-list">')
+
+    meta: list[str] = []
     if filename:
-        lines.append(f"**Файл:** {filename}")
+        meta.append(f"<p><strong>Файл:</strong> {filename}</p>")
     if page_count > 1:
-        if filename:
-            lines.append("")
         proc = pages_processed or page_count
-        note = f"**Листов в файле:** {page_count}"
+        note = f"<strong>Листов в файле:</strong> {page_count}"
         if proc < page_count:
-            note += f" · **обработано:** {proc}"
+            note += f" · <strong>обработано:</strong> {proc}"
         if budget_exhausted:
-            note += " · *не все листы успели прочитаться*"
-        lines.append(note)
+            note += " · <em>не все листы успели прочитаться</em>"
+        meta.append(f"<p>{note}</p>")
     elif budget_exhausted:
-        if filename:
-            lines.append("")
-        lines.append("*Не все участки листа успели прочитаться — список может быть неполным.*")
+        meta.append("<p><em>Не все участки листа успели прочитаться — список может быть неполным.</em></p>")
     if check_date:
-        if filename or page_count > 1 or budget_exhausted:
-            lines.append("")
-        lines.append(f"**Дата проверки актуальности:** {check_date.strftime('%d.%m.%Y')}")
-    lines.append("")
+        meta.append(
+            f"<p><strong>Дата проверки актуальности:</strong> "
+            f"{check_date.strftime('%d.%m.%Y')}</p>"
+        )
+    if meta:
+        lines.append('<div class="normative-workspace-meta">')
+        lines.extend(meta)
+        lines.append("</div>")
+
+    ref_pages = _pages_by_ref(page_normative_refs)
 
     if not refs:
         lines.append(
@@ -1039,7 +1092,6 @@ def normative_refs_to_markdown(
         )
         lines.append("")
     else:
-        # Build check dictionary
         checks_map = {}
         if stn_checks:
             for c in stn_checks:
@@ -1084,7 +1136,7 @@ def normative_refs_to_markdown(
                 cancel = c.cancel_date if hasattr(c, "cancel_date") else c.get("cancel_date") or "—"
                 status_val = c.status if hasattr(c, "status") else c.get("status") or "—"
                 error_val = c.error if hasattr(c, "error") else c.get("error")
-                
+
                 if error_val and status_val == "ошибка проверки":
                     status = f"{status_val} ({error_val[:60]})"
                 elif not found and str(status_val).startswith("пропущено"):
@@ -1118,14 +1170,25 @@ def normative_refs_to_markdown(
                 elif status == "заменён":
                     row_class = ' class="row-replaced"'
 
-            lines.append(f"<tr{row_class}>")
+            pages_attr = ""
+            pages_for_ref = ref_pages.get(str(ref), [])
+            if pages_for_ref:
+                pages_csv = ",".join(str(p) for p in pages_for_ref)
+                title = f' title="Лист {pages_csv}"'
+                if not row_class:
+                    row_class = ' class="row-jump"'
+                elif 'class="' in row_class:
+                    row_class = row_class.replace('class="', 'class="row-jump ', 1)
+                pages_attr = f' data-preview-page="{pages_for_ref[0]}" data-preview-pages="{pages_csv}"{title}'
+
+            lines.append(f"<tr{row_class}{pages_attr}>")
             lines.append(f"<td>{kind}</td><td>{ref}</td><td>{ips_link}</td><td>{intro}</td><td>{cancel}</td><td>{status}</td>")
             lines.append("</tr>")
 
         lines.append("</tbody></table>")
         lines.append("</div>")
         lines.append("")
-        
+
         found_ips = sum(
             1
             for c in (stn_checks or [])
@@ -1136,7 +1199,10 @@ def normative_refs_to_markdown(
             for c in (stn_checks or [])
             if (c.status if hasattr(c, "status") else c.get("status")) == "актуален"
         )
-        lines.append(f"*Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; актуально: {active}*")
+        lines.append(
+            f"<p><em>Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; "
+            f"актуально: {active}</em></p>"
+        )
         lines.append("")
 
     stn_error = (stn_error or "").strip()
@@ -1158,7 +1224,9 @@ def normative_refs_to_markdown(
         if skipped == len(stn_checks) and skipped > 0:
             stn_error = "Проверка ИПС не выполнена — не хватило времени после OCR."
     if stn_error:
-        lines.extend(["", f"*⚠ {stn_error}*", ""])
+        lines.extend(["", f"<p><em>⚠ {stn_error}</em></p>", ""])
+
+    lines.append("</div>")  # workspace-list
 
     if preview_pages is None and source_path and os.path.isfile(source_path):
         preview_pages = generate_pdf_preview_pages_with_highlights(
@@ -1167,32 +1235,62 @@ def normative_refs_to_markdown(
             page_normative_refs=page_normative_refs,
             page_preview_words=page_preview_words,
         )
+
+    lines.append('<div class="normative-workspace-preview">')
     if preview_pages:
-        if len(preview_pages) == 1:
-            lines.append("### Предпросмотр листа")
+        usable = [e for e in preview_pages if str(e.get("url") or "").strip()]
+        group_id = f"npg-{uuid.uuid4().hex[:8]}"
+        if len(usable) == 1:
+            lines.append('<h3 class="normative-preview-heading">Предпросмотр листа</h3>')
         else:
-            lines.append(f"### Предпросмотр листов ({len(preview_pages)})")
-        for entry in preview_pages:
+            lines.append(
+                f'<h3 class="normative-preview-heading">Предпросмотр '
+                f'({len(usable)} лист.)</h3>'
+            )
+        lines.append(f'<div class="normative-preview-shell" data-preview-group="{group_id}">')
+        if len(usable) > 1:
+            first_page = int(usable[0].get("page") or 1)
+            lines.append(
+                f'<div class="pdf-preview-tools normative-preview-nav">'
+                f'<div class="preview-page-nav">'
+                f'<button type="button" class="preview-page-btn" data-group="{group_id}" data-action="prev" aria-label="Предыдущий лист">‹</button>'
+                f'<span class="preview-page-label" data-group="{group_id}">1 / {len(usable)} · лист {first_page}</span>'
+                f'<button type="button" class="preview-page-btn" data-group="{group_id}" data-action="next" aria-label="Следующий лист">›</button>'
+                f'</div></div>'
+            )
+        for i, entry in enumerate(usable):
             page_no = int(entry.get("page") or 0)
             preview_url = str(entry.get("url") or "")
-            if not preview_url:
-                continue
             preview_id = f"preview-{uuid.uuid4().hex[:8]}"
-            lines.append(f'<h4 class="pdf-preview-sheet-title">Лист {page_no}</h4>')
+            active = " is-active" if i == 0 else ""
+            hidden = "" if i == 0 else " hidden"
+            lines.append(
+                f'<div class="normative-preview-page{active}" data-group="{group_id}" '
+                f'data-page="{page_no}" data-index="{i}"{hidden}>'
+            )
             lines.append(
                 f'<div class="pdf-preview-tools">'
                 f'<a class="stn-link" href="{preview_url}" target="_blank">Открыть лист {page_no}</a>'
                 f'<div class="preview-zoom-buttons">'
-                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="out">-</button>'
-                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="reset">100%</button>'
-                f'<button class="preview-zoom-btn" data-target="{preview_id}" data-action="in">+</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="out">-</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="reset">100%</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="in">+</button>'
                 f'</div></div>'
             )
             lines.append(
                 f'<div class="pdf-preview-container"><img id="{preview_id}" src="{preview_url}" '
                 f'alt="Предпросмотр листа {page_no}" class="pdf-preview-img" data-scale="1"></div>'
             )
-        lines.append("")
+            lines.append("</div>")
+        lines.append("</div>")  # shell
+    else:
+        lines.append('<h3 class="normative-preview-heading">Предпросмотр листа</h3>')
+        lines.append(
+            '<p class="normative-preview-empty">Превью с выделениями пока недоступно для этого файла.</p>'
+        )
+    lines.append("</div>")  # workspace-preview
+    lines.append("</div>")  # workspace
+    lines.append("")
 
     return "\n".join(lines)
 

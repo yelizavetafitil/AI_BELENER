@@ -27,8 +27,26 @@ def test_tile_grid_shrinks_for_many_pages():
     assert tile_grid_for_page_count(1) == (4, 2)
     assert tile_grid_for_page_count(3) == (3, 2)
     assert tile_grid_for_page_count(12) == (2, 2)
-    assert tile_grid_for_page_count(50) == (2, 1)
-    assert tile_grid_for_page_count(100) == (1, 2)
+    assert tile_grid_for_page_count(20) == (1, 1)
+    assert tile_grid_for_page_count(50) == (1, 1)
+    assert tile_grid_for_page_count(100) == (1, 1)
+
+
+def test_long_doc_skips_supplement_zones():
+    import fitz
+    from belener.tile_ocr import supplements_for_page_scan
+
+    wide = fitz.Rect(0, 0, 1200, 600)
+    assert supplements_for_page_scan(wide, 1)
+    assert supplements_for_page_scan(wide, 4)
+    assert supplements_for_page_scan(wide, 13) == []
+    assert supplements_for_page_scan(wide, 42) == []
+
+
+def test_long_doc_ocr_budget_covers_full_pages():
+    # 42 листа × ~24 с полного OCR должны влезать в окно тома, не в 280 с TILE_BUDGET.
+    assert normative_ocr_budget_sec(42) >= 900.0
+    assert normative_ocr_budget_sec(42) < gost_check_total_budget_sec(42)
 
 
 def test_multipage_preview_generates_all_pages():
@@ -65,10 +83,26 @@ def test_multipage_preview_generates_all_pages():
         pages_processed=8,
         budget_exhausted=True,
         check_date=None,
+        preview_pages=[
+            {"page": 1, "url": "/api/preview/a.jpg"},
+            {"page": 3, "url": "/api/preview/b.jpg"},
+        ],
+        page_normative_refs=[
+            [{"kind": "ГОСТ", "ref": "ГОСТ 481-80"}],
+            [],
+            [{"kind": "ГОСТ", "ref": "ГОСТ 481-80"}],
+        ],
     )
-    assert "Листов в файле:** 12" in md
-    assert "обработано:** 8" in md
+    assert "Листов в файле:</strong> 12" in md
+    assert "обработано:</strong> 8" in md
     assert "не все листы" in md
+    assert "<strong>Файл:</strong>" in md
+    assert "**Файл:**" not in md
+    assert 'class="normative-workspace"' in md
+    assert "normative-workspace-list" in md
+    assert "normative-workspace-preview" in md
+    assert 'data-preview-page="1"' in md
+    assert "preview-page-btn" in md
 
 
 def test_material_prefix_not_preferred_in_merge():

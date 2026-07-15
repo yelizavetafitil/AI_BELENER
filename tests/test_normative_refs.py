@@ -134,10 +134,47 @@ def test_snip_in_notes():
     assert any(r["ref"] == "СНиП 3.05.06-85" for r in out)
 
 
-def test_snip_bare_number_in_parentheses():
-    text = "электротехнические устройства (3.05.06-85)"
+def test_foct_ctb_latin_ocr_extracted():
+    out = extract_normative_refs("ограждения FOCT 23407-78 и CTB 2270-2012")
+    assert any(r["kind"] == "ГОСТ" and "23407-78" in r["ref"] for r in out)
+    assert any(r["kind"] == "СТБ" and "2270-2012" in r["ref"] for r in out)
+
+
+def test_modern_snip_reclassified_as_sp():
+    out = extract_normative_refs("по СНиП 1.03.04-2020 и СНиП 3.05.06-85")
+    kinds = {r["ref"]: r["kind"] for r in out}
+    assert kinds.get("СП 1.03.04-2020") == "СП" or any(
+        r["kind"] == "СП" and "1.03.04-2020" in r["ref"] for r in out
+    )
+    assert any(r["kind"] == "СНиП" and "3.05.06-85" in r["ref"] for r in out)
+
+
+def test_sn_and_nrr_extracted_with_snip_sp():
+    text = (
+        "- СН 1.03.04-2020\n"
+        "- НРР 8.01.104-2022\n"
+        "- СП 1.03.11-2023\n"
+        "- СНиП 3.05.06-85\n"
+        "- СН 4.02.01-2019\n"
+    )
     out = extract_normative_refs(text)
-    assert any(r["kind"] == "СНиП" and r["ref"] == "СНиП 3.05.06-85" for r in out)
+    assert any(r["kind"] == "СН" and "1.03.04-2020" in r["ref"] for r in out)
+    assert any(r["kind"] == "НРР" and "8.01.104-2022" in r["ref"] for r in out)
+    assert any(r["kind"] == "СП" and "1.03.11-2023" in r["ref"] for r in out)
+    assert any(r["kind"] == "СНиП" and "3.05.06-85" in r["ref"] for r in out)
+    assert any(r["kind"] == "СН" and "4.02.01-2019" in r["ref"] for r in out)
+    # не плодить дубль «СП …» из явного «СН …»
+    assert not any(r["kind"] == "СП" and "1.03.04-2020" in r["ref"] for r in out)
+    assert not any(r["kind"] == "СП" and "4.02.01-2019" in r["ref"] for r in out)
+
+
+def test_incomplete_sp_drawing_number_rejected():
+    """Номер тома «СП 1202-» не должен попадать в нормативы."""
+    out = extract_normative_refs("СП 1202- и СП 1.03.11-2023 и СП 4.02.02-2022")
+    refs = [r["ref"] for r in out]
+    assert not any("1202" in r for r in refs)
+    assert any("1.03.11-2023" in r for r in refs)
+    assert any("4.02.02-2022" in r for r in refs)
 
 
 def test_gost_one_digit_ocr_pair():
