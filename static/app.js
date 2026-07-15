@@ -307,16 +307,42 @@ function beautifyNormativeHtml(root) {
 
 function renderAssistantMarkdown(md) {
   // marked ломает вложенный HTML workspace (кнопки зума → «-100%+», таблица в ASCII).
+  const src = String(md || '');
   const marker = '<div class="normative-workspace">';
-  const idx = md.indexOf(marker);
-  let html;
-  if (idx < 0) {
-    html = marked.parse(fixMarkdown(md));
-  } else {
-    const head = md.slice(0, idx);
-    const workspace = md.slice(idx);
-    html = (head.trim() ? marked.parse(fixMarkdown(head)) : '') + workspace;
+  const parts = [];
+  let cursor = 0;
+  while (true) {
+    const idx = src.indexOf(marker, cursor);
+    if (idx < 0) {
+      const tail = src.slice(cursor);
+      if (tail.trim()) parts.push({ html: false, text: tail });
+      break;
+    }
+    const head = src.slice(cursor, idx);
+    if (head.trim()) parts.push({ html: false, text: head });
+    // Закрывающий корень workspace — три </div> в конце блока.
+    let end = idx + marker.length;
+    let depth = 1;
+    while (end < src.length && depth > 0) {
+      const nextOpen = src.indexOf('<div', end);
+      const nextClose = src.indexOf('</div>', end);
+      if (nextClose < 0) { end = src.length; break; }
+      if (nextOpen >= 0 && nextOpen < nextClose) {
+        depth += 1;
+        end = nextOpen + 4;
+      } else {
+        depth -= 1;
+        end = nextClose + 6;
+      }
+    }
+    parts.push({ html: true, text: src.slice(idx, end) });
+    cursor = end;
   }
+  let html = '';
+  for (const p of parts) {
+    html += p.html ? p.text : marked.parse(fixMarkdown(p.text));
+  }
+  if (!parts.length) html = marked.parse(fixMarkdown(src));
   const box = document.createElement('div');
   box.innerHTML = html;
   beautifyNormativeHtml(box);

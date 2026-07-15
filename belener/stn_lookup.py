@@ -37,8 +37,9 @@ class StnLoginError(RuntimeError):
 
 
 # Приоритетные типы фонда STN (остальные тоже пробуем искать).
+# СН — отдельные карты ТНПА РБ (не путать с «не в фонде» без поиска).
 STN_FUND_KINDS: frozenset[str] = frozenset(
-    {"ГОСТ", "ОСТ", "СТБ", "СТП", "СНиП", "ТКП", "СП", "ТР"}
+    {"ГОСТ", "ОСТ", "СТБ", "СТП", "СНиП", "СН", "ТКП", "СП", "ТР"}
 )
 STN_CHECKABLE_KINDS = STN_FUND_KINDS  # совместимость
 
@@ -72,7 +73,7 @@ _STN_FORM_EMPTY: dict[str, str] = {
 }
 _DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 _NORM_TYPE_RX = (
-    r"(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СП|SP|"
+    r"(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|"
     r"ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b"
 )
 _PART_SPEC_PREFIX = re.compile(
@@ -166,6 +167,7 @@ def _sanitize_stn_ref(kind: str, ref: str) -> str:
     s = re.sub(r"(?i)gost", "ГОСТ", s)
     s = re.sub(r"(?i)tkp", "ТКП", s)
     s = re.sub(r"(?i)snip", "СНиП", s)
+    s = re.sub(r"(?i)(?<![а-яa-z])с\s*н(?![иiпpn])", "СН", s)
     s = re.sub(r"(?i)stb", "СТБ", s)
     if kind:
         s = re.sub(rf"(?i)({re.escape(kind)})\s*(\d)", rf"\1 \2", s)
@@ -345,6 +347,13 @@ def search_queries(kind: str, ref: str) -> list[str]:
                     out.append(q)
     if kind == "ТКП" and num:
         for q in (f"{kind} {num} (02250)", f"{num} (02250)"):
+            q = _clean_stn_query(q)
+            if q and q not in out:
+                out.append(q)
+    # В фонде рядом лежат «СН …» и «СП …» с одним номером — пробуем оба.
+    if kind in ("СН", "СП") and num:
+        alt = "СП" if kind == "СН" else "СН"
+        for q in (f"{alt} {num}",):
             q = _clean_stn_query(q)
             if q and q not in out:
                 out.append(q)
@@ -736,7 +745,7 @@ def lookup_one(
         variant_retry = False
         if not match:
             variant_cap = stn_ocr_variant_limit()
-            if variant_cap > 0 and kind not in ("ТКП", "СП", "СНиП"):
+            if variant_cap > 0 and kind not in ("ТКП", "СП", "СН", "СНиП"):
                 extra: list[str] = []
                 for vref in _iter_ocr_digit_variants(kind, ref, limit=variant_cap):
                     for q in search_queries(kind, vref):

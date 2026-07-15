@@ -1272,9 +1272,9 @@ def normative_refs_to_markdown(
                 f'<div class="pdf-preview-tools">'
                 f'<a class="stn-link" href="{preview_url}" target="_blank">Открыть лист {page_no}</a>'
                 f'<div class="preview-zoom-buttons">'
-                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="out">-</button>'
-                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="reset">100%</button>'
-                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="in">+</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="out" aria-label="Уменьшить">−</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="reset" aria-label="100%">100&#37;</button>'
+                f'<button type="button" class="preview-zoom-btn" data-target="{preview_id}" data-action="in" aria-label="Увеличить">+</button>'
                 f'</div></div>'
             )
             lines.append(

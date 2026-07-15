@@ -31,9 +31,19 @@ CARD_HTML = """
 def test_is_stn_checkable():
     assert is_stn_checkable("ГОСТ")
     assert is_stn_checkable("СНиП")
+    assert is_stn_checkable("СН")
+    assert is_stn_checkable("СП")
     assert is_stn_checkable("ОСТ")
     assert is_stn_checkable("СТП")
     assert not is_stn_checkable("ТУ")
+    assert not is_stn_checkable("НРР")
+    assert not is_stn_checkable("ПУЭ")
+
+
+def test_sn_search_queries_include_sp_alias():
+    qs = search_queries("СН", "СН 1.03.04-2020")
+    assert qs[0] == "СН 1.03.04-2020"
+    assert "СП 1.03.04-2020" in qs
 
 
 def test_digit_compatible_blocks_1070_vs_10704():
