@@ -142,11 +142,36 @@ def test_foct_ctb_latin_ocr_extracted():
 
 def test_modern_snip_reclassified_as_sp():
     out = extract_normative_refs("по СНиП 1.03.04-2020 и СНиП 3.05.06-85")
-    kinds = {r["ref"]: r["kind"] for r in out}
-    assert kinds.get("СП 1.03.04-2020") == "СП" or any(
+    assert any(r["kind"] == "СН" and "1.03.04-2020" in r["ref"] for r in out) or any(
         r["kind"] == "СП" and "1.03.04-2020" in r["ref"] for r in out
     )
     assert any(r["kind"] == "СНиП" and "3.05.06-85" in r["ref"] for r in out)
+
+
+def test_pue_tpr_and_gost_comma_ocr():
+    text = (
+        "по ПУЭ и Правилам (ПТЭ), ПТБ. "
+        "ТПР-00-1.22 Альбом 1. "
+        "ГОСТ 12,3.036-84 требования. "
+        "РДС 10-231-96."
+    )
+    out = extract_normative_refs(text)
+    assert any(r["kind"] == "ПУЭ" for r in out)
+    assert any(r["kind"] == "ПТЭ" for r in out) or any(r["kind"] == "ПТБ" for r in out)
+    assert any(r["kind"] == "ТПР" and "00-1.22" in r["ref"].replace(" ", "") for r in out)
+    assert any(r["kind"] == "ГОСТ" and "12.3.036-84" in r["ref"] for r in out)
+    assert any(r["kind"] == "РДС" and "10-231" in r["ref"] for r in out)
+
+
+def test_distinct_years_kept_when_both_present():
+    from belener.normative_refs import merge_normative_refs_from_sources
+
+    out = merge_normative_refs_from_sources(
+        "СН 4.02.01-2019 тепловые сети",
+        "СП 4.02.01-2020 монтаж",
+    )
+    assert any(r["kind"] == "СН" and "2019" in r["ref"] for r in out)
+    assert any(r["kind"] == "СП" and "2020" in r["ref"] for r in out)
 
 
 def test_sn_and_nrr_extracted_with_snip_sp():

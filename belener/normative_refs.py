@@ -38,6 +38,8 @@ _TYPE_SPECS: list[tuple[str, str, str]] = [
     ("СНиП", rf"{_WB_L}(?:СНиП|SNIP|СН\s*И\s*П){_TYPE_END}", ""),
     ("СН", rf"{_WB_L}(?:СН|CH)(?![иИiIыЫ]|ип|ИП|ip){_TYPE_END}", ""),
     ("НРР", rf"{_WB_L}(?:НРР|HRR|NRR){_TYPE_END}", ""),
+    ("ТПР", rf"{_WB_L}(?:ТПР|TPR){_TYPE_END}", ""),
+    ("РДС", rf"{_WB_L}(?:РДС|RDS){_TYPE_END}", ""),
     ("ТКП", rf"{_WB_L}(?:ТКП|TKP|Т\s*К\s*П){_TYPE_END}", ""),
     ("СП", rf"{_WB_L}(?:СП|SP){_TYPE_END}", ""),
     ("ISO", rf"{_WB_L}ISO{_TYPE_END}", ""),
@@ -75,6 +77,11 @@ _CLIP: dict[str, re.Pattern[str]] = {
     "СНиП": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
     "СН": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "НРР": re.compile(r"^(\d+(?:[\s.]\d+)+(?:-\d{2,4})?)", re.I),
+    "ТПР": re.compile(r"^(-?\d[\d.\-–—]*\d)", re.I),
+    "РДС": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*(?:-\d{2,4})?)", re.I),
+    "ПУЭ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
+    "ПТЭ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
+    "ПТБ": re.compile(r"^(\d+(?:[\s.\-–—]\d+)*)?", re.I),
     "ТКП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "СП": re.compile(r"^(\d+(?:[\s.\-–—]\d+)+(?:-\d{2,4})?)", re.I),
     "ISO": re.compile(r"^(\d+(?:-\d+)+)", re.I),
@@ -95,6 +102,19 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     for kind, type_rx, lead in _TYPE_SPECS
 ]
 
+# Виды без обязательного номера: «по ПУЭ», «согласно ПТЭ».
+for _kind, _type_rx in (
+    ("ПУЭ", rf"{_WB_L}(?:ПУЭ|PUE){_TYPE_END}"),
+    ("ПТЭ", rf"{_WB_L}(?:ПТЭ|PTE){_TYPE_END}"),
+    ("ПТБ", rf"{_WB_L}(?:ПТБ|PTB){_TYPE_END}"),
+):
+    _PATTERNS.append(
+        (
+            _kind,
+            re.compile(rf"(?P<type>{_type_rx})(?:\s*(?P<num>{_NUM_BODY}))?", re.I),
+        )
+    )
+
 # Материал перед ГОСТ: 25х2, 16-В, В-20 — не «5-70» (обрыв OCR)
 _MAT_BEFORE = re.compile(
     r"([\d]+[xх×][\d\-–—]+|[\d]+[\-–—][А-Яа-яA-Za-z][\w\-–—]*|[А-Яа-яA-Za-z][\w\-–—]*)\s+$",
@@ -112,12 +132,15 @@ def _light_clean(raw: str) -> str:
 
 def _clip_num(raw: str, kind: str) -> str:
     s = _light_clean(raw)
+    if kind in ("ПУЭ", "ПТЭ", "ПТБ") and not s:
+        return ""
     s = re.split(r"(?=[A-Za-zА-Яа-яёЁ]{2,})", s)[0].strip()
     rx = _CLIP.get(kind)
     if rx:
-        m = rx.match(s)
+        m = rx.match(s) if s else rx.match("")
         if m:
-            s = _light_clean(m.group(1))
+            captured = m.group(1) if m.lastindex and m.group(1) is not None else ""
+            s = _light_clean(captured)
     return s
 
 
@@ -147,6 +170,11 @@ def _year_plausible(num: str, kind: str) -> bool:
 
 def _num_complete(num: str, kind: str) -> bool:
     n = _light_clean(num)
+    if kind in ("ПУЭ", "ПТЭ", "ПТБ"):
+        # Допустимо без издания: «по ПУЭ».
+        if not n:
+            return True
+        return _digits_count(n) >= 1 and _year_plausible(n, kind)
     if not n or _digits_count(n) < 3:
         return False
     if not _year_plausible(n, kind):
@@ -179,6 +207,11 @@ def _num_complete(num: str, kind: str) -> bool:
                 and re.search(r"\.(?:19|20)\d{2}$|\.\d{2}$", compact)
             )
         )
+    if kind == "ТПР":
+        compact = n.replace(" ", "")
+        return bool(re.fullmatch(r"-?\d[\d.\-]{2,}", compact) and _digits_count(compact) >= 3)
+    if kind == "РДС":
+        return bool(re.search(r"\d", n)) and len(n) >= 3
     if kind in ("СТП", "РД", "СНиП", "ТКП"):
         return bool(re.search(r"\d", n)) and len(n) >= 5
     if kind == "СО":
@@ -273,12 +306,12 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
             return
         if require_space_after_kind:
             if not re.search(
-                r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|РД|RD)\s",
+                r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|РД|RD)\s",
                 s,
             ):
                 return
         elif not re.search(
-            r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|РД|RD)",
+            r"(?i)(?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|РД|RD)",
             s,
         ):
             return
@@ -295,7 +328,7 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
 
     stripped = re.sub(
         r"^(?:[\w\-А-Яа-яЁё]{1,16}\s+)+"
-        r"((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|РД|RD)\s+.+)$",
+        r"((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|РД|RD)\s+.+)$",
         r"\1",
         raw,
         flags=re.I,
@@ -304,7 +337,7 @@ def highlight_patterns_for_normative_ref(ref: str) -> list[str]:
         add(stripped)
 
     kind_m = re.match(
-        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|РД|RD))\s+(.+)$",
+        r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|РД|RD))\s+(.+)$",
         stripped,
         re.I,
     )
@@ -399,6 +432,16 @@ def _normalize_kind_label(raw: str) -> str:
         "нрр": "НРР",
         "hrr": "НРР",
         "nrr": "НРР",
+        "тпр": "ТПР",
+        "tpr": "ТПР",
+        "рдс": "РДС",
+        "rds": "РДС",
+        "пуэ": "ПУЭ",
+        "pue": "ПУЭ",
+        "птэ": "ПТЭ",
+        "pte": "ПТЭ",
+        "птб": "ПТБ",
+        "ptb": "ПТБ",
         "сп": "СП",
         "sp": "СП",
         "рд": "РД",
@@ -435,6 +478,16 @@ def _normalize_kind_label(raw: str) -> str:
         "HRR": "НРР",
         "NRR": "НРР",
         "НРР": "НРР",
+        "TPR": "ТПР",
+        "ТПР": "ТПР",
+        "RDS": "РДС",
+        "РДС": "РДС",
+        "PUE": "ПУЭ",
+        "ПУЭ": "ПУЭ",
+        "PTE": "ПТЭ",
+        "ПТЭ": "ПТЭ",
+        "PTB": "ПТБ",
+        "ПТБ": "ПТБ",
         "SP": "СП",
         "RD": "РД",
         "CO": "СО",
@@ -456,6 +509,11 @@ def _normalize_kind_label(raw: str) -> str:
         "СНиП": "СНиП",
         "СН": "СН",
         "НРР": "НРР",
+        "ТПР": "ТПР",
+        "РДС": "РДС",
+        "ПУЭ": "ПУЭ",
+        "ПТЭ": "ПТЭ",
+        "ПТБ": "ПТБ",
         "СП": "СП",
         "РД": "РД",
         "СО": "СО",
@@ -470,7 +528,7 @@ def _ref_highlight_target(ref: str) -> tuple[str, str, str]:
     s = _sanitize_normative_ref(ref)
     kind_m = re.match(
         r"^((?:ГОСТ|GOST|ОСТ|OST|OCT|ТУ|TU|СТБ|STB|СТП|STP|ТКП|TKP|"
-        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|РД|RD|СО|CO|SO|"
+        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|РД|RD|СО|CO|SO|"
         r"ISO|IEC|DIN|EN|API|ASTM|НПБ|NPB|ВСН|VSN))\s+",
         s,
         re.I,
@@ -701,7 +759,7 @@ def _ref_has_one_type(ref: str) -> bool:
     s = re.sub(r"Ст\d+(?:сп|SP)\d+", " ", s, flags=re.I)
     hits = re.findall(
         r"(?i)(?<![a-zа-яё])(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
-        r"снип|snip|нрр|hrr|nrr|сн|ch|ткп|tkp|сп|sp|всн|нпб|iso|iec|din|en|api|astm)",
+        r"снип|snip|нрр|hrr|nrr|тпр|tpr|рдс|rds|пуэ|pue|птэ|pte|птб|ptb|сн|ch|ткп|tkp|сп|sp|всн|нпб|iso|iec|din|en|api|astm)",
         s,
     )
     return len(hits) == 1
@@ -758,7 +816,8 @@ def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
         return True
     num_m = re.search(
         r"(?i)(?:гост|gost|ост|oct|ту|tu|стп|stp|рд|rd|со|co|so|стб|stb|"
-        r"снип|snip|ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
+        r"снип|snip|сн|ch|нрр|hrr|nrr|тпр|tpr|рдс|rds|пуэ|pue|птэ|pte|птб|ptb|"
+        r"ткп|tkp|сп|sp)\s*(?:р\.?|r\.?)?\s*(.+)$",
         ref_s,
     )
     if not num_m:
@@ -772,6 +831,13 @@ def _ref_in_source_text(text: str, kind: str, ref: str) -> bool:
         "ТУ": r"ту|tu",
         "СТП": r"стп|stp",
         "СНиП": r"снип|snip",
+        "СН": r"сн|ch",
+        "НРР": r"нрр|hrr|nrr",
+        "ТПР": r"тпр|tpr",
+        "РДС": r"рдс|rds",
+        "ПУЭ": r"пуэ|pue",
+        "ПТЭ": r"птэ|pte",
+        "ПТБ": r"птб|ptb",
         "ТКП": r"ткп|tkp",
         "СП": r"сп|sp",
     }
@@ -863,7 +929,7 @@ def dedupe_normative_year_variants(
     refs: list[dict[str, str]],
     *source_texts: str,
 ) -> list[dict[str, str]]:
-    """Один номер — одна запись: убрать OCR-варианты года (7798-71 при 7798-70 в таблице)."""
+    """Убрать только OCR-дубли года; разные издания одного номера оставляем."""
     combined = "\n".join(str(t or "") for t in source_texts if str(t or "").strip())
     if not refs:
         return []
@@ -880,16 +946,34 @@ def dedupe_normative_year_variants(
 
     sources_list = [str(t or "") for t in source_texts if str(t or "").strip()]
 
+    def _votes(it: dict[str, str]) -> int:
+        kind = str(it.get("kind") or "")
+        ref = str(it.get("ref") or "")
+        return sum(1 for src in sources_list if _ref_in_source_text(src, kind, ref))
+
     def _rank(it: dict[str, str]) -> tuple[int, int, int, int, int]:
         kind = str(it.get("kind") or "")
         ref = str(it.get("ref") or "")
         in_src = 0 if combined and _ref_in_source_text(combined, kind, ref) else 1
-        votes = sum(1 for src in sources_list if _ref_in_source_text(src, kind, ref))
+        votes = _votes(it)
         _body, year = _body_year_digits(kind, ref)
         year_pen = 0 if len(year) >= 4 else (1 if len(year) == 2 else 2)
         dot_pen = str(ref).count(".") if kind == "ГОСТ" else 0
         ref_len = len(_light_clean(ref))
         return (in_src, year_pen, -votes, dot_pen, -ref_len)
+
+    def _years_ocr_close(a: str, b: str) -> bool:
+        if not a or not b or a == b:
+            return a == b
+        try:
+            if len(a) == 2 and len(b) == 4 and b.endswith(a):
+                return True
+            if len(b) == 2 and len(a) == 4 and a.endswith(b):
+                return True
+            ia, ib = int(a), int(b)
+            return abs(ia - ib) <= 1
+        except ValueError:
+            return False
 
     out: list[dict[str, str]] = []
     for base in order:
@@ -897,7 +981,35 @@ def dedupe_normative_year_variants(
         if len(items) == 1:
             out.append(items[0])
             continue
-        out.append(min(items, key=_rank))
+        by_year: dict[str, list[dict[str, str]]] = {}
+        for it in items:
+            _body, year = _body_year_digits(str(it.get("kind") or ""), str(it.get("ref") or ""))
+            by_year.setdefault(year or "", []).append(it)
+        candidates = [min(group, key=_rank) for group in by_year.values()]
+        if len(candidates) == 1:
+            out.append(candidates[0])
+            continue
+        # Подтверждённые в источнике издания оставляем все;
+        # без голосов — OCR-шум (любой год), если есть хотя бы одно подтверждённое;
+        # иначе схлопываем только соседние OCR-годы (±1 / 2↔4 цифры).
+        keep = sorted(candidates, key=_rank)
+        has_confirmed = any(_votes(it) > 0 for it in keep)
+        survivors: list[dict[str, str]] = []
+        for it in keep:
+            _b, y = _body_year_digits(str(it.get("kind") or ""), str(it.get("ref") or ""))
+            v = _votes(it)
+            if has_confirmed and v == 0:
+                continue
+            drop = False
+            for prev in survivors:
+                _pb, py = _body_year_digits(str(prev.get("kind") or ""), str(prev.get("ref") or ""))
+                pv = _votes(prev)
+                if _years_ocr_close(y, py) and (v < pv or (v == pv and _rank(it) > _rank(prev))):
+                    drop = True
+                    break
+            if not drop:
+                survivors.append(it)
+        out.extend(survivors if survivors else [min(items, key=_rank)])
     return out
 
 
@@ -906,7 +1018,7 @@ def _sanitize_normative_ref(ref: str) -> str:
     s = _polish_normative_ref(ref)
     s = re.sub(
         r"^(?:по|в|на|с|для|и)\s+(?=(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|"
-        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
+        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
         "",
         s,
         flags=re.I,
@@ -914,7 +1026,7 @@ def _sanitize_normative_ref(ref: str) -> str:
     s = re.sub(
         r"^(?:[\w\-–—×xх]{1,16}\s+)+"
         r"(?=(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|"
-        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
+        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
         "",
         s,
         flags=re.I,
@@ -940,7 +1052,7 @@ def _ref_display_score(ref: str, *, kind: str = "") -> tuple[int, ...]:
     raw = _light_clean(ref)
     noise_prefix = 1 if re.match(
         r"^(?:по|в|на|с|для)\s+(?:ГОСТ|GOST|ОСТ|OST|ТКП|TKP|"
-        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|ТУ|TU|СТБ|STB)\b",
+        r"СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|ТУ|TU|СТБ|STB)\b",
         raw,
         re.I,
     ) else 0
@@ -1145,7 +1257,7 @@ def merge_normative_refs_from_sources(*source_texts: str) -> list[dict[str, str]
                 _ref_vote_count(kind, r, uniq),
                 _dot_score(kind, r),
                 _gost_variant_quality(r) if kind == "ГОСТ" else 0,
-                1 if re.match(r"(?i)^(ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|СТБ|STB)", _light_clean(r)) else 0,
+                1 if re.match(r"(?i)^(ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|СТБ|STB)", _light_clean(r)) else 0,
                 len(_light_clean(r)),
             ),
         )
@@ -1352,7 +1464,7 @@ def _polish_normative_ref(ref: str) -> str:
     out = s[start:].strip()
     out = re.sub(
         r"^(?!(?:0[1-9]|1[0-9]|20)\s)\d{1,3}\s+(?="
-        r"(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|СП|SP|"
+        r"(?:ГОСТ|GOST|ОСТ|OST|OCT|ТКП|TKP|СНиП|SNIP|СН|CH|НРР|HRR|NRR|ТПР|TPR|РДС|RDS|ПУЭ|PUE|ПТЭ|PTE|ПТБ|PTB|СП|SP|"
         r"ТУ|TU|СТП|STP|РД|RD|СО|CO|SO|СТБ|STB)\b)",
         "",
         out,
@@ -1569,6 +1681,15 @@ def _ocr_loosen_normative_spacing(text: str) -> str:
     s = re.sub(r"(?i)(с\s*н\s*и\s*п|snip)", "СНиП", s)
     s = re.sub(r"(?i)(?<![\wа-яё])с\s*н(?!\s*[иi])(?=\s*[\d(])", "СН", s)
     s = re.sub(r"(?i)н\s*р\s*р(?=\s*[\d(])", "НРР", s)
+    s = re.sub(r"(?i)т\s*п\s*р(?=\s*[-\d(])", "ТПР", s)
+    s = re.sub(r"(?i)р\s*д\s*с(?=\s*[\d(])", "РДС", s)
+    # ГОСТ 12,3.036-84 → 12.3.036-84 (OCR-запятая вместо точки)
+    s = re.sub(
+        r"(?i)((?:ГОСТ|GOST|ОСТ|OST|СН|СП|СНиП|SNIP|ТКП|СТБ|НРР|ТПР|РДС)\s+[\d.\-]*)(\d),(\d)",
+        r"\1\2.\3",
+        s,
+    )
+    s = re.sub(r"(\d+\.\d+),(\d{2,})", r"\1.\2", s)
     s = re.sub(
         r"(?i)((?:электротехническ\w*|устройства|требованиями|"
         r"в\s+соответствии\s+с|согласно)\s*(?:\(\s*)?)"
@@ -1618,7 +1739,10 @@ def _window(text: str, start: int, end: int, *, radius: int = 80) -> str:
 def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     num_raw = m.group("num") or ""
     num = _clip_num(num_raw, kind)
-    if not num or not _num_complete(num, kind):
+    if kind in ("ПУЭ", "ПТЭ", "ПТБ"):
+        if not _num_complete(num, kind):
+            return None
+    elif not num or not _num_complete(num, kind):
         return None
     if kind == "ОСТ":
         num = format_ost_number(num)
@@ -1638,32 +1762,37 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     elif kind == "ГОСТ":
         span_start = _material_start(text, type_start)
 
-    num_in_raw = num_raw[: len(num)] if num_raw.startswith(num.replace(" ", "")) else num
-    for i in range(len(num_raw), 0, -1):
-        if _light_clean(num_raw[:i]).replace(" ", "") == num.replace(" ", ""):
-            num_in_raw = num_raw[:i]
-            break
-
-    end = m.start("num") + len(num_in_raw)
-    type_label = _light_clean(m.group("type") or kind)
-    if kind == "ОСТ":
-        ref = _light_clean(f"{type_label} {num}")
-    elif kind in ("СТП", "РД"):
-        ref = _light_clean(f"{type_label} {num}")
-    elif kind == "ГОСТ":
-        raw = _light_clean(text[span_start:end])
-        mg = re.match(r"^(.*?)(?:ГОСТ|GOST)\s", raw, re.I | re.S)
-        prefix = _light_clean(mg.group(1)) if mg else ""
-        if prefix and (_is_noise_gost_prefix(prefix) or _is_steel_grade_prefix(prefix)):
-            prefix = ""
-        if prefix and len(prefix) <= 24:
-            ref = _light_clean(f"{prefix} ГОСТ {num}")
-        else:
-            ref = _light_clean(f"ГОСТ {num}")
+    if kind in ("ПУЭ", "ПТЭ", "ПТБ") and not num:
+        end = m.end("type")
+        type_label = _light_clean(m.group("type") or kind)
+        ref = type_label
     else:
-        ref = _light_clean(text[span_start:end])
-        if not ref:
+        num_in_raw = num_raw[: len(num)] if num_raw.startswith(num.replace(" ", "")) else num
+        for i in range(len(num_raw), 0, -1):
+            if _light_clean(num_raw[:i]).replace(" ", "") == num.replace(" ", ""):
+                num_in_raw = num_raw[:i]
+                break
+
+        end = m.start("num") + len(num_in_raw) if m.group("num") is not None else m.end("type")
+        type_label = _light_clean(m.group("type") or kind)
+        if kind == "ОСТ":
             ref = _light_clean(f"{type_label} {num}")
+        elif kind in ("СТП", "РД"):
+            ref = _light_clean(f"{type_label} {num}")
+        elif kind == "ГОСТ":
+            raw = _light_clean(text[span_start:end])
+            mg = re.match(r"^(.*?)(?:ГОСТ|GOST)\s", raw, re.I | re.S)
+            prefix = _light_clean(mg.group(1)) if mg else ""
+            if prefix and (_is_noise_gost_prefix(prefix) or _is_steel_grade_prefix(prefix)):
+                prefix = ""
+            if prefix and len(prefix) <= 24:
+                ref = _light_clean(f"{prefix} ГОСТ {num}")
+            else:
+                ref = _light_clean(f"ГОСТ {num}")
+        else:
+            ref = _light_clean(text[span_start:end])
+            if not ref:
+                ref = _light_clean(f"{type_label} {num}")
 
     if kind == "ГОСТ" and re.match(r"^\d{1,3}\s+(?:ГОСТ|GOST)", ref, re.I):
         ref = re.sub(r"^\d{1,3}\s+", "", ref, count=1)
@@ -1685,11 +1814,13 @@ def _ref_from_match(m: re.Match[str], text: str, kind: str) -> str | None:
     if not _ref_has_one_type(ref):
         if kind == "ГОСТ":
             ref = _sanitize_normative_ref(f"ГОСТ {num}")
+        elif kind in ("ПУЭ", "ПТЭ", "ПТБ"):
+            ref = kind
         if not _ref_has_one_type(ref):
             return None
 
     win = _window(text, span_start, end)
-    if is_noise_span(win, num) or not accept_by_context(win, num, prefix=kind):
+    if is_noise_span(win, num or kind) or not accept_by_context(win, num or kind, prefix=kind):
         return None
     return _sanitize_normative_ref(ref)
 
@@ -1771,15 +1902,53 @@ def _snip_looks_like_modern_sp(ref: str) -> bool:
     return bool(re.fullmatch(r"\d+\.\d+\.\d+", m.group(1)))
 
 
-def _reclassify_snip_as_sp(item: dict[str, str]) -> dict[str, str]:
+def _reclassify_modern_snip(item: dict[str, str], *, window: str = "") -> dict[str, str]:
+    """OCR: современный СНиП X.XX.XX-20XX → СН (РБ); российский вид → СП."""
     if str(item.get("kind") or "") != "СНиП":
         return item
     ref = str(item.get("ref") or "")
-    if not _snip_looks_like_modern_sp(ref):
+    body = _light_clean(ref)
+    m = re.search(r"(?:СНиП|SNIP)\s+(\d+(?:\.\d+)+)-(\d{2,4})\b", body, re.I)
+    if not m:
+        # Российский СП: 63.13330.2018 без дефиса года
+        m2 = re.search(r"(?:СНиП|SNIP)\s+(\d+\.\d+\.\d{4})\b", body, re.I)
+        if not m2:
+            return item
+        new_ref = re.sub(r"(?i)^СНиП|^SNIP", "СП", ref, count=1)
+        new_ref = _sanitize_normative_ref(new_ref) or new_ref
+        return {**item, "kind": "СП", "ref": new_ref}
+    year = m.group(2)
+    num_body = m.group(1)
+    modern = False
+    if len(year) == 4:
+        try:
+            modern = int(year) >= 2010
+        except ValueError:
+            modern = False
+    else:
+        try:
+            yi = int(year)
+            modern = 10 <= yi < 40
+        except ValueError:
+            modern = False
+    if not modern:
         return item
+    # Трёхчастный номер РБ (1.03.04) — чаще СН/СП РБ; OCR СН→СНиП → предпочитаем СН.
+    if re.fullmatch(r"\d+\.\d{2}\.\d{2}", num_body):
+        win = (window or item.get("context") or "").casefold()
+        target = "СП" if re.search(r"(?<![а-яa-z])сп(?![а-яa-z])", win) and not re.search(
+            r"(?<![а-яa-z])сн(?![а-яa-zи])", win
+        ) else "СН"
+        new_ref = re.sub(r"(?i)^СНиП|^SNIP", target, ref, count=1)
+        new_ref = _sanitize_normative_ref(new_ref) or new_ref
+        return {**item, "kind": target, "ref": new_ref}
     new_ref = re.sub(r"(?i)^СНиП|^SNIP", "СП", ref, count=1)
     new_ref = _sanitize_normative_ref(new_ref) or new_ref
     return {**item, "kind": "СП", "ref": new_ref}
+
+
+def _reclassify_snip_as_sp(item: dict[str, str]) -> dict[str, str]:
+    return _reclassify_modern_snip(item)
 
 
 def extract_normative_refs(text: str) -> list[dict[str, str]]:
@@ -1794,7 +1963,7 @@ def extract_normative_refs(text: str) -> list[dict[str, str]]:
             item = _parse_match(m, text, kind)
             if not item:
                 continue
-            item = _reclassify_snip_as_sp(item)
+            item = _reclassify_modern_snip(item, window=text[max(0, m.start() - 40) : m.end() + 40])
             key = _canonical_key(str(item.get("kind") or ""), item["ref"])
             start = m.start("lead") if _match_lead(m) else m.start("type")
             spans.append((start, m.end(), item, key))
@@ -1824,7 +1993,7 @@ def extract_normative_refs(text: str) -> list[dict[str, str]]:
         order.append(key)
 
     for item in _extract_implicit_snip_refs(text):
-        item = _reclassify_snip_as_sp(item)
+        item = _reclassify_modern_snip(item, window=str(item.get("context") or ""))
         key = _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
         if key in best:
             continue

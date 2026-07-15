@@ -1056,7 +1056,7 @@ def normative_refs_to_markdown(
     page_preview_words: list[list] | None = None,
     preview_pages: list[dict[str, Any]] | None = None,
 ) -> str:
-    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, РД, СНиП, СН, НРР, ТУ, ТКП, СТБ, СП и др.)", ""]
+    lines = ["## Нормативные документы (ГОСТ, ОСТ, СТП, РД, СНиП, СН, НРР, ТПР, ПУЭ, ТУ, ТКП, СТБ, СП и др.)", ""]
     lines.append('<div class="normative-workspace">')
     lines.append('<div class="normative-workspace-list">')
 

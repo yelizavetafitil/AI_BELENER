@@ -659,9 +659,9 @@ def tile_ocr_time_budget_sec() -> float:
 
 def gost_check_extra_per_page_sec() -> float:
     try:
-        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "21").strip()))
+        return max(0.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "24").strip()))
     except ValueError:
-        return 21.0
+        return 24.0
 
 
 def gost_check_total_budget_max_sec() -> float:
@@ -798,8 +798,8 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     if pages == 1:
         per_tile = 11.0
     elif full_page:
-        # A4-скан целиком: ~20–24 с/лист на Tesseract; иначе хвост тома обрезается.
-        per_tile = 24.0 if pages <= 50 else 20.0
+        # A4 скан целиком: планируем с запасом, чтобы закрыть все листы тома.
+        per_tile = 22.0 if pages <= 50 else 18.0
     elif pages <= 12:
         per_tile = 9.5
     else:
@@ -807,8 +807,9 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     min_needed = tiles_total * per_tile + (normative_supplement_budget_sec() if pages <= 4 else 10.0)
     single = tile_ocr_time_budget_sec()
     # На длинных томах не упираемся в PDF_TILE_OCR_TIME_BUDGET (обычно 280 с).
-    floor = single if pages <= 8 else max(single, min_needed * 0.85)
-    return max(45.0, min(max(floor, min_needed), ocr_cap, total * 0.98))
+    floor = single if pages <= 8 else max(single, min_needed * 0.9)
+    # Почти весь multipage-бюджет OCR (STN хвост уже вычтен в ocr_cap).
+    return max(45.0, min(max(floor, min_needed), ocr_cap, total * 0.99))
 
 
 def tile_ocr_max_pages() -> int:
@@ -841,11 +842,10 @@ def tile_ocr_dpi_for_pages(page_count: int) -> int:
         return max(260, min(base, 300))
     if n <= 20:
         return max(240, min(base, 280))
-    if n <= 24:
-        return max(200, min(base, 240))
-    # Длинные тома 1×1: чуть ниже DPI — успеть все страницы.
-    if n <= 50:
-        return max(190, min(base, 210))
+    if n <= 40:
+        return max(210, min(base, 230))
+    if n <= 60:
+        return max(200, min(base, 220))
     return max(180, min(base, 200))
 
 

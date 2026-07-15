@@ -606,14 +606,15 @@ def extract_document_tiles(
         )
     else:
         tiles_per_page = max(1, cols * rows)
-    # Ровный лимит на лист: иначе первые титульные съедают бюджет и ГОСТ/СНиП на хвосте теряются.
+    # Ровный лимит на лист: иначе первые титульные съедают бюджет и ГОСТ на хвосте теряются.
+    full_page = cols * rows <= 1
+    min_pass = 11.0 if full_page else (6.0 if pages_to_scan > 12 else 5.0)
     per_page_cap = max(12.0 if pages_to_scan > 12 else 8.0, (budget - 6.0) / max(1, pages_to_scan))
     if pages_to_scan > 12:
-        per_page_cap = max(per_page_cap, 16.0)
+        per_page_cap = max(per_page_cap, min_pass + 4.0)
     tile_max = max(8.0, min(60.0 if pages_to_scan <= 1 else 22.0, per_page_cap / max(1, tiles_per_page)))
-    if pages_to_scan > 12 and cols <= 1 and rows <= 1:
-        # Один полный лист A4: даём почти весь страничный бюджет тайлу.
-        tile_max = max(tile_max, min(22.0, per_page_cap - 1.0))
+    if pages_to_scan > 12 and full_page:
+        tile_max = max(tile_max, min(20.0, per_page_cap - 1.0))
 
     page_tiles: list[list[str]] = []
     page_preview_words: list[list] = []
@@ -627,7 +628,13 @@ def extract_document_tiles(
     for i in range(pages_to_scan):
         left_total = deadline - time.monotonic()
         pages_left = pages_to_scan - i
-        if left_total < 3:
+        # Резерв на каждый оставшийся лист — не оставляем хвост без OCR.
+        reserve_rest = max(0, pages_left - 1) * min_pass
+        available = left_total - reserve_rest
+        if available < min_pass * 0.55 and pages_left > 1:
+            # Жёстко: всё же даём минимальный проход текущему листу.
+            available = max(min_pass * 0.7, left_total / max(1, pages_left))
+        if left_total < 2.5:
             budget_exhausted = True
             log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
             break
@@ -635,9 +642,9 @@ def extract_document_tiles(
         page_jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap)
         page_supps = supplements_for_page_scan(page_rect, pages_to_scan)
         tiles_expected += len(page_jobs) + len(page_supps)
-        # Жёсткий дедлайн страницы — не тратим чужой бюджет на титул/содержание.
         page_share = left_total / max(1, pages_left)
-        page_deadline = min(deadline, time.monotonic() + max(6.0, min(per_page_cap + 4.0, page_share)))
+        this_budget = max(min_pass * 0.7, min(per_page_cap + 3.0, page_share, max(available, min_pass * 0.7)))
+        page_deadline = min(deadline, time.monotonic() + this_budget)
         use_preview_words = pages_to_scan <= 12
         pw: list = []
         zs: list = []
@@ -646,7 +653,7 @@ def extract_document_tiles(
             i,
             dpi=dpi,
             deadline=page_deadline,
-            tile_max_sec=tile_max,
+            tile_max_sec=min(tile_max, max(8.0, this_budget - 0.5)),
             overlap_frac=overlap,
             cols=cols,
             rows=rows,

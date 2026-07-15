@@ -16,7 +16,7 @@ def test_budget_scales_with_page_count():
     hundred = gost_check_total_budget_sec(100)
     assert one == 300.0
     assert twelve > one
-    assert twelve == one + 11 * 21.0
+    assert twelve == one + 11 * 24.0
     assert hundred > twelve
     assert hundred <= 2400.0
     assert normative_ocr_budget_sec(12) >= normative_ocr_budget_sec(1)
@@ -44,7 +44,7 @@ def test_long_doc_skips_supplement_zones():
 
 
 def test_long_doc_ocr_budget_covers_full_pages():
-    # 42 листа × ~24 с полного OCR должны влезать в окно тома, не в 280 с TILE_BUDGET.
+    # 42 листа полного OCR должны влезать в окно тома, не в 280 с TILE_BUDGET.
     assert normative_ocr_budget_sec(42) >= 900.0
     assert normative_ocr_budget_sec(42) < gost_check_total_budget_sec(42)
 
