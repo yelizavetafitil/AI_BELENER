@@ -61,6 +61,8 @@ services:
       PDF_STN_LOGIN: ${PDF_STN_LOGIN:-}
       PDF_STN_PASSWORD: ${PDF_STN_PASSWORD:-}
       PDF_STN_TIMEOUT: ${PDF_STN_TIMEOUT:-20}
+      PDF_GOST_EXTRA_PER_PAGE_SEC: "28"
+      PDF_GOST_CHECK_BUDGET_MAX: "3600"
     volumes:
       - ./:/workspace:ro
       - ./belener:/app/belener:ro

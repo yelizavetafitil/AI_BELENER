@@ -538,6 +538,8 @@ body {
   gap: 28px;
   padding: 20px 0 40px;
   animation: fadeUp .35s ease;
+  width: min(100%, 720px);
+  margin: 0 auto;
 }
 
 .welcome-badge {
@@ -1085,7 +1087,7 @@ body {
 }
 
 .bar-inner {
-  max-width: min(100%, 1680px);
+  max-width: min(100%, 920px);
   margin: 0 auto;
 }
 

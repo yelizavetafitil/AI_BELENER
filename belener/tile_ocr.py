@@ -608,13 +608,13 @@ def extract_document_tiles(
         tiles_per_page = max(1, cols * rows)
     # Ровный лимит на лист: иначе первые титульные съедают бюджет и ГОСТ на хвосте теряются.
     full_page = cols * rows <= 1
-    min_pass = 11.0 if full_page else (6.0 if pages_to_scan > 12 else 5.0)
-    per_page_cap = max(12.0 if pages_to_scan > 12 else 8.0, (budget - 6.0) / max(1, pages_to_scan))
+    min_pass = 14.0 if full_page else (6.0 if pages_to_scan > 12 else 5.0)
+    per_page_cap = max(14.0 if pages_to_scan > 12 else 8.0, (budget - 6.0) / max(1, pages_to_scan))
     if pages_to_scan > 12:
-        per_page_cap = max(per_page_cap, min_pass + 4.0)
-    tile_max = max(8.0, min(60.0 if pages_to_scan <= 1 else 22.0, per_page_cap / max(1, tiles_per_page)))
+        per_page_cap = max(per_page_cap, min_pass + 6.0)
+    tile_max = max(8.0, min(60.0 if pages_to_scan <= 1 else 26.0, per_page_cap / max(1, tiles_per_page)))
     if pages_to_scan > 12 and full_page:
-        tile_max = max(tile_max, min(20.0, per_page_cap - 1.0))
+        tile_max = max(tile_max, min(24.0, per_page_cap - 1.0))
 
     page_tiles: list[list[str]] = []
     page_preview_words: list[list] = []

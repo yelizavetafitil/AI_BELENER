@@ -306,7 +306,17 @@ function beautifyNormativeHtml(root) {
 }
 
 function renderAssistantMarkdown(md) {
-  const html = marked.parse(fixMarkdown(md));
+  // marked ломает вложенный HTML workspace (кнопки зума → «-100%+», таблица в ASCII).
+  const marker = '<div class="normative-workspace">';
+  const idx = md.indexOf(marker);
+  let html;
+  if (idx < 0) {
+    html = marked.parse(fixMarkdown(md));
+  } else {
+    const head = md.slice(0, idx);
+    const workspace = md.slice(idx);
+    html = (head.trim() ? marked.parse(fixMarkdown(head)) : '') + workspace;
+  }
   const box = document.createElement('div');
   box.innerHTML = html;
   beautifyNormativeHtml(box);
