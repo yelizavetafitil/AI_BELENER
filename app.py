@@ -1,5 +1,5 @@
-import os
 import io
+import os
 import re
 import base64
 import json
@@ -11,7 +11,7 @@ import tempfile
 import uuid
 import threading
 import urllib.request
-from flask import Flask, request, Response, send_from_directory, stream_with_context, session, redirect, jsonify
+from flask import Flask, request, Response, send_file, send_from_directory, stream_with_context, session, redirect, jsonify
 import psycopg2
 import psycopg2.extras
 import ollama
@@ -19,6 +19,7 @@ import ollama
 from belener.config import model_drawing, model_scan, report_llm_enabled, ensure_upload_temp_dir
 from belener.extract import extract_pdf_path
 from belener.extract_report import extraction_to_markdown
+from belener.normative_pdf import build_normative_pdf_bytes
 from belener.scanned import is_scanned_pdf
 
 app = Flask(__name__, static_folder="static")
@@ -1444,6 +1445,20 @@ def api_chat(conv_id):
 @app.route("/api/preview/<path:filename>")
 def serve_preview(filename):
     return send_from_directory(os.path.join(ROOT_DIR, "data", "tmp"), filename)
+
+@app.route("/api/export-normative-pdf", methods=["POST"])
+def api_export_normative_pdf():
+    data = request.get_json(force=True) or {}
+    pdf_bytes = build_normative_pdf_bytes(data)
+    safe_name = re.sub(r"[^A-Za-zА-Яа-я0-9._-]+", "_", str(data.get("filename") or "belener-gost-table.pdf"))
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name += ".pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=safe_name,
+    )
 
 @app.route("/")
 def index():

@@ -372,9 +372,98 @@ function buildNormativeTablePdfDocDefinition(workspaceEl) {
   return docDefinition;
 }
 
+function buildNormativeTablePdfPayload(workspaceEl) {
+  const tableEl = workspaceEl ? workspaceEl.querySelector('.normative-table-container table') : null;
+  if (!tableEl) return null;
+  const metaEl = workspaceEl.querySelector('.normative-workspace-meta');
+  const filenameEl = metaEl && [...metaEl.querySelectorAll('p')].find(p => /Файл:/i.test(p.textContent || ''));
+  const filenameText = filenameEl ? filenameEl.textContent.replace(/^.*Файл:\s*/i, '').trim() : 'belener-gost-table';
+  const headers = [...tableEl.querySelectorAll('thead th')].map(th => th.textContent.trim() || '—');
+  const rows = [...tableEl.querySelectorAll('tbody tr')].map(tr => ({
+    fill: tr.classList.contains('row-active')
+      ? 'active'
+      : tr.classList.contains('row-canceled')
+        ? 'canceled'
+        : tr.classList.contains('row-replaced')
+          ? 'replaced'
+          : '',
+    cells: [...tr.querySelectorAll('td')].map(td => {
+      const a = td.querySelector('a.stn-link[href]');
+      return {
+        text: a ? (a.textContent.trim() || 'Открыть') : _cellText(td),
+        href: a ? a.href : '',
+        bold: _cellBold(td),
+      };
+    }),
+  }));
+  const meta = metaEl
+    ? [...metaEl.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    : [];
+  const listEl = workspaceEl.querySelector('.normative-workspace-list');
+  const summaryEl =
+    workspaceEl.querySelector('.normative-table-summary')
+    || (listEl && [...listEl.querySelectorAll('p')].find(p => /Всего в документе:/i.test(p.textContent || '')));
+  let summary = summaryEl ? summaryEl.textContent.replace(/\s+/g, ' ').trim() : '';
+  if (!summary) {
+    const m = (workspaceEl.innerText || '').match(
+      /Всего в документе:\s*\d+;\s*найдено в ИПС:\s*\d+;\s*актуально:\s*\d+/i
+    );
+    if (m) summary = m[0].replace(/\s+/g, ' ').trim();
+  }
+  if (!summary && rows.length) {
+    const found = rows.filter(r => r.cells[2] && r.cells[2].href).length;
+    const active = rows.filter(r => /актуален/i.test((r.cells[5] && r.cells[5].text) || '')).length;
+    summary = `Всего в документе: ${rows.length}; найдено в ИПС: ${found}; актуально: ${active}`;
+  }
+  return {
+    title: 'Таблица нормативов (ГОСТ/СП/СН и др.)',
+    filename: `${filenameText.replace(/\.[^.]+$/, '')}-normatives.pdf`,
+    meta,
+    summary,
+    headers,
+    rows,
+    widths: [14, 66, 18, 20, 20, 28],
+  };
+}
+
+async function downloadNormativeTablePdf(btn) {
+  const workspaceEl = btn && btn.closest('.normative-workspace');
+  if (!workspaceEl || btn.disabled) return;
+  try {
+    const payload = buildNormativeTablePdfPayload(workspaceEl);
+    if (!payload) {
+      showToast('PDF: таблица не найдена', true);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Готовлю PDF...';
+    const resp = await fetch('/api/export-normative-pdf', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = payload.filename || 'belener-gost-table.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    showToast('PDF скачан');
+  } catch (e) {
+    console.error(e);
+    showToast('PDF: ошибка экспорта', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Скачать таблицу в PDF';
+  }
+}
+
 function ensureNormativeTablePdfDownloads(root) {
   if (!root) return;
-  if (!window.pdfMake) return; // pdfMake подключен в index.html
 
   for (const workspaceEl of root.querySelectorAll('.normative-workspace')) {
     if (workspaceEl.querySelector('.normative-table-pdf-btn')) continue;
@@ -386,20 +475,6 @@ function ensureNormativeTablePdfDownloads(root) {
     btn.className = 'btn btn-primary btn-sm normative-table-pdf-btn';
     btn.style.marginTop = '10px';
     btn.textContent = 'Скачать таблицу в PDF';
-
-    btn.onclick = () => {
-      try {
-        const docDefinition = buildNormativeTablePdfDocDefinition(workspaceEl);
-        if (!docDefinition) {
-          showToast('PDF: таблица не найдена', true);
-          return;
-        }
-        window.pdfMake.createPdf(docDefinition).download('belener-gost-table.pdf');
-      } catch (e) {
-        console.error(e);
-        showToast('PDF: ошибка экспорта', true);
-      }
-    };
 
     const container = workspaceEl.querySelector('.normative-table-container');
     if (container && container.parentNode) {
@@ -1223,6 +1298,13 @@ document.addEventListener('click', (e) => {
     const group = pageBtn.dataset.group;
     if (!group) return;
     shiftNormativePreview(group, pageBtn.dataset.action === 'prev' ? -1 : 1);
+    return;
+  }
+
+  const pdfBtn = e.target.closest('.normative-table-pdf-btn');
+  if (pdfBtn) {
+    e.preventDefault();
+    downloadNormativeTablePdf(pdfBtn);
     return;
   }
 

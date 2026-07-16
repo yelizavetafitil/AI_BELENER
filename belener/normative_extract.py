@@ -1213,7 +1213,7 @@ def normative_refs_to_markdown(
             if (c.status if hasattr(c, "status") else c.get("status")) == "актуален"
         )
         lines.append(
-            f"<p><em>Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; "
+            f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; '
             f"актуально: {active}</em></p>"
         )
         lines.append("")
