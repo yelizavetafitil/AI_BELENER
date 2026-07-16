@@ -49,6 +49,19 @@ def test_long_doc_ocr_budget_covers_full_pages():
     assert normative_ocr_budget_sec(42) < gost_check_total_budget_sec(42)
 
 
+def test_preview_page_indices_include_all_pages():
+    from belener.normative_extract import _preview_page_indices
+
+    sparse = [
+        [{"kind": "ГОСТ", "ref": "ГОСТ 10704-91"}],
+        [],
+        [],
+        [{"kind": "СП", "ref": "СП 1.03.11-2023"}],
+    ]
+    assert _preview_page_indices(42, sparse) == list(range(42))
+    assert _preview_page_indices(4, sparse) == [0, 1, 2, 3]
+
+
 def test_multipage_preview_generates_all_pages():
     import fitz
 
@@ -69,7 +82,14 @@ def test_multipage_preview_generates_all_pages():
         f.write(tmp)
 
     refs = [{"kind": "ГОСТ", "ref": "ГОСТ 10704-91"}]
-    pages = generate_pdf_preview_pages_with_highlights(path, refs)
+    page_normative_refs = [
+        [{"kind": "ГОСТ", "ref": "ГОСТ 10704-91"}],
+        [],
+        [],
+    ]
+    pages = generate_pdf_preview_pages_with_highlights(
+        path, refs, page_normative_refs=page_normative_refs
+    )
     try:
         os.unlink(path)
     except OSError:

@@ -274,6 +274,142 @@ function fixMarkdown(md) {
   });
 }
 
+function _normativeRowFillColor(tr) {
+  const cls = (tr && tr.classList) ? tr.classList : null;
+  if (!cls) return null;
+  if (cls.contains('row-active')) return '#dcfce7';   // green
+  if (cls.contains('row-canceled')) return '#fee2e2'; // red
+  if (cls.contains('row-replaced')) return '#fef3c7'; // yellow
+  return null;
+}
+
+function _cellBold(td) {
+  return !!(td && td.querySelector && td.querySelector('strong'));
+}
+
+function _cellText(td) {
+  const t = (td && td.textContent) ? td.textContent : '';
+  return String(t || '').replace(/\s+/g, ' ').trim() || '—';
+}
+
+function buildNormativeTablePdfDocDefinition(workspaceEl) {
+  const tableEl = workspaceEl ? workspaceEl.querySelector('.normative-table-container table') : null;
+  if (!tableEl) return null;
+
+  const metaEl = workspaceEl.querySelector('.normative-workspace-meta');
+  const metaText = metaEl ? metaEl.textContent.replace(/\s+/g, ' ').trim() : '';
+
+  const headCells = [...tableEl.querySelectorAll('thead th')].map(th => th.textContent.trim() || '—');
+  const headerRow = headCells.map(label => ({
+    text: label,
+    bold: true,
+    fontSize: 9,
+    fillColor: '#f3f4f6',
+    color: '#111827',
+  }));
+
+  const rows = [...tableEl.querySelectorAll('tbody tr')];
+  const bodyRows = rows.map(tr => {
+    const fill = _normativeRowFillColor(tr);
+    const tds = [...tr.querySelectorAll('td')];
+    return tds.map((td, colIdx) => {
+      const a = td.querySelector('a.stn-link[href]');
+      const isBold = _cellBold(td);
+      if (a && a.href) {
+        return {
+          text: a.textContent.trim() || 'Открыть',
+          link: a.href,
+          color: '#2563eb',
+          decoration: 'underline',
+          bold: isBold,
+          fontSize: 9,
+          fillColor: fill || undefined,
+        };
+      }
+      return {
+        text: _cellText(td),
+        bold: isBold,
+        fontSize: 9,
+        fillColor: fill || undefined,
+      };
+    });
+  });
+
+  const docDefinition = {
+    pageSize: 'A4',
+    pageOrientation: 'portrait',
+    pageMargins: [18, 18, 18, 18],
+    defaultStyle: {
+      font: 'Roboto',
+      fontSize: 9,
+      lineHeight: 1.2,
+    },
+    content: [
+      { text: 'Таблица нормативов (ГОСТ/СП/СН и др.)', style: 'title', margin: [0, 0, 0, 8] },
+      ...(metaText ? [{ text: metaText, margin: [0, 0, 0, 10] }] : []),
+      {
+        table: {
+          headerRows: 1,
+          widths: [40, '*', 55, 60, 60, '*'],
+          body: [headerRow, ...bodyRows],
+        },
+        layout: {
+          hLineWidth: () => 0.4,
+          vLineWidth: () => 0.4,
+          hLineColor: () => '#e5e7eb',
+          vLineColor: () => '#e5e7eb',
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
+        },
+      },
+    ],
+    styles: {
+      title: { fontSize: 12, bold: true },
+    },
+  };
+  return docDefinition;
+}
+
+function ensureNormativeTablePdfDownloads(root) {
+  if (!root) return;
+  if (!window.pdfMake) return; // pdfMake подключен в index.html
+
+  for (const workspaceEl of root.querySelectorAll('.normative-workspace')) {
+    if (workspaceEl.querySelector('.normative-table-pdf-btn')) continue;
+    const tableEl = workspaceEl.querySelector('.normative-table-container table');
+    if (!tableEl) continue;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-primary btn-sm normative-table-pdf-btn';
+    btn.style.marginTop = '10px';
+    btn.textContent = 'Скачать таблицу в PDF';
+
+    btn.onclick = () => {
+      try {
+        const docDefinition = buildNormativeTablePdfDocDefinition(workspaceEl);
+        if (!docDefinition) {
+          showToast('PDF: таблица не найдена', true);
+          return;
+        }
+        window.pdfMake.createPdf(docDefinition).download('belener-gost-table.pdf');
+      } catch (e) {
+        console.error(e);
+        showToast('PDF: ошибка экспорта', true);
+      }
+    };
+
+    const container = workspaceEl.querySelector('.normative-table-container');
+    if (container && container.parentNode) {
+      container.parentNode.insertBefore(btn, container.nextSibling);
+    } else {
+      workspaceEl.appendChild(btn);
+    }
+  }
+}
+
 /** marked не парсит ** внутри HTML — починка уже отрисованного ответа (текущий чат). */
 function beautifyNormativeHtml(root) {
   if (!root) return;
@@ -303,6 +439,8 @@ function beautifyNormativeHtml(root) {
       label.textContent = `${idx} / ${pages.length} · лист ${active.dataset.page}`;
     }
   });
+
+  ensureNormativeTablePdfDownloads(root);
 }
 
 function renderAssistantMarkdown(md) {

@@ -834,26 +834,23 @@ def _highlight_on_page(
     return highlighted_refs, total_marks
 
 
-def _preview_page_indices(
-    page_count: int,
-    page_normative_refs: list[list[dict]] | None,
-) -> list[int]:
-    """Какие листы рисовать в превью: с нормативами; иначе все в рамках лимита."""
+def _preview_page_indices(page_count: int, page_normative_refs: list[list[dict]] | None = None) -> list[int]:
+    """Все листы документа в превью (подсветка только где есть нормативы)."""
+    del page_normative_refs  # совместимость вызовов; фильтр по нормативам убран
     n = max(0, int(page_count))
-    if n <= 0:
+    return list(range(n)) if n > 0 else []
+
+
+def _page_refs_for_preview(
+    page_index: int,
+    refs: list[dict],
+    page_normative_refs: list[list[dict]] | None,
+) -> list[dict]:
+    if page_normative_refs is not None:
+        if page_index < len(page_normative_refs):
+            return list(page_normative_refs[page_index] or [])
         return []
-    if n == 1:
-        return [0]
-    if page_normative_refs:
-        idxs = [
-            i
-            for i, prefs in enumerate(page_normative_refs)
-            if i < n and prefs
-        ]
-        if idxs:
-            return idxs
-    # Нет раскладки по листам — все страницы (короткие PDF) или все до разумного лимита.
-    return list(range(n))
+    return list(refs or [])
 
 
 def _pages_by_ref(page_normative_refs: list[list[dict]] | None) -> dict[str, list[int]]:
@@ -899,6 +896,25 @@ def generate_pdf_preview_pages_with_highlights(
             if pipeline_deadline is not None and time.monotonic() >= pipeline_deadline - 2.0:
                 log.warning("preview: stop at page=%s (deadline)", page_index + 1)
                 break
+            page_refs = _page_refs_for_preview(page_index, refs, page_normative_refs)
+            if not page_refs:
+                doc = fitz.open(pdf_path)
+                try:
+                    preview_img = _render_preview_image_with_highlights(doc[page_index], [], dpi=144)
+                finally:
+                    doc.close()
+                fname = f"preview_{uuid.uuid4().hex}.jpg"
+                out_path = os.path.join(tmp_dir, fname)
+                preview_img.save(out_path, format="JPEG", quality=92)
+                pages_out.append(
+                    {
+                        "page": page_index + 1,
+                        "url": f"/api/preview/{fname}",
+                        "refs": [],
+                        "marks": 0,
+                    }
+                )
+                continue
             cached = None
             if page_preview_words and page_index < len(page_preview_words):
                 cached = page_preview_words[page_index] or None
@@ -924,18 +940,15 @@ def generate_pdf_preview_pages_with_highlights(
                 for src in word_sources:
                     if src and src not in sources:
                         sources.append(src)
-                page_refs = refs
-                if page_normative_refs and page_index < len(page_normative_refs) and page_normative_refs[page_index]:
-                    page_refs = page_normative_refs[page_index]
                 highlighted_refs, total_marks, rects = _collect_highlight_rects(
                     page,
-                    page_refs or refs,
+                    page_refs,
                     sources,
                     doc=doc,
                     page_index=page_index,
                     tile_zones=tile_zones,
                 )
-                if total_marks == 0 and (page_refs or refs):
+                if total_marks == 0 and page_refs:
                     if pipeline_deadline is None or time.monotonic() < pipeline_deadline - 12.0:
                         if sum(len(s) for s in sources) < 50:
                             extra = _fullpage_ocr_words(page, page_index=page_index)
@@ -943,7 +956,7 @@ def generate_pdf_preview_pages_with_highlights(
                                 sources.append(extra)
                                 highlighted_refs, total_marks, rects = _collect_highlight_rects(
                                     page,
-                                    page_refs or refs,
+                                    page_refs,
                                     sources,
                                     doc=doc,
                                     page_index=page_index,
