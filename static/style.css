@@ -228,6 +228,8 @@ body {
 }
 
 .nav-toggle { display: none; }
+/* На десктопе кнопка меню нужна, если историю свернули — иначе её не открыть. */
+.shell.nav-collapsed .nav-toggle { display: inline-flex; }
 
 /* ── Workspace ─────────────────────────────────────────────────────────── */
 

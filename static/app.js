@@ -461,27 +461,33 @@ async function downloadNormativeTablePdf(btn) {
     btn.textContent = 'Скачать таблицу в PDF';
   }
 }
+// Нужно для inline onclick — он переживает сериализацию через innerHTML.
+window.downloadNormativeTablePdf = downloadNormativeTablePdf;
 
 function ensureNormativeTablePdfDownloads(root) {
   if (!root) return;
 
   for (const workspaceEl of root.querySelectorAll('.normative-workspace')) {
-    if (workspaceEl.querySelector('.normative-table-pdf-btn')) continue;
-    const tableEl = workspaceEl.querySelector('.normative-table-container table');
-    if (!tableEl) continue;
+    let btn = workspaceEl.querySelector('.normative-table-pdf-btn');
+    if (!btn) {
+      const tableEl = workspaceEl.querySelector('.normative-table-container table');
+      if (!tableEl) continue;
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-primary btn-sm normative-table-pdf-btn';
-    btn.style.marginTop = '10px';
-    btn.textContent = 'Скачать таблицу в PDF';
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-primary btn-sm normative-table-pdf-btn';
+      btn.style.marginTop = '10px';
+      btn.textContent = 'Скачать таблицу в PDF';
 
-    const container = workspaceEl.querySelector('.normative-table-container');
-    if (container && container.parentNode) {
-      container.parentNode.insertBefore(btn, container.nextSibling);
-    } else {
-      workspaceEl.appendChild(btn);
+      const container = workspaceEl.querySelector('.normative-table-container');
+      if (container && container.parentNode) {
+        container.parentNode.insertBefore(btn, container.nextSibling);
+      } else {
+        workspaceEl.appendChild(btn);
+      }
     }
+    // Inline-атрибут сохраняется при return box.innerHTML → ac.innerHTML.
+    btn.setAttribute('onclick', 'downloadNormativeTablePdf(this); return false;');
   }
 }
 
@@ -617,6 +623,7 @@ async function openChat(id) {
     const ac = addMessage(m.role, m.role === 'user' ? m.content : '', m.file_name || null, m.file_url || null);
     if (m.role === 'assistant') {
       ac.innerHTML = renderAssistantMarkdown(m.content);
+      beautifyNormativeHtml(ac);
       addCodeBtns(ac);
       addMsgCopy(ac, ac.innerHTML);
       addReportActions(ac, ac.innerHTML);
@@ -1059,6 +1066,7 @@ async function sendMessage() {
   if (first) { progress.remove(); }
   if (raw) {
     ac.innerHTML = renderAssistantMarkdown(raw);
+    beautifyNormativeHtml(ac);
     addCodeBtns(ac);
     addMsgCopy(ac, ac.innerHTML);
     addReportActions(ac, ac.innerHTML);
@@ -1180,28 +1188,27 @@ function toggleNav() {
   localStorage.setItem('navCollapsed', isNowCollapsed ? 'true' : 'false');
 }
 
+const NAV_COLLAPSE_BP = 860; // совпадает с CSS @media (max-width: 860px)
+
 function initNavState() {
   const saved = localStorage.getItem('navCollapsed');
-  const isSmall = window.innerWidth < 900;
+  const isSmall = window.innerWidth <= NAV_COLLAPSE_BP;
   if (isSmall) {
+    // На узком экране по умолчанию скрываем; явный expand сохраняем.
     if (saved === 'false') expandNav();
     else collapseNav();
     return;
   }
-  if (saved === 'true') collapseNav();
-  else expandNav();
+  // На десктопе всегда показываем историю (скрытая панель без кнопки — тупик).
+  expandNav();
 }
 
-let _wasSmallViewport = window.innerWidth < 900;
+let _wasSmallViewport = window.innerWidth <= NAV_COLLAPSE_BP;
 window.addEventListener('resize', () => {
-  const isSmall = window.innerWidth < 900;
+  const isSmall = window.innerWidth <= NAV_COLLAPSE_BP;
   if (isSmall !== _wasSmallViewport) {
     if (isSmall) collapseNav();
-    else {
-      const saved = localStorage.getItem('navCollapsed');
-      if (saved === 'true') collapseNav();
-      else expandNav();
-    }
+    else expandNav();
     _wasSmallViewport = isSmall;
   }
 });

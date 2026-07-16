@@ -1201,6 +1201,13 @@ def normative_refs_to_markdown(
         lines.append("</tbody></table>")
         lines.append("</div>")
         lines.append("")
+        lines.append(
+            '<button type="button" class="btn btn-primary btn-sm normative-table-pdf-btn" '
+            'style="margin-top:10px" '
+            'onclick="downloadNormativeTablePdf(this); return false;">'
+            "Скачать таблицу в PDF</button>"
+        )
+        lines.append("")
 
         found_ips = sum(
             1
