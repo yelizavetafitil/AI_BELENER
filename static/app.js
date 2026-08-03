@@ -635,6 +635,8 @@ async function openChat(id) {
 
 async function deleteChat(e, id) {
   e.stopPropagation();
+  const confirmed = await confirmDialog('Удалить этот чат? Это действие нельзя отменить.', 'Удаление чата');
+  if (!confirmed) return;
   await fetch(`/api/conversations/${id}`, {method: 'DELETE'});
   if (currentConvId === id) {
     currentConvId = null;
@@ -670,7 +672,7 @@ function clearFeed() {
     <div class="welcome-actions">
       <button type="button" class="action-card action-card-primary" onclick="document.getElementById('file-input').click()">
         <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
-        <span class="action-text"><strong>Загрузить чертёж</strong><small>PDF, PNG, JPG и другие форматы</small></span>
+        <span class="action-text"><strong>Загрузить чертёж</strong><small>PDF или скан листа (PNG, JPG…)</small></span>
       </button>
       <button type="button" class="action-card" onclick="setPrompt('Проверка ГОСТ на листе')">
         <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
@@ -802,7 +804,14 @@ ta.addEventListener('keydown', e => {
 // ── file handling ─────────────────────────────────────────────────────────────
 
 document.getElementById('file-input').addEventListener('change', e => {
-  if (e.target.files[0]) setFile(e.target.files[0]);
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!isDrawingFile(f)) {
+    e.target.value = '';
+    showToast('Поддерживаются только PDF и сканы (изображения)', true);
+    return;
+  }
+  setFile(f);
 });
 
 document.addEventListener('paste', e => {
@@ -811,13 +820,22 @@ document.addEventListener('paste', e => {
   for (const item of items) {
     if (item.kind === 'file') {
       const f = item.getAsFile();
-      if (f) { setFile(f); showToast('Файл вставлен: ' + f.name); }
+      if (!f) break;
+      if (!isDrawingFile(f)) {
+        showToast('Поддерживаются только PDF и сканы (изображения)', true);
+        break;
+      }
+      setFile(f); showToast('Файл вставлен: ' + f.name);
       break;
     }
   }
 });
 
 function setFile(f, options = {}) {
+  if (!isDrawingFile(f)) {
+    showToast('Поддерживаются только PDF и сканы (изображения)', true);
+    return;
+  }
   currentFile = f;
   document.getElementById('file-preview-name').textContent = f.name;
   document.getElementById('file-preview-size').textContent = fmtSize(f.size);
@@ -829,7 +847,10 @@ function setFile(f, options = {}) {
 }
 
 function isDrawingFile(f) {
-  return Boolean(f && DRAWING_FILE_RE.test(f.name));
+  if (!f) return false;
+  if (DRAWING_FILE_RE.test(f.name || '')) return true;
+  const mime = String(f.type || '').toLowerCase();
+  return mime === 'application/pdf' || mime.startsWith('image/');
 }
 
 function renderFilePreview(f) {
@@ -907,7 +928,13 @@ document.addEventListener('drop', e => {
   e.preventDefault(); dragN = 0;
   document.getElementById('drop-overlay').classList.remove('show');
   const f = e.dataTransfer.files[0];
-  if (f) { setFile(f); showToast('Файл прикреплён: ' + f.name); }
+  if (!f) return;
+  if (!isDrawingFile(f)) {
+    showToast('Поддерживаются только PDF и сканы (изображения)', true);
+    return;
+  }
+  setFile(f);
+  showToast('Файл прикреплён: ' + f.name);
 });
 
 // ── messages ──────────────────────────────────────────────────────────────────
@@ -960,8 +987,16 @@ function stopStreaming() {
 async function sendMessage() {
   if (isStreaming) return;
   const qRaw = ta.value.trim();
+  if (!currentFile) {
+    showToast('Прикрепите PDF или скан чертежа', true);
+    return;
+  }
   const isDrawing = isDrawingFile(currentFile);
-  const q = qRaw || (isDrawing ? GOST_DEFAULT_QUESTION : '');
+  if (!isDrawing) {
+    showToast('Поддерживаются только PDF и сканы (изображения)', true);
+    return;
+  }
+  const q = qRaw || GOST_DEFAULT_QUESTION;
   if (!q) return;
 
   // Авто-выбор для вопроса без файла (сложные запросы)

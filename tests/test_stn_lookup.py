@@ -74,6 +74,22 @@ def test_tkp_normalizes_ocr_spaces():
     assert "45-4.03-267-2012" in qs
 
 
+def test_tkp_queries_include_env_okp_code():
+    qs = search_queries("ТКП", "ТКП 17.13-16-2014")
+    assert "ТКП 17.13-16-2014 (02120)" in qs
+    assert "17.13-16-2014 (02120)" in qs
+    assert "ТКП 17.13-16-2014 (02250)" in qs
+
+
+def test_stn_doctypes_cover_full_fund():
+    from belener.stn_lookup import _STN_DOCTYPES
+
+    # Не ограничиваемся стройкой: иначе ТКП других министерств «не находятся».
+    assert _STN_DOCTYPES.get("doctype[19]") == "on"
+    assert len(_STN_DOCTYPES) >= 30
+    assert all(_STN_DOCTYPES[f"doctype[{i}]"] == "on" for i in (2, 4, 5, 6, 13, 14, 19, 23))
+
+
 def test_ost_normalizes_space_before_dot():
     assert search_query("ОСТ", "ОСТ 34 10.761-97") == "ОСТ 34 10.761-97"
 

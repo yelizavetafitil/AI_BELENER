@@ -1244,11 +1244,17 @@ def api_chat(conv_id):
                 return {"error": "Недостаточно места на диске для загрузки файла. Очистите кэш или освободите место на диске D:."}, 507
             raise
 
+    drawing_exts = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"}
+    # Проверка нормативов — только с чертежом (PDF/скан).
+    if not tmp_path:
+        return {"error": "Прикрепите PDF или скан чертежа"}, 400
+    if ext not in drawing_exts:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        return {"error": "Поддерживаются только PDF и сканы (изображения)"}, 400
+
     if not question:
-        if tmp_path and ext in (".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff", ".tif"):
-            question = GOST_DEFAULT_QUESTION
-        else:
-            return {"error": "Вопрос не может быть пустым"}, 400
+        question = GOST_DEFAULT_QUESTION
 
     profile = get_profile(model)
 

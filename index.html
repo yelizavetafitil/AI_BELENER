@@ -94,7 +94,7 @@
                 </span>
                 <span class="action-text">
                   <strong>Загрузить чертёж</strong>
-                  <small>PDF, PNG, JPG и другие форматы</small>
+                  <small>PDF или скан листа (PNG, JPG…)</small>
                 </span>
               </button>
               <button type="button" class="action-card" onclick="setPrompt('Проверка ГОСТ на листе')">
@@ -140,7 +140,7 @@
             <div class="file-preview-render" id="file-preview-render"></div>
 
             <div class="composer">
-              <button class="attach" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">
+              <button class="attach" onclick="document.getElementById('file-input').click()" title="Прикрепить PDF или скан">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
                 </svg>
@@ -166,14 +166,14 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
     </div>
     <div class="drop-ttl">Отпустите файл здесь</div>
-    <div class="drop-sub">PDF, DOCX, XLSX, изображения</div>
+    <div class="drop-sub">Только PDF или скан (PNG, JPG, TIFF…)</div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <input type="file" id="file-input" style="display:none"
-  accept=".pdf,.docx,.doc,.xlsx,.xls,.xlsm,.txt,.md,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif,.tiff,.bmp">
+  accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.bmp">
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.15/build/pdfmake.min.js"></script>
@@ -189,6 +189,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=26"></script>
+<script src="/static/app.js?v=28"></script>
 </body>
 </html>

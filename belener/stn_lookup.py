@@ -43,15 +43,13 @@ STN_FUND_KINDS: frozenset[str] = frozenset(
 )
 STN_CHECKABLE_KINDS = STN_FUND_KINDS  # совместимость
 
-_STN_DOCTYPES = {
-    "doctype[13]": "on",
-    "doctype[14]": "on",
-    "doctype[23]": "on",
-    "doctype[5]": "on",
-    "doctype[6]": "on",
-    "doctype[2]": "on",
-    "doctype[4]": "on",
-}
+# Все категории ТНПА в ИПС СтройДОК (иначе часть ТКП/СТБ «других» министерств
+# не находится: напр. doctype[19] = охрана окружающей среды / 02120).
+_STN_DOCTYPES = {f"doctype[{i}]": "on" for i in range(1, 41)}
+
+
+def _stn_doctypes() -> dict[str, str]:
+    return dict(_STN_DOCTYPES)
 
 _CARD_ROW = re.compile(
     r'<tr><td class="doc-card-header">([^<]+)</td><td>(.*?)</td></tr>',
@@ -317,15 +315,21 @@ def search_queries(kind: str, ref: str) -> list[str]:
 
     out: list[str] = []
     if kind == "ТКП" and num:
-        for q in (
-            full,
-            f"{kind} {num} (02250)",
-            f"{num} (02250)",
-            num,
-            f"{kind} {num}".strip(),
-            compact,
-            dotted,
-        ):
+        # В Стройдоке у ТКП разные коды органа (02250 стройка, 02120 экология и др.) —
+        # пробуем номер как есть и с типичными кодами, без привязки к одному фонду.
+        okp_codes = ("02250", "02120", "02030", "02180")
+        m_okp = re.search(r"\((\d{5})\)", full) or re.search(r"\((\d{5})\)", ref)
+        if m_okp and m_okp.group(1) not in okp_codes:
+            okp_codes = (m_okp.group(1),) + okp_codes
+        candidates = [full, num, f"{kind} {num}".strip(), compact, dotted]
+        for okp in okp_codes:
+            candidates.extend(
+                (
+                    f"{kind} {num} ({okp})",
+                    f"{num} ({okp})",
+                )
+            )
+        for q in candidates:
             q = _clean_stn_query(q)
             if q and q not in out:
                 out.append(q)
@@ -346,10 +350,11 @@ def search_queries(kind: str, ref: str) -> list[str]:
                 if q and q not in out:
                     out.append(q)
     if kind == "ТКП" and num:
-        for q in (f"{kind} {num} (02250)", f"{num} (02250)"):
-            q = _clean_stn_query(q)
-            if q and q not in out:
-                out.append(q)
+        for okp in ("02250", "02120", "02030", "02180"):
+            for q in (f"{kind} {num} ({okp})", f"{num} ({okp})"):
+                q = _clean_stn_query(q)
+                if q and q not in out:
+                    out.append(q)
     # В фонде рядом лежат «СН …» и «СП …» с одним номером — пробуем оба.
     if kind in ("СН", "СП") and num:
         alt = "СП" if kind == "СН" else "СН"
@@ -649,7 +654,8 @@ class StnClient:
         """Quick, затем full по каждому варианту запроса (full нужен, если quick пуст)."""
         limit = max_queries if max_queries is not None else stn_max_queries()
         if kind == "ТКП":
-            limit = min(max(limit, 4), 8)
+            # Больше вариантов запросов: разные коды органа / ОКы номеров.
+            limit = min(max(limit, 6), 12)
         tried: list[str] = []
         rows: list[dict[str, Any]] = []
         for raw_q in queries[:limit]:
