@@ -800,7 +800,7 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
         per_tile = 11.0
     elif full_page:
         # A4 скан целиком: планируем с запасом, чтобы закрыть все листы тома.
-        per_tile = 24.0 if pages <= 50 else 20.0
+        per_tile = 28.0 if pages <= 50 else 22.0
     elif pages <= 12:
         per_tile = 9.5
     else:
@@ -809,8 +809,12 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     single = tile_ocr_time_budget_sec()
     # На длинных томах не упираемся в PDF_TILE_OCR_TIME_BUDGET (обычно 280 с).
     floor = single if pages <= 8 else max(single, min_needed * 0.95)
+    target = max(floor, min_needed)
+    if pages > 12:
+        # Длинный том: берём запас из общего лимита (раньше ~400 с оставались неиспользованными).
+        target = max(target, ocr_cap * 0.93)
     # Почти весь multipage-бюджет OCR (STN хвост уже вычтен в ocr_cap).
-    return max(45.0, min(max(floor, min_needed), ocr_cap, total * 0.99))
+    return max(45.0, min(target, ocr_cap, total * 0.99))
 
 
 def tile_ocr_max_pages() -> int:

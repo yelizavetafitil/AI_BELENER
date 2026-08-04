@@ -10,15 +10,15 @@ def test_build_normative_pdf_bytes_returns_pdf():
         "title": "Таблица нормативов",
         "filename": "sample.pdf",
         "meta": ["Файл: sample.pdf", "Листов в файле: 42"],
-        "summary": "Всего в документе: 36; найдено в ИПС: 23; актуально: 21",
-        "headers": ["Тип", "Обозначение", "ИПС", "Введен", "Отменен", "Статус"],
+        "summary": "Всего в документе: 36; найдено в Стройдок: 23; актуально: 21",
+        "headers": ["Тип", "Обозначение", "Стройдок", "Введен", "Отменен", "Статус"],
         "rows": [
             {
                 "fill": "active",
                 "cells": [
                     {"text": "ГОСТ", "bold": False},
                     {"text": "ГОСТ 23407-78", "bold": False},
-                    {"text": "Открыть", "href": "https://normy.stn.by/ips.php?123", "bold": False},
+                    {"text": "Стройдок", "href": "https://normy.stn.by/ips.php?123", "bold": False},
                     {"text": "01.07.1979", "bold": False},
                     {"text": "—", "bold": False},
                     {"text": "актуален", "bold": True},
@@ -35,13 +35,13 @@ def test_build_normative_pdf_bytes_returns_pdf():
 def test_build_normative_pdf_computes_summary_from_rows():
     payload = {
         "title": "Таблица нормативов",
-        "headers": ["Тип", "Обозначение", "ИПС", "Введен", "Отменен", "Статус"],
+        "headers": ["Тип", "Обозначение", "Стройдок", "Введен", "Отменен", "Статус"],
         "rows": [
             {
                 "cells": [
                     {"text": "ГОСТ"},
                     {"text": "ГОСТ 1"},
-                    {"text": "Открыть", "href": "https://normy.stn.by/ips.php?1"},
+                    {"text": "Стройдок", "href": "https://normy.stn.by/ips.php?1"},
                     {"text": "01.01.2000"},
                     {"text": "—"},
                     {"text": "актуален", "bold": True},

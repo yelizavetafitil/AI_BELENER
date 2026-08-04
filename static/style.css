@@ -1610,10 +1610,12 @@ body {
 }
 
 .normative-workspace-preview {
+  height: min(78vh, 880px);
   max-height: min(78vh, 880px);
   padding: 10px 12px 12px;
   position: sticky;
   top: 8px;
+  min-height: 0;
 }
 
 .normative-workspace-meta {
@@ -1630,6 +1632,7 @@ body {
   font-size: 14px !important;
   font-weight: 800 !important;
   color: var(--text-secondary) !important;
+  flex-shrink: 0;
 }
 
 .normative-preview-empty {
@@ -1643,10 +1646,10 @@ body {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 0;
 }
 
-.normative-preview-page { display: none; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.normative-preview-page { display: none; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 0; }
 .normative-preview-page.is-active { display: flex; }
 
 .normative-preview-nav {
@@ -1691,29 +1694,62 @@ body {
   border-radius: 10px;
   background: var(--surface-muted);
   max-height: none;
-  scrollbar-gutter: stable;
 }
 
 .normative-table-container table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.msg.assistant .msg-content .normative-table-container table {
+  width: 100%;
+  min-width: 0;
   border-collapse: collapse;
 }
 
-.normative-table-container th {
-  position: sticky;
-  top: 0;
-  background: var(--surface);
-  z-index: 10;
+.normative-table-container th,
+.normative-table-container td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+}
+
+.msg.assistant .msg-content .normative-table-container th,
+.msg.assistant .msg-content .normative-table-container td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.normative-table-container th:first-child,
+.normative-table-container td:first-child,
+.msg.assistant .msg-content .normative-table-container th:first-child,
+.msg.assistant .msg-content .normative-table-container td:first-child {
+  padding-left: 12px;
+}
+
+.normative-table-container th:last-child,
+.normative-table-container td:last-child,
+.msg.assistant .msg-content .normative-table-container th:last-child,
+.msg.assistant .msg-content .normative-table-container td:last-child {
+  padding-right: 12px;
+}
+
+.normative-table-container th,
+.msg.assistant .msg-content .normative-table-container th {
+  position: sticky;
+  top: 0;
+  background: var(--accent);
+  color: #fff;
+  z-index: 10;
   white-space: nowrap;
   font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(15, 118, 110, 0.35);
 }
 
 .normative-table-container td {
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
   font-size: 13px;
 }
@@ -1722,6 +1758,11 @@ body {
   white-space: normal;
   min-width: 110px;
   max-width: 220px;
+}
+
+.normative-table-container th:nth-child(3),
+.normative-table-container td:nth-child(3) {
+  min-width: 96px;
 }
 
 .normative-table-container tr.row-active td { background-color: rgba(40, 167, 69, 0.16) !important; }
@@ -1753,15 +1794,14 @@ body {
 .stn-link:hover { background: var(--primary-soft); }
 
 .pdf-preview-container {
+  position: relative;
   width: 100%;
-  flex: 1;
-  min-height: 240px;
-  max-height: none;
-  overflow: auto;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background-color: var(--surface-muted);
-  padding: 10px;
   margin-top: 0;
 }
 .pdf-preview-tools {
@@ -1785,13 +1825,21 @@ body {
 }
 .preview-zoom-btn:hover { background: var(--surface-muted); }
 .pdf-preview-img {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
   display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  margin: auto;
+  object-fit: contain;
+  object-position: center center;
   cursor: zoom-in;
-  transform-origin: top left;
-  transition: transform .2s ease;
+  transform-origin: center center;
 }
 
 @media (max-width: 1100px) {
@@ -1801,7 +1849,12 @@ body {
   }
   .normative-workspace-preview {
     position: static;
+    height: min(60vh, 640px);
     max-height: min(60vh, 640px);
+  }
+  .pdf-preview-container {
+    flex: 1 1 0;
+    min-height: 0;
   }
 }
 

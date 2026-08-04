@@ -141,6 +141,7 @@ function addCodeBtns(el) {
   });
 
   el.querySelectorAll('table').forEach(table => {
+    if (table.closest('.normative-table-container, .normative-workspace')) return;
     if (table.parentElement.classList.contains('table-wrap')) return;
     const outer = document.createElement('div');
     outer.className = 'table-outer';
@@ -378,7 +379,10 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   const metaEl = workspaceEl.querySelector('.normative-workspace-meta');
   const filenameEl = metaEl && [...metaEl.querySelectorAll('p')].find(p => /Файл:/i.test(p.textContent || ''));
   const filenameText = filenameEl ? filenameEl.textContent.replace(/^.*Файл:\s*/i, '').trim() : 'belener-gost-table';
-  const headers = [...tableEl.querySelectorAll('thead th')].map(th => th.textContent.trim() || '—');
+  const headers = [...tableEl.querySelectorAll('thead th')].map((th, idx) => {
+    const text = th.textContent.trim() || '—';
+    return idx === 2 && /ИПС/i.test(text) ? 'Стройдок' : text;
+  });
   const rows = [...tableEl.querySelectorAll('tbody tr')].map(tr => ({
     fill: tr.classList.contains('row-active')
       ? 'active'
@@ -390,15 +394,28 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     cells: [...tr.querySelectorAll('td')].map(td => {
       const a = td.querySelector('a.stn-link[href]');
       return {
-        text: a ? (a.textContent.trim() || 'Открыть') : _cellText(td),
+        text: a ? 'Стройдок' : _cellText(td),
         href: a ? a.href : '',
         bold: _cellBold(td),
       };
     }),
   }));
-  const meta = metaEl
+  let meta = metaEl
     ? [...metaEl.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean)
     : [];
+  const pagesTotal = (() => {
+    const line = meta.find(l => /^Листов в файле:\s*(\d+)/i.test(l));
+    if (line) return line.match(/^Листов в файле:\s*(\d+)/i)[1];
+    const previewPages = workspaceEl.querySelectorAll('.normative-preview-page').length;
+    if (previewPages > 1) return String(previewPages);
+    return '';
+  })();
+  meta = meta.filter(l => !/^Лист:/i.test(l) && !/^Листов:/i.test(l));
+  if (pagesTotal) {
+    meta.push(`Листов: ${pagesTotal}`);
+  } else {
+    meta.push('Листов: 1');
+  }
   const listEl = workspaceEl.querySelector('.normative-workspace-list');
   const summaryEl =
     workspaceEl.querySelector('.normative-table-summary')
@@ -406,15 +423,16 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   let summary = summaryEl ? summaryEl.textContent.replace(/\s+/g, ' ').trim() : '';
   if (!summary) {
     const m = (workspaceEl.innerText || '').match(
-      /Всего в документе:\s*\d+;\s*найдено в ИПС:\s*\d+;\s*актуально:\s*\d+/i
+      /Всего в документе:\s*\d+;\s*найдено в (?:ИПС|Стройдок):\s*\d+;\s*актуально:\s*\d+/i
     );
     if (m) summary = m[0].replace(/\s+/g, ' ').trim();
   }
   if (!summary && rows.length) {
     const found = rows.filter(r => r.cells[2] && r.cells[2].href).length;
     const active = rows.filter(r => /актуален/i.test((r.cells[5] && r.cells[5].text) || '')).length;
-    summary = `Всего в документе: ${rows.length}; найдено в ИПС: ${found}; актуально: ${active}`;
+    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${found}; актуально: ${active}`;
   }
+  summary = summary.replace(/ИПС/gi, 'Стройдок');
   return {
     title: 'Таблица нормативов (ГОСТ/СП/СН и др.)',
     filename: `${filenameText.replace(/\.[^.]+$/, '')}-normatives.pdf`,
@@ -422,7 +440,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     summary,
     headers,
     rows,
-    widths: [14, 66, 18, 20, 20, 28],
+    widths: [15, 76, 28, 24, 24, 32],
   };
 }
 
@@ -492,8 +510,20 @@ function ensureNormativeTablePdfDownloads(root) {
 }
 
 /** marked не парсит ** внутри HTML — починка уже отрисованного ответа (текущий чат). */
+function unwrapNormativeTableCopy(root) {
+  if (!root) return;
+  root.querySelectorAll('.normative-table-container').forEach(container => {
+    const outer = container.querySelector(':scope > .table-outer');
+    if (!outer) return;
+    const table = outer.querySelector('table');
+    if (table) container.appendChild(table);
+    outer.remove();
+  });
+}
+
 function beautifyNormativeHtml(root) {
   if (!root) return;
+  unwrapNormativeTableCopy(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -521,7 +551,60 @@ function beautifyNormativeHtml(root) {
     }
   });
 
+  root.querySelectorAll('.normative-workspace').forEach(workspace => {
+    workspace.querySelectorAll('.normative-table-container thead th:nth-child(3)').forEach(th => {
+      th.textContent = 'Стройдок';
+    });
+    workspace.querySelectorAll('.normative-table-container tbody td:nth-child(3) a.stn-link').forEach(a => {
+      a.textContent = 'Стройдок';
+    });
+    workspace.querySelectorAll('.normative-table-summary').forEach(el => {
+      el.textContent = (el.textContent || '').replace(/ИПС/gi, 'Стройдок');
+    });
+  });
+
+  root.querySelectorAll('.pdf-preview-container').forEach(box => {
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+    bindPreviewResizeObserver(box);
+  });
+  root.querySelectorAll('.pdf-preview-img').forEach(img => {
+    if (!img.dataset.fitBound) {
+      img.dataset.fitBound = '1';
+      img.addEventListener('load', () => fitPreviewImage(img));
+    }
+    fitPreviewImage(img);
+  });
+
   ensureNormativeTablePdfDownloads(root);
+}
+
+function fitPreviewImage(img) {
+  if (!img) return;
+  const box = img.closest('.pdf-preview-container');
+  if (!box) return;
+
+  const userScale = Number(img.dataset.scale || '1');
+  img.style.width = '';
+  img.style.height = '';
+  img.style.maxWidth = '';
+  img.style.maxHeight = '';
+  img.style.objectFit = '';
+  img.style.transform = userScale === 1 ? 'none' : `scale(${userScale})`;
+  box.style.overflow = userScale > 1.01 ? 'auto' : 'hidden';
+  box.scrollTop = 0;
+  box.scrollLeft = 0;
+}
+
+const _previewResizeObservers = new WeakMap();
+
+function bindPreviewResizeObserver(box) {
+  if (!box || _previewResizeObservers.has(box)) return;
+  const img = box.querySelector('.pdf-preview-img');
+  if (!img) return;
+  const ro = new ResizeObserver(() => fitPreviewImage(img));
+  ro.observe(box);
+  _previewResizeObservers.set(box, ro);
 }
 
 function renderAssistantMarkdown(md) {
@@ -1246,6 +1329,7 @@ window.addEventListener('resize', () => {
     else expandNav();
     _wasSmallViewport = isSmall;
   }
+  document.querySelectorAll('.pdf-preview-img').forEach(fitPreviewImage);
 });
 
 // ── delete all chats ──────────────────────────────────────────────────────────
@@ -1307,6 +1391,17 @@ function showNormativePreviewPage(groupId, pageNo) {
     const idx = pages.indexOf(target) + 1;
     label.textContent = `${idx} / ${pages.length} · лист ${target.dataset.page}`;
   }
+  const box = target.querySelector('.pdf-preview-container');
+  if (box) {
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+  }
+  const img = target.querySelector('.pdf-preview-img');
+  if (img) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitPreviewImage(img));
+    });
+  }
   return true;
 }
 
@@ -1331,7 +1426,7 @@ document.addEventListener('click', (e) => {
     if (action === 'out') next = Math.max(0.5, current - 0.2);
     if (action === 'reset') next = 1;
     img.dataset.scale = String(next);
-    img.style.transform = `scale(${next})`;
+    fitPreviewImage(img);
     return;
   }
 

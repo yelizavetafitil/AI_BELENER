@@ -1076,6 +1076,8 @@ def normative_refs_to_markdown(
     meta: list[str] = []
     if filename:
         meta.append(f"<p><strong>Файл:</strong> {filename}</p>")
+    if page_count > 0:
+        meta.append(f"<p><strong>Листов:</strong> {page_count}</p>")
     if page_count > 1:
         proc = pages_processed or page_count
         note = f"<strong>Листов в файле:</strong> {page_count}"
@@ -1123,7 +1125,7 @@ def normative_refs_to_markdown(
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
         lines.append("<thead><tr>")
-        lines.append("<th>Тип</th><th>Обозначение</th><th>ИПС</th><th>Введен</th><th>Отменен</th><th>Статус</th>")
+        lines.append("<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>Введен</th><th>Отменен</th><th>Статус</th>")
         lines.append("</tr></thead>")
         lines.append("<tbody>")
 
@@ -1171,7 +1173,7 @@ def normative_refs_to_markdown(
                 if found and doc_id:
                     ips_link = (
                         f'<a class="stn-link" href="https://normy.stn.by/ips.php?{doc_id}" '
-                        f'target="_blank">Открыть</a>'
+                        f'target="_blank">Стройдок</a>'
                     )
 
                 if status == "актуален":
@@ -1220,7 +1222,7 @@ def normative_refs_to_markdown(
             if (c.status if hasattr(c, "status") else c.get("status")) == "актуален"
         )
         lines.append(
-            f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в ИПС: {found_ips}; '
+            f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
             f"актуально: {active}</em></p>"
         )
         lines.append("")

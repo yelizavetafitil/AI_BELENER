@@ -589,14 +589,16 @@ def extract_document_tiles(
     cap = tile_ocr_max_pages() if max_pages is None else max_pages
     pages_to_scan = min(total_pages, cap) if cap and cap > 0 else total_pages
 
-    budget = ocr_budget_for_gost_check(pipeline_deadline=pipeline_deadline, page_count=pages_to_scan)
-    if doc is not None:
-        from belener.config import normative_ocr_budget_sec
+    from belener.config import normative_ocr_budget_sec, stn_batch_budget_sec
 
-        budget = min(budget, normative_ocr_budget_sec(pages_to_scan, doc=doc))
+    ocr_cap = normative_ocr_budget_sec(pages_to_scan, doc=doc)
+    budget = min(ocr_budget_for_gost_check(pipeline_deadline=pipeline_deadline, page_count=pages_to_scan), ocr_cap)
     deadline = t0 + budget
     if pipeline_deadline is not None:
-        deadline = min(deadline, pipeline_deadline)
+        stn_tail = min(50.0, stn_batch_budget_sec())
+        pipeline_ocr_end = pipeline_deadline - stn_tail
+        budget = min(ocr_cap, pipeline_ocr_end - time.monotonic())
+        deadline = min(t0 + budget, pipeline_ocr_end)
     dpi = tile_ocr_dpi_for_pages(pages_to_scan)
     overlap = tile_ocr_overlap_frac()
     cols, rows = tile_grid_for_page_count(pages_to_scan)
@@ -638,6 +640,16 @@ def extract_document_tiles(
             budget_exhausted = True
             log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
             break
+        if pages_to_scan > 12 and _page_has_usable_text(doc, i):
+            layer_text = (doc[i].get_text("text") or "").strip()
+            if len(layer_text) >= 120:
+                pages_processed += 1
+                page_tiles.append([layer_text])
+                page_preview_words.append(doc[i].get_text("words") or [])
+                page_tile_zones.append([])
+                if layer_text not in all_sources:
+                    all_sources.append(layer_text)
+                continue
         page_rect = doc[i].rect
         page_jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap)
         page_supps = supplements_for_page_scan(page_rect, pages_to_scan)
@@ -648,6 +660,9 @@ def extract_document_tiles(
         use_preview_words = pages_to_scan <= 12
         pw: list = []
         zs: list = []
+        page_force_ocr = force_ocr
+        if pages_to_scan > 12 and _page_has_usable_text(doc, i):
+            page_force_ocr = False
         chunks, page_done, page_expected = extract_page_tiles(
             doc,
             i,
@@ -657,7 +672,7 @@ def extract_document_tiles(
             overlap_frac=overlap,
             cols=cols,
             rows=rows,
-            force_ocr=force_ocr,
+            force_ocr=page_force_ocr,
             document_pages=pages_to_scan,
             word_sink=pw if use_preview_words else None,
             zone_sink=zs if use_preview_words else None,
