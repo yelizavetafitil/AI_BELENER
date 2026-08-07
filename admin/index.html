@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ — БелнипиAI</title>
+  <link rel="icon" type="image/png" href="/ico.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=26">
+  <link rel="stylesheet" href="/static/admin.css?v=4">
+</head>
+<body>
+<div class="shell admin-shell">
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <a class="brand" href="/">
+        <img src="/ico.png" alt="" class="brand-icon">
+        <div class="brand-text">
+          <span class="brand-name">БелнипиAI</span>
+          <span class="brand-tag">Администрирование</span>
+        </div>
+      </a>
+    </div>
+    <div class="topbar-right">
+      <span class="admin-user-label" id="admin-user-label"></span>
+      <a class="btn btn-ghost btn-sm" href="/">← К приложению</a>
+      <button class="btn btn-ghost btn-sm" id="btn-logout" hidden>Выйти</button>
+    </div>
+  </header>
+
+  <main class="admin-main" id="admin-app">
+    <div class="admin-loading">Загрузка…</div>
+  </main>
+</div>
+<script src="/static/admin.js?v=9"></script>
+</body>
+</html>

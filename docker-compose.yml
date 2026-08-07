@@ -68,6 +68,7 @@ services:
       - ./belener:/app/belener:ro
       - ./app.py:/app/app.py:ro
       - ./index.html:/app/index.html:ro
+      - ./admin:/app/admin:ro
       - ./static:/app/static:ro
       - ./scripts:/app/scripts:ro
       - ./scan:/app/scan:ro

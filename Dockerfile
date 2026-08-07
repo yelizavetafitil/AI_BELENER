@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py schema.sql index.html ./
 COPY belener ./belener
+COPY admin ./admin
 COPY scripts ./scripts
 COPY static ./static
 COPY *.png ./

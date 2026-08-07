@@ -969,6 +969,12 @@ _client: StnClient | None = None
 _client_lock = threading.Lock()
 
 
+def reset_stn_client() -> None:
+    global _client
+    with _client_lock:
+        _client = None
+
+
 def _default_client() -> StnClient:
     global _client
     if _client is not None:

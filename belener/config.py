@@ -1101,14 +1101,62 @@ def stn_lookup_enabled() -> bool:
 
 
 def stn_base_url() -> str:
+    try:
+        from belener.integration_store import get_stn_credentials
+
+        creds = get_stn_credentials()
+        if creds.get("base_url"):
+            return creds["base_url"].rstrip("/")
+    except Exception:
+        pass
+    try:
+        from belener.settings_store import get_setting
+
+        db = get_setting("stn.base_url")
+        if db:
+            return db.rstrip("/")
+    except Exception:
+        pass
     return (os.environ.get("PDF_STN_BASE_URL") or "https://normy.stn.by").strip().rstrip("/")
 
 
 def stn_login() -> str:
+    try:
+        from belener.integration_store import get_stn_credentials
+
+        creds = get_stn_credentials()
+        if creds.get("login"):
+            return creds["login"]
+    except Exception:
+        pass
+    try:
+        from belener.settings_store import get_setting
+
+        db = get_setting("stn.login")
+        if db:
+            return db
+    except Exception:
+        pass
     return (os.environ.get("PDF_STN_LOGIN") or os.environ.get("STN_LOGIN") or "").strip()
 
 
 def stn_password() -> str:
+    try:
+        from belener.integration_store import get_stn_credentials
+
+        creds = get_stn_credentials()
+        if creds.get("password"):
+            return creds["password"]
+    except Exception:
+        pass
+    try:
+        from belener.settings_store import get_setting
+
+        db = get_setting("stn.password")
+        if db:
+            return db
+    except Exception:
+        pass
     return (os.environ.get("PDF_STN_PASSWORD") or os.environ.get("STN_PASSWORD") or "").strip()
 
 

@@ -808,7 +808,7 @@ async function loadSystemStatus() {
     } else if (!stn.configured) {
       banner.hidden = false;
       banner.className = 'system-banner warn';
-      banner.textContent = 'STN включён, но логин и пароль не указаны в .env. Список нормативов будет найден, актуальность может быть недоступна.';
+      banner.textContent = 'STN включён, но логин и пароль не настроены (админка → Интеграции или .env). Актуальность может быть недоступна.';
     } else {
       banner.hidden = false;
       banner.className = 'system-banner ok';

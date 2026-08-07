@@ -11,6 +11,7 @@ import tempfile
 import uuid
 import threading
 import urllib.request
+from datetime import timedelta
 from flask import Flask, request, Response, send_file, send_from_directory, stream_with_context, session, redirect, jsonify
 import psycopg2
 import psycopg2.extras
@@ -31,7 +32,8 @@ app.config.update(
     SESSION_COOKIE_NAME='belnipiai_session',
     SESSION_COOKIE_PATH='/',
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax'
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
 )
 
 MODEL_DEFAULT = os.environ.get("MODEL_DEFAULT", "gemma3:4b")
@@ -771,6 +773,21 @@ def init_db():
         with conn.cursor() as cur:
             cur.execute(open(schema).read())
         conn.commit()
+    from belener.integration_store import bind_db_getter as bind_integrations, migrate_legacy_stn
+    from belener.settings_store import bind_db_getter, migrate_env_if_empty
+
+    bind_db_getter(get_db)
+    bind_integrations(get_db)
+    try:
+        migrate_legacy_stn()
+        migrate_env_if_empty()
+    except Exception as e:
+        app.logger.warning("settings migrate skipped: %s", e)
+
+
+from belener.admin import admin_bp
+
+app.register_blueprint(admin_bp, url_prefix="/admin")
 
 
 # ── управление контекстом ─────────────────────────────────────────────────────
@@ -1513,10 +1530,10 @@ def name_image():
 
 @app.route("/api/status")
 def api_status():
-    from belener.config import stn_lookup_enabled
+    from belener.config import stn_login, stn_lookup_enabled, stn_password
 
-    login = (os.environ.get("PDF_STN_LOGIN") or "").strip()
-    password = (os.environ.get("PDF_STN_PASSWORD") or "").strip()
+    login = stn_login()
+    password = stn_password()
     return jsonify(
         {
             "gost_only": True,
