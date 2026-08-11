@@ -1698,42 +1698,43 @@ body {
 
 .normative-table-container table {
   width: 100%;
-  min-width: 0;
+  min-width: 760px;
   border-collapse: collapse;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .msg.assistant .msg-content .normative-table-container table {
   width: 100%;
-  min-width: 0;
+  min-width: 760px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .normative-table-container th,
 .normative-table-container td {
-  padding: 8px 10px;
+  padding: 6px 6px;
   border-bottom: 1px solid var(--border);
 }
 
 .msg.assistant .msg-content .normative-table-container th,
 .msg.assistant .msg-content .normative-table-container td {
-  padding: 8px 10px;
+  padding: 6px 6px;
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .normative-table-container th:first-child,
 .normative-table-container td:first-child,
 .msg.assistant .msg-content .normative-table-container th:first-child,
 .msg.assistant .msg-content .normative-table-container td:first-child {
-  padding-left: 12px;
+  padding-left: 8px;
 }
 
 .normative-table-container th:last-child,
 .normative-table-container td:last-child,
 .msg.assistant .msg-content .normative-table-container th:last-child,
 .msg.assistant .msg-content .normative-table-container td:last-child {
-  padding-right: 12px;
+  padding-right: 8px;
 }
 
 .normative-table-container th,
@@ -1743,26 +1744,61 @@ body {
   background: var(--accent);
   color: #fff;
   z-index: 10;
-  white-space: nowrap;
-  font-size: 12px;
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 11px;
   font-weight: 700;
   border-bottom: 1px solid rgba(15, 118, 110, 0.35);
 }
 
 .normative-table-container td {
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
 }
 
-.normative-table-container td:nth-child(6) {
+/* Тип */
+.normative-table-container th:nth-child(1),
+.normative-table-container td:nth-child(1) {
+  width: 10%;
+}
+
+/* Обозначение — уже, чтобы даты влезали в одну строку */
+.normative-table-container th:nth-child(2),
+.normative-table-container td:nth-child(2) {
+  width: 14%;
   white-space: normal;
-  min-width: 110px;
-  max-width: 220px;
+  word-break: break-word;
 }
 
+/* Стройдок / ТНПА */
 .normative-table-container th:nth-child(3),
-.normative-table-container td:nth-child(3) {
-  min-width: 96px;
+.normative-table-container td:nth-child(3),
+.normative-table-container th:nth-child(4),
+.normative-table-container td:nth-child(4) {
+  width: 9%;
+  text-align: center;
+}
+
+/* Даты: в одну строку */
+.normative-table-container th:nth-child(5),
+.normative-table-container td:nth-child(5),
+.normative-table-container th:nth-child(6),
+.normative-table-container td:nth-child(6),
+.normative-table-container th:nth-child(7),
+.normative-table-container td:nth-child(7),
+.normative-table-container th:nth-child(8),
+.normative-table-container td:nth-child(8) {
+  width: 9.5%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Статус */
+.normative-table-container th:nth-child(9),
+.normative-table-container td:nth-child(9) {
+  width: 12%;
+  white-space: normal;
 }
 
 .normative-table-container tr.row-active td { background-color: rgba(40, 167, 69, 0.16) !important; }

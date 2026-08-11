@@ -361,12 +361,20 @@ def admin_delete_site(site_id: str):
 def admin_test_site(site_id: str):
     from belener.integration_store import get_site, resolve_site_credentials
     from belener.stn_lookup import StnClient, reset_stn_client
+    from belener.tnpa_lookup import test_tnpa_connection
 
     site = get_site(site_id)
     if not site:
         return jsonify({"error": "Сайт не найден"}), 404
     if not site.get("can_test"):
-        return jsonify({"error": "Проверка доступна только для Стройдок (normy.stn.by)"}), 400
+        return jsonify({"error": "Проверка доступна только для Стройдок и ТНПА"}), 400
+
+    kind = (site.get("kind") or "").strip().lower()
+    site_url = (site.get("site_url") or "").strip()
+    if kind == "tnpa" or "tnpa.by" in site_url.casefold():
+        ok, message = test_tnpa_connection(base_url=site_url or None)
+        return jsonify({"success": ok, "message": message}), (200 if ok else 400)
+
     creds = resolve_site_credentials(site_id)
     if not creds or not creds.get("login") or not creds.get("password"):
         return jsonify({"error": "Укажите логин и пароль"}), 400

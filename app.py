@@ -419,9 +419,11 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         return
 
     from belener.stn_lookup import refine_and_check_normative_refs
+    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa
     from belener.normative_extract import generate_pdf_preview_pages_with_highlights
 
     stn_checks = []
+    tnpa_checks = []
     preview_box: dict = {"pages": None}
     post_done = threading.Event()
     stn_done = threading.Event()
@@ -472,6 +474,15 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
                 result["normative_refs"] = refined
                 result["stn_checks"] = [c.to_dict() for c in checks]
                 stn_checks.extend(checks)
+
+                # Сверяем актуальность дополнительно по ТНПА
+                _, tnpa_result = refine_and_check_normative_refs_tnpa(
+                    refined,
+                    today=validity_date,
+                    deadline=stn_deadline,
+                )
+                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
+                tnpa_checks.extend(tnpa_result)
             except Exception as e:
                 app.logger.exception("STN batch failed file=%s", filename)
                 result["stn_error"] = _ollama_user_message(e)
@@ -498,6 +509,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
+        tnpa_checks=tnpa_checks,
         check_date=validity_date,
         source_path=path,
         preview_pages=preview_box.get("pages"),
@@ -523,6 +535,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         normative_result_to_markdown,
     )
     from belener.stn_lookup import refine_and_check_normative_refs
+    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa
 
     validity_date = check_date or date.today()
     pipeline_t0 = time.monotonic()
@@ -557,6 +570,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     result = box["result"] or {}
     include_ctx = "контекст" in (question or "").casefold()
     stn_checks = []
+    tnpa_checks = []
     preview_box: dict = {"pages": None}
     post_done = threading.Event()
     stn_done = threading.Event()
@@ -601,6 +615,14 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
                 result["normative_refs"] = refined
                 result["stn_checks"] = [c.to_dict() for c in checks]
                 stn_checks.extend(checks)
+
+                _, tnpa_result = refine_and_check_normative_refs_tnpa(
+                    refined,
+                    today=validity_date,
+                    deadline=stn_deadline,
+                )
+                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
+                tnpa_checks.extend(tnpa_result)
             except Exception as e:
                 app.logger.exception("STN batch failed file=%s", filename)
                 result["stn_error"] = _ollama_user_message(e)
@@ -625,6 +647,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
+        tnpa_checks=tnpa_checks,
         check_date=validity_date,
         source_path=path,
         preview_pages=preview_box.get("pages"),

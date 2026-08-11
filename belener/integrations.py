@@ -31,6 +31,20 @@ INTEGRATIONS: list[dict[str, Any]] = [
             },
         ],
     },
+    {
+        "id": "tnpa",
+        "name": "ТНПА (tnpa.by)",
+        "description": "Проверка актуальности нормативов в Национальном фонде ТНПА.",
+        "prefix": "tnpa",
+        "fields": [
+            {
+                "key": "base_url",
+                "label": "Адрес портала",
+                "secret": False,
+                "placeholder": "https://tnpa.by",
+            },
+        ],
+    },
 ]
 
 

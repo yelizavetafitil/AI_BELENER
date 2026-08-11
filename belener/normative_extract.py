@@ -1059,6 +1059,7 @@ def normative_refs_to_markdown(
     pipeline: str = "",
     include_context: bool = False,
     stn_checks: list | None = None,
+    tnpa_checks: list | None = None,
     check_date: date | None = None,
     stn_error: str = "",
     page_count: int = 0,
@@ -1108,6 +1109,8 @@ def normative_refs_to_markdown(
         lines.append("")
     else:
         checks_map = {}
+        tnpa_checks_map = {}
+        tnpa_base = "https://tnpa.by"
         if stn_checks:
             for c in stn_checks:
                 try:
@@ -1122,10 +1125,39 @@ def normative_refs_to_markdown(
                 except Exception:
                     pass
 
+        if tnpa_checks:
+            try:
+                from belener.tnpa_lookup import tnpa_base_url
+
+                tnpa_base = tnpa_base_url().rstrip("/")
+            except Exception:
+                tnpa_base = "https://tnpa.by"
+            for c in tnpa_checks:
+                try:
+                    ref_val = c.ref if hasattr(c, "ref") else c.get("ref")
+                    kind_val = c.kind if hasattr(c, "kind") else c.get("kind")
+                    tnpa_checks_map[ref_val] = c
+                    from belener.stn_lookup import _norm_code, search_query
+
+                    norm_key = _norm_code(search_query(str(kind_val or ""), str(ref_val or "")))
+                    if norm_key:
+                        tnpa_checks_map[norm_key] = c
+                except Exception:
+                    pass
+
+        found_ips = 0
+        found_tnpa = 0
+        active_green = 0
+
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
         lines.append("<thead><tr>")
-        lines.append("<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>Введен</th><th>Отменен</th><th>Статус</th>")
+        lines.append(
+            "<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
+            "<th>Введен<br>Стройдок</th><th>Отменен<br>Стройдок</th>"
+            "<th>Введен<br>ТНПА</th><th>Отменен<br>ТНПА</th>"
+            "<th>Статус</th>"
+        )
         lines.append("</tr></thead>")
         lines.append("<tbody>")
 
@@ -1138,52 +1170,82 @@ def normative_refs_to_markdown(
 
                 c = checks_map.get(_norm_code(search_query(kind, ref)))
 
+            c_tnpa = tnpa_checks_map.get(ref)
+            if c_tnpa is None and kind and ref:
+                from belener.stn_lookup import _norm_code, search_query
+
+                c_tnpa = tnpa_checks_map.get(_norm_code(search_query(kind, ref)))
+
             ips_link = "—"
-            intro = "—"
-            cancel = "—"
-            status = "—"
+            tnpa_link = "—"
+
+            stn_intro = "—"
+            stn_cancel = "—"
+            tnpa_intro = "—"
+            tnpa_cancel = "—"
+
             row_class = ""
+            status_html = "проверка вручную"
+
+            stn_found = False
+            tnpa_found = False
+            stn_state = None  # "актуален" | "отменён"
+            tnpa_state = None
 
             if c:
-                found = c.found if hasattr(c, "found") else str(c.get("found")) == "1"
-                doc_id = c.doc_id if hasattr(c, "doc_id") else c.get("doc_id")
-                intro = c.intro_date if hasattr(c, "intro_date") else c.get("intro_date") or "—"
-                cancel = c.cancel_date if hasattr(c, "cancel_date") else c.get("cancel_date") or "—"
-                status_val = c.status if hasattr(c, "status") else c.get("status") or "—"
-                error_val = c.error if hasattr(c, "error") else c.get("error")
+                stn_found = bool(c.found) if hasattr(c, "found") else str(c.get("found")) == "1"
+                stn_intro = c.intro_date if hasattr(c, "intro_date") else c.get("intro_date") or "—"
+                stn_cancel = c.cancel_date if hasattr(c, "cancel_date") else c.get("cancel_date") or "—"
+                stn_status_val = c.status if hasattr(c, "status") else c.get("status") or ""
+                if stn_status_val == "актуален":
+                    stn_state = "актуален"
+                elif stn_status_val == "отменён":
+                    stn_state = "отменён"
+                if stn_found and getattr(c, "doc_id", None):
+                    doc_id = c.doc_id if hasattr(c, "doc_id") else c.get("doc_id")
+                    if doc_id:
+                        ips_link = (
+                            f'<a class="stn-link stn-link-stn" href="https://normy.stn.by/ips.php?{doc_id}" '
+                            f'target="_blank">Стройдок</a>'
+                        )
 
-                if error_val and status_val == "ошибка проверки":
-                    status = f"{status_val} ({error_val[:60]})"
-                elif not found and str(status_val).startswith("пропущено"):
-                    status = "не проверено (время)"
-                elif not found and (
-                    "IPS" in str(status_val)
-                    or "вход" in str(status_val).casefold()
-                    or "логин" in str(status_val).casefold()
-                    or "пароль" in str(status_val).casefold()
-                ):
-                    status = status_val
-                elif not found and (
-                    status_val in ("нет в ИПС", "не в фонде STN")
-                ):
-                    status = "не найдено"
-                else:
-                    status = status_val
+            if c_tnpa:
+                tnpa_found = bool(c_tnpa.found) if hasattr(c_tnpa, "found") else str(c_tnpa.get("found")) == "1"
+                tnpa_intro = c_tnpa.intro_date if hasattr(c_tnpa, "intro_date") else c_tnpa.get("intro_date") or "—"
+                tnpa_cancel = c_tnpa.cancel_date if hasattr(c_tnpa, "cancel_date") else c_tnpa.get("cancel_date") or "—"
+                tnpa_status_val = c_tnpa.status if hasattr(c_tnpa, "status") else c_tnpa.get("status") or ""
+                if tnpa_status_val == "актуален":
+                    tnpa_state = "актуален"
+                elif tnpa_status_val == "отменён":
+                    tnpa_state = "отменён"
+                if tnpa_found and getattr(c_tnpa, "doc_id", None):
+                    doc_id_tnpa = c_tnpa.doc_id if hasattr(c_tnpa, "doc_id") else c_tnpa.get("doc_id")
+                    if doc_id_tnpa:
+                        tnpa_link = (
+                            f'<a class="stn-link stn-link-tnpa" '
+                            f'href="{tnpa_base}/#!/DocumentCard/{doc_id_tnpa}" target="_blank">ТНПА</a>'
+                        )
 
-                if found and doc_id:
-                    ips_link = (
-                        f'<a class="stn-link" href="https://normy.stn.by/ips.php?{doc_id}" '
-                        f'target="_blank">Стройдок</a>'
-                    )
+            if stn_found:
+                found_ips += 1
+            if tnpa_found:
+                found_tnpa += 1
 
-                if status == "актуален":
-                    row_class = ' class="row-active"'
-                    status = f"<strong>{status}</strong>"
-                elif status == "отменён":
-                    row_class = ' class="row-canceled"'
-                    status = f"<strong>{status}</strong>"
-                elif status == "заменён":
-                    row_class = ' class="row-replaced"'
+            # Правила цвета/статуса:
+            # - зелёный: и STN, и TNPA актуальны
+            # - красный: и STN, и TNPA отменены
+            # - жёлтый: не совпадает / есть только один источник / статусы разные
+            #   (в т.ч. когда даты на одном из порталов не заполнены)
+            if stn_found and tnpa_found and stn_state == "актуален" and tnpa_state == "актуален":
+                row_class = ' class="row-active"'
+                status_html = "<strong>актуален</strong>"
+                active_green += 1
+            elif stn_found and tnpa_found and stn_state == "отменён" and tnpa_state == "отменён":
+                row_class = ' class="row-canceled"'
+                status_html = "<strong>отменён</strong>"
+            else:
+                row_class = ' class="row-replaced"'
+                status_html = "проверка вручную"
 
             pages_attr = ""
             pages_for_ref = ref_pages.get(str(ref), [])
@@ -1197,7 +1259,12 @@ def normative_refs_to_markdown(
                 pages_attr = f' data-preview-page="{pages_for_ref[0]}" data-preview-pages="{pages_csv}"{title}'
 
             lines.append(f"<tr{row_class}{pages_attr}>")
-            lines.append(f"<td>{kind}</td><td>{ref}</td><td>{ips_link}</td><td>{intro}</td><td>{cancel}</td><td>{status}</td>")
+            lines.append(
+                f"<td>{kind}</td><td>{ref}</td><td>{ips_link}</td><td>{tnpa_link}</td>"
+                f"<td>{stn_intro}</td><td>{stn_cancel}</td>"
+                f"<td>{tnpa_intro}</td><td>{tnpa_cancel}</td>"
+                f"<td>{status_html}</td>"
+            )
             lines.append("</tr>")
 
         lines.append("</tbody></table>")
@@ -1211,19 +1278,9 @@ def normative_refs_to_markdown(
         )
         lines.append("")
 
-        found_ips = sum(
-            1
-            for c in (stn_checks or [])
-            if (c.found if hasattr(c, "found") else str(c.get("found")) == "1")
-        )
-        active = sum(
-            1
-            for c in (stn_checks or [])
-            if (c.status if hasattr(c, "status") else c.get("status")) == "актуален"
-        )
         lines.append(
             f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
-            f"актуально: {active}</em></p>"
+            f"найдено в ТНПА: {found_tnpa}; актуально: {active_green}</em></p>"
         )
         lines.append("")
 
@@ -1322,6 +1379,7 @@ def normative_result_to_markdown(
     *,
     include_context: bool = False,
     stn_checks: list | None = None,
+    tnpa_checks: list | None = None,
     check_date: date | None = None,
     source_path: str = "",
     preview_pages: list[dict[str, Any]] | None = None,
@@ -1329,12 +1387,16 @@ def normative_result_to_markdown(
     checks = stn_checks
     if checks is None:
         checks = result.get("stn_checks")
+    tnpa = tnpa_checks
+    if tnpa is None:
+        tnpa = result.get("tnpa_checks")
     return normative_refs_to_markdown(
         list(result.get("normative_refs") or []),
         filename=str(result.get("filename") or ""),
         pipeline=str(result.get("pipeline") or ""),
         include_context=include_context,
         stn_checks=checks,
+        tnpa_checks=tnpa,
         check_date=check_date,
         stn_error=str(result.get("stn_error") or ""),
         page_count=int(result.get("page_count") or 0),

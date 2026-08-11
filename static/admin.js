@@ -16,11 +16,16 @@
   };
 
   async function api(path, opts) {
+    const timeoutMs = (opts && typeof opts.timeout_ms === "number") ? opts.timeout_ms : 60000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch("/admin/api" + path, {
       headers: { "Content-Type": "application/json", ...(opts && opts.headers) },
       credentials: "same-origin",
+      signal: controller.signal,
       ...opts,
     });
+    clearTimeout(timer);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || data.message || "Ошибка запроса");
     return data;
@@ -37,6 +42,38 @@
     state.message = text;
     state.messageType = type || "ok";
     render();
+  }
+
+  function confirmAdmin(text) {
+    return new Promise(resolve => {
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true">
+          <h3>Подтверждение</h3>
+          <p>${esc(text)}</p>
+          <div class="admin-modal-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-action="cancel">Отмена</button>
+            <button type="button" class="btn btn-primary btn-sm" data-action="ok">Удалить</button>
+          </div>
+        </div>
+      `;
+      overlay.addEventListener("click", e => {
+        if (e.target === overlay) {
+          overlay.remove();
+          resolve(false);
+        }
+      });
+      overlay.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+        overlay.remove();
+        resolve(false);
+      });
+      overlay.querySelector('[data-action="ok"]').addEventListener("click", () => {
+        overlay.remove();
+        resolve(true);
+      });
+      document.body.appendChild(overlay);
+    });
   }
 
   function field(id, label, value, opts) {
@@ -314,7 +351,11 @@
           <div class="admin-card admin-site-card">
             <div class="admin-site-head">
               <h2>${esc(site.name)}</h2>
-              ${site.kind === "stn" ? '<span class="admin-site-tag">Стройдок</span>' : ""}
+              ${site.kind === "stn"
+                ? '<span class="admin-site-tag">Стройдок</span>'
+                : site.kind === "tnpa"
+                  ? '<span class="admin-site-tag">ТНПА</span>'
+                  : ""}
             </div>
             <p class="admin-desc admin-site-url">${esc(site.site_url)}</p>
             <div class="admin-site-meta">
@@ -417,25 +458,37 @@
 
     document.querySelectorAll(".btn-site-delete").forEach(function (btn) {
       btn.addEventListener("click", async function () {
-        if (!confirm("Удалить этот сайт?")) return;
+        if (btn.disabled) return;
+        btn.disabled = true;
+        const ok = await confirmAdmin("Удалить этот сайт?");
+        if (!ok) {
+          btn.disabled = false;
+          return;
+        }
         try {
-          await api("/settings/sites/" + btn.dataset.id, { method: "DELETE", body: "{}" });
+          await api("/settings/sites/" + btn.dataset.id, { method: "DELETE", body: "{}", timeout_ms: 60000 });
           state.sitesEditing = null;
           showMsg("Удалено", "ok");
           await load();
         } catch (e) {
           showMsg(e.message, "err");
+        } finally {
+          btn.disabled = false;
         }
       });
     });
 
     document.querySelectorAll(".btn-site-test").forEach(function (btn) {
       btn.addEventListener("click", async function () {
+        if (btn.disabled) return;
+        btn.disabled = true;
         try {
-          const data = await api("/settings/sites/" + btn.dataset.id + "/test", { method: "POST", body: "{}" });
+          const data = await api("/settings/sites/" + btn.dataset.id + "/test", { method: "POST", body: "{}", timeout_ms: 60000 });
           showMsg(data.message || "OK", "ok");
         } catch (e) {
           showMsg(e.message, "err");
+        } finally {
+          btn.disabled = false;
         }
       });
     });

@@ -394,7 +394,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     cells: [...tr.querySelectorAll('td')].map(td => {
       const a = td.querySelector('a.stn-link[href]');
       return {
-        text: a ? 'Стройдок' : _cellText(td),
+        text: a ? (a.textContent.trim() || _cellText(td)) : _cellText(td),
         href: a ? a.href : '',
         bold: _cellBold(td),
       };
@@ -423,14 +423,15 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   let summary = summaryEl ? summaryEl.textContent.replace(/\s+/g, ' ').trim() : '';
   if (!summary) {
     const m = (workspaceEl.innerText || '').match(
-      /Всего в документе:\s*\d+;\s*найдено в (?:ИПС|Стройдок):\s*\d+;\s*актуально:\s*\d+/i
+      /Всего в документе:\s*\d+;\s*найдено в Стройдок:\s*\d+;\s*найдено в ТНПА:\s*\d+;\s*актуально:\s*\d+/i
     );
     if (m) summary = m[0].replace(/\s+/g, ' ').trim();
   }
   if (!summary && rows.length) {
-    const found = rows.filter(r => r.cells[2] && r.cells[2].href).length;
-    const active = rows.filter(r => /актуален/i.test((r.cells[5] && r.cells[5].text) || '')).length;
-    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${found}; актуально: ${active}`;
+    const foundStn = rows.filter(r => r.cells[2] && r.cells[2].href).length;
+    const foundTnpa = rows.filter(r => r.cells[3] && r.cells[3].href).length;
+    const active = rows.filter(r => /актуален/i.test((r.cells[8] && r.cells[8].text) || '')).length;
+    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn}; найдено в ТНПА: ${foundTnpa}; актуально: ${active}`;
   }
   summary = summary.replace(/ИПС/gi, 'Стройдок');
   return {
@@ -440,7 +441,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     summary,
     headers,
     rows,
-    widths: [15, 76, 28, 24, 24, 32],
+    widths: [20, 40, 24, 22, 28, 28, 26, 26, 36],
   };
 }
 

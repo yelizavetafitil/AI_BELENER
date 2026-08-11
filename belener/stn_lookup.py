@@ -321,14 +321,12 @@ def search_queries(kind: str, ref: str) -> list[str]:
         m_okp = re.search(r"\((\d{5})\)", full) or re.search(r"\((\d{5})\)", ref)
         if m_okp and m_okp.group(1) not in okp_codes:
             okp_codes = (m_okp.group(1),) + okp_codes
-        candidates = [full, num, f"{kind} {num}".strip(), compact, dotted]
+        # Для ТКП важно, чтобы второй вариант запроса содержал код органа (02250 и т.п.).
+        # Это ожидает тест и помогает быстрее находить в STN при OCR-ошибках.
+        candidates = [full]
         for okp in okp_codes:
-            candidates.extend(
-                (
-                    f"{kind} {num} ({okp})",
-                    f"{num} ({okp})",
-                )
-            )
+            candidates.extend((f"{kind} {num} ({okp})", f"{num} ({okp})"))
+        candidates.extend((num, f"{kind} {num}".strip(), compact, dotted))
         for q in candidates:
             q = _clean_stn_query(q)
             if q and q not in out:

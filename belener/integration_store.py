@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 _DB_GETTER = None
 _STN_HOST = re.compile(r"stn\.by", re.I)
+_TNPA_HOST = re.compile(r"tnpa\.by", re.I)
 
 
 def bind_db_getter(getter) -> None:
@@ -69,16 +70,17 @@ def _row_to_dict(row: dict) -> dict[str, Any]:
     kind = row.get("kind") or "generic"
     site_url = str(row.get("site_url") or "")
     is_stn = kind == "stn" or bool(_STN_HOST.search(site_url))
+    is_tnpa = kind == "tnpa" or bool(_TNPA_HOST.search(site_url))
     effective_pwd = pwd if pwd else (_effective_stn_password(site_login, pwd, enc) if is_stn else "")
     return {
         "id": str(row["id"]),
         "name": row.get("name") or "",
         "site_url": site_url,
         "login": site_login,
-        "password_set": bool(effective_pwd) or bool(enc),
-        "password_hint": _mask(pwd or effective_pwd),
+        "password_set": bool(effective_pwd) or (bool(enc) if is_stn else False),
+        "password_hint": _mask(pwd or effective_pwd) if is_stn else "",
         "kind": kind,
-        "can_test": is_stn,
+        "can_test": is_stn or is_tnpa,
     }
 
 
@@ -92,10 +94,12 @@ def _mask(value: str) -> str:
 
 def _detect_kind(site_url: str, kind: str = "") -> str:
     k = (kind or "").strip().lower()
-    if k in ("stn", "generic"):
+    if k in ("stn", "tnpa", "generic"):
         return k
     if _STN_HOST.search(site_url or ""):
         return "stn"
+    if _TNPA_HOST.search(site_url or ""):
+        return "tnpa"
     return "generic"
 
 
@@ -142,6 +146,16 @@ def get_stn_credentials() -> dict[str, str]:
             "password": password,
         }
     return {"base_url": "", "login": "", "password": ""}
+
+
+def get_tnpa_credentials() -> dict[str, str]:
+    """URL tnpa.by из таблицы сайтов или из .env."""
+    for site in list_sites():
+        if site.get("kind") == "tnpa" or _TNPA_HOST.search(site.get("site_url") or ""):
+            base_url = (site.get("site_url") or "").strip().rstrip("/")
+            return {"base_url": base_url or "https://tnpa.by"}
+    base = (os.environ.get("PDF_TNPA_BASE_URL") or "https://tnpa.by").strip().rstrip("/")
+    return {"base_url": base}
 
 
 def _get_site_secrets(site_id: str) -> dict[str, str] | None:

@@ -57,29 +57,32 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
         return ""
     total = len(rows)
     found_ips = 0
+    found_tnpa = 0
     active = 0
     for row in rows:
         cells = row.get("cells") or []
         if len(cells) >= 3 and str(cells[2].get("href") or "").strip():
             found_ips += 1
-        if len(cells) >= 6:
-            status = str(cells[5].get("text") or "").strip().casefold()
+        if len(cells) >= 4 and str(cells[3].get("href") or "").strip():
+            found_tnpa += 1
+        if len(cells) >= 9:
+            status = str(cells[8].get("text") or "").strip().casefold()
             if status == "актуален" or "актуален" in status:
                 active += 1
-    return f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; актуально: {active}"
+    return f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; найдено в ТНПА: {found_tnpa}; актуально: {active}"
 
 
-def _parse_summary(summary: str) -> tuple[str, str, str]:
+def _parse_summary(summary: str) -> tuple[str, str, str, str]:
     import re
 
     m = re.search(
-        r"Всего в документе:\s*(\d+);\s*найдено в (?:ИПС|Стройдок):\s*(\d+);\s*актуально:\s*(\d+)",
+        r"Всего в документе:\s*(\d+);\s*найдено в (?:ИПС|Стройдок):\s*(\d+);\s*найдено в ТНПА:\s*(\d+);\s*актуально:\s*(\d+)",
         summary or "",
         re.I,
     )
     if not m:
-        return "", "", ""
-    return m.group(1), m.group(2), m.group(3)
+        return "", "", "", ""
+    return m.group(1), m.group(2), m.group(3), m.group(4)
 
 
 def _sheet_from_meta(meta_lines: list[str]) -> str:
@@ -207,7 +210,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         summary = _compute_summary_from_rows(payload)
 
     story = []
-    total, found, active = _parse_summary(summary)
+    total, found_stn, found_tnpa, active = _parse_summary(summary)
     file_name = next((x.split(":", 1)[1].strip() for x in meta_lines if x.startswith("Файл:")), "")
     sheet = _sheet_from_meta(meta_lines)
     check_date = next((x.split(":", 1)[1].strip() for x in meta_lines if x.startswith("Дата проверки актуальности:")), "")
@@ -258,29 +261,33 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     story.append(info_table)
     story.append(Spacer(1, 4))
 
-    stat_w1 = avail_w / 3.0
-    stat_w2 = avail_w / 3.0
-    stat_w3 = avail_w - stat_w1 - stat_w2
+    stat_w1 = avail_w / 4.0
+    stat_w2 = avail_w / 4.0
+    stat_w3 = avail_w / 4.0
+    stat_w4 = avail_w - stat_w1 - stat_w2 - stat_w3
     stats_table = Table(
         [
             [
                 Paragraph(_esc("Найдено"), card_label_style),
                 Paragraph(_esc("В Стройдок"), card_label_style),
+                Paragraph(_esc("В ТНПА"), card_label_style),
                 Paragraph(_esc("Актуальны"), card_label_style),
             ],
             [
                 Paragraph(f"<b>{_esc(total or '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(found or '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(found_stn or '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(found_tnpa or '—')}</b>", card_value_style),
                 Paragraph(f"<b>{_esc(active or '—')}</b>", card_value_style),
             ],
         ],
-        colWidths=[stat_w1, stat_w2, stat_w3],
+        colWidths=[stat_w1, stat_w2, stat_w3, stat_w4],
     )
     stats_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), c_surface),
         ("BOX", (0, 0), (-1, -1), 0.5, c_border),
         ("LINEAFTER", (0, 0), (0, -1), 0.5, c_border),
         ("LINEAFTER", (1, 0), (1, -1), 0.5, c_border),
+        ("LINEAFTER", (2, 0), (2, -1), 0.5, c_border),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), pad_h),
@@ -308,18 +315,22 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             href = str(cell.get("href") or "").strip()
             if href:
                 text = f'<link href="{_esc(href)}" color="#1d4ed8">{text}</link>'
-            elif col_idx in (3, 4) and text not in ("—", "&mdash;"):
+            elif col_idx in (4, 5, 6, 7) and text not in ("—", "&mdash;"):
                 text = f"<nobr>{text}</nobr>"
             cells.append(Paragraph(text, cell_style))
         table_data.append(cells)
         if fill:
             row_fills.append((idx, fill))
 
-    # Ширины: даты фиксированы, лишнее место — в «Обозначение» и «Статус»
-    widths_mm = [15.0, 76.0, 28.0, 24.0, 24.0, 32.0]
+    # Ширины: даты шире (чтобы dd.mm.yyyy влезала), «Обозначение» уже
+    widths_mm = [20.0, 40.0, 24.0, 22.0, 28.0, 28.0, 26.0, 26.0, 36.0]
     extra_mm = max(0.0, (avail_w / mm) - sum(widths_mm))
-    widths_mm[1] += extra_mm * 0.72
-    widths_mm[5] += extra_mm * 0.28
+    widths_mm[1] += extra_mm * 0.35
+    widths_mm[4] += extra_mm * 0.12
+    widths_mm[5] += extra_mm * 0.12
+    widths_mm[6] += extra_mm * 0.12
+    widths_mm[7] += extra_mm * 0.12
+    widths_mm[8] += extra_mm * 0.17
     col_widths = [w * mm for w in widths_mm]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     style_cmds: list[tuple[Any, ...]] = [
