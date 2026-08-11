@@ -154,17 +154,25 @@ def _pick_best_tnpa_match(kind: str, ref: str, rows: list[dict]) -> dict | None:
     return best if best_score >= 20 else None
 
 
+def _tnpa_cancel_raw(row: dict) -> object:
+    """Дата отмены/окончания действия на tnpa.by — только DTTK.
+
+    DSMSOS нельзя брать как отмену: у действующих («Взамен» и др.)
+    оно часто равно DTTN (дате введения), из‑за чего в таблице
+    появлялось «Отменен = Введен».
+    """
+    return row.get("DTTK")
+
+
 def _tnpa_status(row: dict, *, today: date | None = None) -> str:
     intro = _parse_tnpa_date(row.get("DTTN"))
-    cancel = _parse_tnpa_date(row.get("DTTK"))
-    if cancel is None and row.get("DSMSOS"):
-        cancel = _parse_tnpa_date(row.get("DSMSOS"))
+    cancel = _parse_tnpa_date(_tnpa_cancel_raw(row))
 
-    # PRIZN_BD=0 часто встречается даже когда дата отмены не заполнена.
-    # Чтобы не получать "отменён" при пустом "Отменен", отмену считаем
-    # только при наличии распарсенной даты отмены.
-    if str(row.get("PRIZN_BD") or "").strip() == "0" and cancel is None:
-        return "неизвестно"
+    # PRIZN_BD=0 — отменён в фонде; без DTTK не подставляем фейковую дату.
+    if str(row.get("PRIZN_BD") or "").strip() == "0":
+        if cancel is not None:
+            return validity_status(intro, cancel, today=today)
+        return "отменён"
 
     return validity_status(intro, cancel, today=today)
 
@@ -222,7 +230,7 @@ def lookup_one_tnpa(
         out.stn_code = code
         out.stn_name = str(match.get("NND") or "")
         out.intro_date = _format_tnpa_date(match.get("DTTN"))
-        out.cancel_date = _format_tnpa_date(match.get("DTTK") or match.get("DSMSOS"))
+        out.cancel_date = _format_tnpa_date(_tnpa_cancel_raw(match))
         out.status = _tnpa_status(match, today=today)
         out.query = "; ".join(tried[:4])
         log.info("TNPA lookup %s %s -> %s in %.1fs", kind, ref, out.status, time.monotonic() - t0)

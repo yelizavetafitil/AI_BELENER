@@ -25,14 +25,42 @@ def test_tnpa_designation():
 
 
 def test_tnpa_status_cancelled():
-    row = {"PRIZN_BD": "0", "DTTN": "1991-01-01", "DTTK": None}
-    # PRIZN_BD может быть 0 без даты отмены — тогда статус не считаем отменённым
-    assert _tnpa_status(row, today=date(2026, 1, 1)) == "неизвестно"
+    row = {"PRIZN_BD": "0", "DTTN": "1991-01-01", "DTTK": "2020-01-01"}
+    assert _tnpa_status(row, today=date(2026, 1, 1)) == "отменён"
+
+
+def test_tnpa_status_cancelled_without_dttk():
+    row = {"PRIZN_BD": "0", "DTTN": "1991-01-01", "DTTK": None, "DSMSOS": "1991-01-01"}
+    assert _tnpa_status(row, today=date(2026, 1, 1)) == "отменён"
 
 
 def test_tnpa_status_active():
     row = {"PRIZN_BD": "1", "DTTN": "1991-01-01", "DTTK": None}
     assert _tnpa_status(row, today=date(2026, 1, 1)) == "актуален"
+
+
+def test_tnpa_ignores_dsmsos_same_as_intro(monkeypatch):
+    """DSMSOS=DTTN у действующих («Взамен») не должно попадать в Отменен."""
+    monkeypatch.setenv("PDF_STN_LOOKUP", "1")
+    rows = [
+        {
+            "Number": "СТБ 2221-2020",
+            "OND": "",
+            "NND": "Смеси",
+            "RN": "494639",
+            "IDGLOBAL": "627186",
+            "DTTN": "2021-04-01 00:00:00.000",
+            "DTTK": None,
+            "DSMSOS": "2021-04-01 00:00:00.000",
+            "PRIZN": "2",
+            "PRIZN_BD": "1",
+        }
+    ]
+    out = lookup_one_tnpa("СТБ", "СТБ 2221-2020", client=_FakeTnpaClient(rows), today=date(2026, 8, 11))
+    assert out.found is True
+    assert out.intro_date == "01.04.2021"
+    assert out.cancel_date == ""
+    assert out.status == "актуален"
 
 
 def test_pick_best_tnpa_match():
