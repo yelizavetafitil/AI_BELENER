@@ -300,11 +300,23 @@ function buildNormativeTablePdfDocDefinition(workspaceEl) {
   const metaEl = workspaceEl.querySelector('.normative-workspace-meta');
   const metaText = metaEl ? metaEl.textContent.replace(/\s+/g, ' ').trim() : '';
 
-  const headCells = [...tableEl.querySelectorAll('thead th')].map(th => th.textContent.trim() || '—');
-  const headerRow = headCells.map(label => ({
-    text: label,
+  const headCells = [...tableEl.querySelectorAll('thead th')].map((th) => {
+    const spans = [...th.querySelectorAll('span')].map(s => s.textContent.trim()).filter(Boolean);
+    if (spans.length >= 2) return spans.slice(0, 2);
+    const lines = String(th.innerText || th.textContent || '')
+      .split(/\n+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (lines.length >= 2) return lines.slice(0, 2);
+    return [(th.textContent || '—').replace(/\s+/g, ' ').trim() || '—'];
+  });
+  const headerRow = headCells.map(parts => ({
+    text: parts.length >= 2
+      ? parts.map((p, i) => ({ text: p + (i < parts.length - 1 ? '\n' : ''), bold: true }))
+      : parts[0],
     bold: true,
     fontSize: 9,
+    alignment: 'center',
     fillColor: '#f3f4f6',
     color: '#111827',
   }));
@@ -381,7 +393,13 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   const filenameText = filenameEl ? filenameEl.textContent.replace(/^.*Файл:\s*/i, '').trim() : 'belener-gost-table';
   const headers = [...tableEl.querySelectorAll('thead th')].map((th) => {
     const spans = [...th.querySelectorAll('span')].map(s => s.textContent.trim()).filter(Boolean);
-    if (spans.length >= 2) return spans.join(' ');
+    if (spans.length >= 2) return spans.slice(0, 2).join('\n');
+    // innerText сохраняет перевод строки от <br>
+    const lines = String(th.innerText || th.textContent || '')
+      .split(/\n+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (lines.length >= 2) return lines.slice(0, 2).join('\n');
     return (th.textContent || '—').replace(/\s+/g, ' ').trim() || '—';
   });
   const rows = [...tableEl.querySelectorAll('tbody tr')].map(tr => ({

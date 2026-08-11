@@ -16,9 +16,9 @@ def test_build_normative_pdf_bytes_returns_pdf():
             "Обозначение",
             "Стройдок",
             "ТНПА",
-            "Введен Стройдок",
+            "Введен\nСтройдок",
             "Отменен Стройдок",
-            "Введен ТНПА",
+            "ВведенТНПА",
             "Отменен ТНПА",
             "Статус",
         ],
@@ -43,6 +43,15 @@ def test_build_normative_pdf_bytes_returns_pdf():
     pdf = build_normative_pdf_bytes(payload)
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 1000
+
+
+def test_format_header_html_two_lines_no_space():
+    from belener.normative_pdf import _format_header_html
+
+    assert _format_header_html("Введен Стройдок") == "Введен<br/>Стройдок"
+    assert _format_header_html("ВведенТНПА") == "Введен<br/>ТНПА"
+    assert _format_header_html("Отменен\nТНПА") == "Отменен<br/>ТНПА"
+    assert _format_header_html("Статус") == "Статус"
 
 
 def test_build_normative_pdf_computes_summary_from_rows():

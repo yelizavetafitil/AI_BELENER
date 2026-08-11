@@ -41,6 +41,14 @@ def _register_fonts() -> tuple[str, str]:
     return "Helvetica", "Helvetica-Bold"
 
 
+_TWO_LINE_HEADERS = (
+    ("Введен", "Стройдок"),
+    ("Отменен", "Стройдок"),
+    ("Введен", "ТНПА"),
+    ("Отменен", "ТНПА"),
+)
+
+
 def _esc(text: Any) -> str:
     s = str(text or "")
     return (
@@ -49,6 +57,20 @@ def _esc(text: Any) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def _format_header_html(header: Any) -> str:
+    """Двухстрочные заголовки дат: «Введен» + «Стройдок|ТНПА» без пробела между строками."""
+    text = str(header or "—").strip() or "—"
+    # Явный перевод строки из клиента (spans / <br>)
+    parts = [p.strip() for p in text.replace("\r\n", "\n").replace("\r", "\n").split("\n") if p.strip()]
+    if len(parts) >= 2:
+        return "<br/>".join(_esc(p) for p in parts[:2])
+    flat = "".join(text.split())
+    for line1, line2 in _TWO_LINE_HEADERS:
+        if flat == f"{line1}{line2}":
+            return f"{_esc(line1)}<br/>{_esc(line2)}"
+    return _esc(text)
 
 
 def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
@@ -201,6 +223,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         fontName=font_bold,
         fontSize=8.2,
         leading=9.6,
+        alignment=TA_CENTER,
         textColor=colors.white,
     )
 
@@ -301,7 +324,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     headers = [str(x or "—") for x in (payload.get("headers") or [])]
     rows = payload.get("rows") or []
     table_data: list[list[Any]] = [
-        [Paragraph(_esc(h), header_style) for h in headers]
+        [Paragraph(_format_header_html(h), header_style) for h in headers]
     ]
 
     row_fills: list[tuple[int, str]] = []
@@ -336,6 +359,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     style_cmds: list[tuple[Any, ...]] = [
         ("BACKGROUND", (0, 0), (-1, 0), c_accent),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, c_accent),
         ("GRID", (0, 1), (-1, -1), 0.25, c_border),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
