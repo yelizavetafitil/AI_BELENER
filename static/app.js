@@ -588,8 +588,8 @@ function beautifyNormativeHtml(root) {
           || /Введен|Отменен/i.test(th.textContent || '')
         ) {
           th.classList.add('th-2line');
-          // <br> обязателен: короткие «Введен ТНПА» иначе остаются в одну строку
-          th.innerHTML = `<span>${line1}</span><br><span>${line2}</span>`;
+          // Только block-span без <br> — иначе появляется пустая строка между ними
+          th.innerHTML = `<span>${line1}</span><span>${line2}</span>`;
         }
       });
     });

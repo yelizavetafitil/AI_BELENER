@@ -222,9 +222,11 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         parent=cell_style,
         fontName=font_bold,
         fontSize=8.2,
-        leading=9.6,
+        leading=8.4,
         alignment=TA_CENTER,
         textColor=colors.white,
+        spaceBefore=0,
+        spaceAfter=0,
     )
 
     meta_lines = [str(x).strip() for x in (payload.get("meta") or []) if str(x).strip()]
