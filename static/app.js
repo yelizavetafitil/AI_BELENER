@@ -564,15 +564,14 @@ function beautifyNormativeHtml(root) {
     dateHeaders.forEach(([idx, line1, line2]) => {
       workspace.querySelectorAll(`.normative-table-container thead th:nth-child(${idx})`).forEach(th => {
         const flat = (th.textContent || '').replace(/\s+/g, '');
-        const already = th.classList.contains('th-2line') && th.querySelectorAll('span').length >= 2;
-        if (already) return;
         if (
           flat === `${line1}${line2}`
           || flat.startsWith(line1)
           || /Введен|Отменен/i.test(th.textContent || '')
         ) {
           th.classList.add('th-2line');
-          th.innerHTML = `<span>${line1}</span><span>${line2}</span>`;
+          // <br> обязателен: короткие «Введен ТНПА» иначе остаются в одну строку
+          th.innerHTML = `<span>${line1}</span><br><span>${line2}</span>`;
         }
       });
     });

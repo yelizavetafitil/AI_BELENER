@@ -1154,10 +1154,10 @@ def normative_refs_to_markdown(
         lines.append("<thead><tr>")
         lines.append(
             "<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
-            '<th class="th-2line"><span>Введен</span><span>Стройдок</span></th>'
-            '<th class="th-2line"><span>Отменен</span><span>Стройдок</span></th>'
-            '<th class="th-2line"><span>Введен</span><span>ТНПА</span></th>'
-            '<th class="th-2line"><span>Отменен</span><span>ТНПА</span></th>'
+            '<th class="th-2line"><span>Введен</span><br><span>Стройдок</span></th>'
+            '<th class="th-2line"><span>Отменен</span><br><span>Стройдок</span></th>'
+            '<th class="th-2line"><span>Введен</span><br><span>ТНПА</span></th>'
+            '<th class="th-2line"><span>Отменен</span><br><span>ТНПА</span></th>'
             "<th>Статус</th>"
         )
         lines.append("</tr></thead>")
