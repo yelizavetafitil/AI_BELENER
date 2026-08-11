@@ -379,9 +379,10 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   const metaEl = workspaceEl.querySelector('.normative-workspace-meta');
   const filenameEl = metaEl && [...metaEl.querySelectorAll('p')].find(p => /Файл:/i.test(p.textContent || ''));
   const filenameText = filenameEl ? filenameEl.textContent.replace(/^.*Файл:\s*/i, '').trim() : 'belener-gost-table';
-  const headers = [...tableEl.querySelectorAll('thead th')].map((th, idx) => {
-    const text = th.textContent.trim() || '—';
-    return idx === 2 && /ИПС/i.test(text) ? 'Стройдок' : text;
+  const headers = [...tableEl.querySelectorAll('thead th')].map((th) => {
+    const spans = [...th.querySelectorAll('span')].map(s => s.textContent.trim()).filter(Boolean);
+    if (spans.length >= 2) return spans.join(' ');
+    return (th.textContent || '—').replace(/\s+/g, ' ').trim() || '—';
   });
   const rows = [...tableEl.querySelectorAll('tbody tr')].map(tr => ({
     fill: tr.classList.contains('row-active')
@@ -553,11 +554,30 @@ function beautifyNormativeHtml(root) {
   });
 
   root.querySelectorAll('.normative-workspace').forEach(workspace => {
-    workspace.querySelectorAll('.normative-table-container thead th:nth-child(3)').forEach(th => {
-      th.textContent = 'Стройдок';
+    // Двухстрочные заголовки дат: «Введен» / «Стройдок|ТНПА»
+    const dateHeaders = [
+      [5, 'Введен', 'Стройдок'],
+      [6, 'Отменен', 'Стройдок'],
+      [7, 'Введен', 'ТНПА'],
+      [8, 'Отменен', 'ТНПА'],
+    ];
+    dateHeaders.forEach(([idx, line1, line2]) => {
+      workspace.querySelectorAll(`.normative-table-container thead th:nth-child(${idx})`).forEach(th => {
+        const flat = (th.textContent || '').replace(/\s+/g, '');
+        const already = th.classList.contains('th-2line') && th.querySelectorAll('span').length >= 2;
+        if (already) return;
+        if (
+          flat === `${line1}${line2}`
+          || flat.startsWith(line1)
+          || /Введен|Отменен/i.test(th.textContent || '')
+        ) {
+          th.classList.add('th-2line');
+          th.innerHTML = `<span>${line1}</span><span>${line2}</span>`;
+        }
+      });
     });
     workspace.querySelectorAll('.normative-table-container tbody td:nth-child(3) a.stn-link').forEach(a => {
-      a.textContent = 'Стройдок';
+      if (!a.textContent.trim()) a.textContent = 'Стройдок';
     });
     workspace.querySelectorAll('.normative-table-summary').forEach(el => {
       el.textContent = (el.textContent || '').replace(/ИПС/gi, 'Стройдок');

@@ -309,19 +309,19 @@
     return `
       <form class="site-form admin-form-grid" data-site-id="${esc(site.id || "")}">
         ${field(prefix + "name", "Название", site.name || "", {
-          placeholder: "Стройдок (normy.stn.by)",
+          placeholder: "ТНПА (tnpa.by) или Стройдок (normy.stn.by)",
           required: true,
           hint: "Произвольное имя для отображения в списке",
         })}
         ${field(prefix + "url", "Адрес сайта", site.site_url || "", {
-          placeholder: "https://normy.stn.by",
+          placeholder: "https://tnpa.by",
           required: true,
-          hint: "Полный URL, включая https://",
+          hint: "Полный URL, включая https:// (tnpa.by или normy.stn.by)",
         })}
-        ${field(prefix + "login", "Логин", site.login || "", { hint: "Учётная запись на этом сайте" })}
+        ${field(prefix + "login", "Логин", site.login || "", { hint: "Для Стройдока — учётная запись ИПС; для ТНПА можно не заполнять" })}
         ${field(prefix + "pass", "Пароль", "", {
           type: "password",
-          hint: isNew ? "Можно указать позже" : site.password_set ? "Сохранён — пусто = не менять" : "Не задан",
+          hint: isNew ? "Для Стройдока можно указать позже; ТНПА пароль не требует" : site.password_set ? "Сохранён — пусто = не менять" : "Не задан",
           autocomplete: "new-password",
         })}
         <div class="admin-actions">
@@ -341,7 +341,7 @@
 
     const list =
       sites.length === 0 && !state.sitesAdding
-        ? `<p class="admin-desc">Пока нет подключённых сайтов. Добавьте первый — например Стройдок для проверки нормативов.</p>`
+        ? `<p class="admin-desc">Пока нет подключённых сайтов. Добавьте Стройдок (normy.stn.by) и/или ТНПА (tnpa.by) для проверки нормативов.</p>`
         : sites
             .map(function (site) {
               if (state.sitesEditing === site.id) {
@@ -375,7 +375,7 @@
         <div class="admin-site-toolbar">
           <div>
             <h2>Внешние сайты</h2>
-            <p class="admin-desc" style="margin-bottom:0">Логин и пароль для порталов (Стройдок и другие).</p>
+            <p class="admin-desc" style="margin-bottom:0">Порталы проверки нормативов: Стройдок и ТНПА.</p>
           </div>
           ${!state.sitesAdding ? `<button type="button" class="btn btn-primary btn-sm" id="btn-add-site">+ Добавить сайт</button>` : ""}
         </div>
