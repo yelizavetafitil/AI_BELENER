@@ -541,14 +541,14 @@ function unwrapNormativeTableCopy(root) {
   });
 }
 
-const NORMATIVE_TABLE_COL_WIDTHS = [44, 76, 88, 60, 76, 76, 76, 76, 88];
+const NORMATIVE_TABLE_COL_WIDTHS = [58, 195, 98, 74, 94, 94, 94, 94, 135];
 
 function applyNormativeTableLayout(root) {
   if (!root) return;
   root.querySelectorAll('.normative-table-container table').forEach(table => {
-    table.style.width = '660px';
-    table.style.minWidth = '660px';
-    table.style.maxWidth = '660px';
+    table.style.width = '936px';
+    table.style.minWidth = '936px';
+    table.style.maxWidth = '936px';
     table.style.tableLayout = 'fixed';
     let cg = table.querySelector('colgroup');
     if (!cg) {
