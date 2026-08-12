@@ -14,7 +14,12 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 
-from belener.config import stn_lookup_enabled, stn_max_refs, stn_parallel_workers, stn_timeout_sec
+from belener.config import (
+    stn_lookup_enabled,
+    stn_max_refs,
+    stn_parallel_workers,
+    tnpa_timeout_sec,
+)
 from belener.stn_lookup import (
     StnCheckResult,
     _clean_stn_query,
@@ -45,7 +50,7 @@ def tnpa_base_url() -> str:
 class TnpaClient:
     def __init__(self, base_url: str | None = None, *, timeout_sec: int | None = None) -> None:
         self.base = (base_url or tnpa_base_url()).rstrip("/")
-        self.timeout = timeout_sec if timeout_sec is not None else max(stn_timeout_sec(), 30)
+        self.timeout = timeout_sec if timeout_sec is not None else tnpa_timeout_sec()
         self._http_lock = threading.RLock()
 
     def _open(self, req: urllib.request.Request):
@@ -71,15 +76,27 @@ class TnpaClient:
                 "User-Agent": "Mozilla/5.0 (compatible; Belener/1.0; +local normative checker)",
             },
         )
-        with self._open(req) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return [dict(x) for x in data if isinstance(x, dict)]
-        if isinstance(data, dict):
-            for key in ("items", "data", "models"):
-                if isinstance(data.get(key), list):
-                    return [dict(x) for x in data[key] if isinstance(x, dict)]
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                with self._open(req) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                if isinstance(data, list):
+                    return [dict(x) for x in data if isinstance(x, dict)]
+                if isinstance(data, dict):
+                    for key in ("items", "data", "models"):
+                        if isinstance(data.get(key), list):
+                            return [dict(x) for x in data[key] if isinstance(x, dict)]
+                return []
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+                last_err = e
+                if attempt == 0 and "timed out" in str(e).casefold():
+                    time.sleep(0.4)
+                    continue
+                raise
+        if last_err is not None:
+            raise last_err
         return []
 
 
@@ -122,6 +139,15 @@ def _pick_best_tnpa_match(kind: str, ref: str, rows: list[dict]) -> dict | None:
         return None
     target_full = _norm_code(search_query(kind, ref))
     target_digits = _core_digits(kind, ref)
+    if len(rows) == 1:
+        row = rows[0]
+        code_n = _norm_code(_tnpa_designation(row))
+        row_digits = re.sub(r"\D", "", code_n)
+        if code_n == target_full or (
+            target_digits and len(target_digits) >= 4
+            and (_digits_compatible(target_digits, row_digits) or target_full in code_n)
+        ):
+            return row
     best: dict | None = None
     best_score = -999
     for row in rows:
@@ -275,22 +301,32 @@ def refine_and_check_normative_refs_tnpa(
     if not items:
         return list(refs or []), []
 
-    shared_cli = client or _default_client()
-    workers = stn_parallel_workers()
+    # tnpa.by медленный — отдельный клиент на поток, без общей блокировки HTTP.
+    workers = min(stn_parallel_workers(), len(items))
     checks: list[StnCheckResult] = []
 
     def _run_one(item: dict[str, str]) -> StnCheckResult:
+        cli = client if client is not None else TnpaClient()
         return lookup_one_tnpa(
             str(item.get("kind") or ""),
             str(item.get("ref") or ""),
-            client=shared_cli,
+            client=cli,
             today=today,
             deadline=deadline,
         )
 
     if workers <= 1:
+        shared_cli = client or _default_client()
         for item in items:
-            checks.append(_run_one(item))
+            checks.append(
+                lookup_one_tnpa(
+                    str(item.get("kind") or ""),
+                    str(item.get("ref") or ""),
+                    client=shared_cli,
+                    today=today,
+                    deadline=deadline,
+                )
+            )
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futs = {pool.submit(_run_one, item): item for item in items}

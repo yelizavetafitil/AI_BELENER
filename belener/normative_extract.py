@@ -1151,6 +1151,19 @@ def normative_refs_to_markdown(
 
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
+        lines.append(
+            "<colgroup>"
+            "<col style=\"width:50px\">"
+            "<col style=\"width:364px\">"
+            "<col style=\"width:72px\">"
+            "<col style=\"width:62px\">"
+            "<col style=\"width:82px\">"
+            "<col style=\"width:82px\">"
+            "<col style=\"width:82px\">"
+            "<col style=\"width:82px\">"
+            "<col style=\"width:104px\">"
+            "</colgroup>"
+        )
         lines.append("<thead><tr>")
         lines.append(
             "<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"

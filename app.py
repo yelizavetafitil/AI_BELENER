@@ -373,6 +373,7 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
         gost_check_total_budget_sec,
         pipeline_post_ocr_deadline,
         pipeline_stn_deadline,
+        pipeline_tnpa_deadline,
         stn_lookup_enabled,
     )
     from belener.normative_extract import extract_normatives_pdf_path, normative_result_to_markdown
@@ -427,10 +428,11 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
     preview_box: dict = {"pages": None}
     post_done = threading.Event()
     stn_done = threading.Event()
+    tnpa_done = threading.Event()
     preview_done = threading.Event()
 
     def _maybe_post_done() -> None:
-        if stn_done.is_set() and preview_done.is_set():
+        if stn_done.is_set() and tnpa_done.is_set() and preview_done.is_set():
             post_done.set()
 
     page_count = int(result.get("page_count") or page_count)
@@ -474,15 +476,6 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
                 result["normative_refs"] = refined
                 result["stn_checks"] = [c.to_dict() for c in checks]
                 stn_checks.extend(checks)
-
-                # Сверяем актуальность дополнительно по ТНПА
-                _, tnpa_result = refine_and_check_normative_refs_tnpa(
-                    refined,
-                    today=validity_date,
-                    deadline=stn_deadline,
-                )
-                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
-                tnpa_checks.extend(tnpa_result)
             except Exception as e:
                 app.logger.exception("STN batch failed file=%s", filename)
                 result["stn_error"] = _ollama_user_message(e)
@@ -491,9 +484,33 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
                 stn_done.set()
                 _maybe_post_done()
 
+        def _tnpa_run():
+            try:
+                refs_count = len(result.get("normative_refs") or [])
+                tnpa_deadline = pipeline_tnpa_deadline(
+                    pipeline_t0=pipeline_t0,
+                    page_count=page_count,
+                    refs_count=refs_count,
+                )
+                _, tnpa_result = refine_and_check_normative_refs_tnpa(
+                    result.get("normative_refs") or [],
+                    today=validity_date,
+                    deadline=tnpa_deadline,
+                )
+                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
+                tnpa_checks.extend(tnpa_result)
+            except Exception as e:
+                app.logger.exception("TNPA batch failed file=%s", filename)
+                result["tnpa_error"] = _ollama_user_message(e)
+            finally:
+                tnpa_done.set()
+                _maybe_post_done()
+
         threading.Thread(target=_stn_run, daemon=True).start()
+        threading.Thread(target=_tnpa_run, daemon=True).start()
     else:
         stn_done.set()
+        tnpa_done.set()
         _maybe_post_done()
 
     yield from _sse_status("Проверка ИПС и превью с подсветкой…")
@@ -527,6 +544,7 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
         gost_check_total_budget_sec,
         pipeline_post_ocr_deadline,
         pipeline_stn_deadline,
+        pipeline_tnpa_deadline,
         stn_lookup_enabled,
     )
     from belener.normative_extract import (
@@ -574,11 +592,12 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
     preview_box: dict = {"pages": None}
     post_done = threading.Event()
     stn_done = threading.Event()
+    tnpa_done = threading.Event()
     preview_done = threading.Event()
     post_deadline = pipeline_post_ocr_deadline(pipeline_t0=pipeline_t0, page_count=page_count)
 
     def _maybe_post_done() -> None:
-        if stn_done.is_set() and preview_done.is_set():
+        if stn_done.is_set() and tnpa_done.is_set() and preview_done.is_set():
             post_done.set()
 
     def _preview_run():
@@ -615,14 +634,6 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
                 result["normative_refs"] = refined
                 result["stn_checks"] = [c.to_dict() for c in checks]
                 stn_checks.extend(checks)
-
-                _, tnpa_result = refine_and_check_normative_refs_tnpa(
-                    refined,
-                    today=validity_date,
-                    deadline=stn_deadline,
-                )
-                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
-                tnpa_checks.extend(tnpa_result)
             except Exception as e:
                 app.logger.exception("STN batch failed file=%s", filename)
                 result["stn_error"] = _ollama_user_message(e)
@@ -630,9 +641,33 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
                 stn_done.set()
                 _maybe_post_done()
 
+        def _tnpa_run():
+            try:
+                refs_count = len(result.get("normative_refs") or [])
+                tnpa_deadline = pipeline_tnpa_deadline(
+                    pipeline_t0=pipeline_t0,
+                    page_count=page_count,
+                    refs_count=refs_count,
+                )
+                _, tnpa_result = refine_and_check_normative_refs_tnpa(
+                    result.get("normative_refs") or [],
+                    today=validity_date,
+                    deadline=tnpa_deadline,
+                )
+                result["tnpa_checks"] = [c.to_dict() for c in tnpa_result]
+                tnpa_checks.extend(tnpa_result)
+            except Exception as e:
+                app.logger.exception("TNPA batch failed file=%s", filename)
+                result["tnpa_error"] = _ollama_user_message(e)
+            finally:
+                tnpa_done.set()
+                _maybe_post_done()
+
         threading.Thread(target=_stn_run, daemon=True).start()
+        threading.Thread(target=_tnpa_run, daemon=True).start()
     else:
         stn_done.set()
+        tnpa_done.set()
         _maybe_post_done()
 
     yield from _sse_status("Проверка ИПС и превью с подсветкой…")

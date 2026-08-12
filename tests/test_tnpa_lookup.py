@@ -63,6 +63,13 @@ def test_tnpa_ignores_dsmsos_same_as_intro(monkeypatch):
     assert out.status == "актуален"
 
 
+def test_pick_best_tnpa_match_single_row():
+    rows = [{"Number": "СТБ 2073-2010", "OND": "", "NND": "Правила"}]
+    match = _pick_best_tnpa_match("СТБ", "СТБ 2073-2010", rows)
+    assert match is not None
+    assert "2073" in _tnpa_designation(match)
+
+
 def test_pick_best_tnpa_match():
     rows = [
         {"Number": "10704-91", "OND": "ГОСТ", "NND": "Трубы стальные"},
