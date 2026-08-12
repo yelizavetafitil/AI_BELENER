@@ -278,9 +278,9 @@ function fixMarkdown(md) {
 function _normativeRowFillColor(tr) {
   const cls = (tr && tr.classList) ? tr.classList : null;
   if (!cls) return null;
-  if (cls.contains('row-active')) return '#dcfce7';   // green
-  if (cls.contains('row-canceled')) return '#fee2e2'; // red
-  if (cls.contains('row-replaced')) return '#fef3c7'; // yellow
+  if (cls.contains('row-active')) return '#e8f5ec';
+  if (cls.contains('row-canceled')) return '#fce9ea';
+  if (cls.contains('row-replaced')) return '#fff8e6';
   return null;
 }
 
@@ -542,6 +542,11 @@ function unwrapNormativeTableCopy(root) {
 }
 
 const NORMATIVE_TABLE_COL_WIDTHS = [58, 195, 98, 74, 94, 94, 94, 94, 135];
+const NORMATIVE_ROW_BG = {
+  'row-active': '#e8f5ec',
+  'row-canceled': '#fce9ea',
+  'row-replaced': '#fff8e6',
+};
 
 function applyNormativeTableLayout(root) {
   if (!root) return;
@@ -564,10 +569,32 @@ function applyNormativeTableLayout(root) {
   });
 }
 
+/** Цвета строк как в PDF (#e8f5ec / #fce9ea / #fff8e6) — inline, чтобы перебить generic .msg-content table. */
+function applyNormativeRowColors(root) {
+  if (!root) return;
+  root.querySelectorAll('.normative-table-container').forEach(container => {
+    container.style.backgroundColor = '#ffffff';
+    container.querySelectorAll('thead th').forEach(th => {
+      th.style.setProperty('background-color', '#0f766e', 'important');
+      th.style.setProperty('color', '#ffffff', 'important');
+    });
+    container.querySelectorAll('tbody tr').forEach(tr => {
+      let bg = '#ffffff';
+      if (tr.classList.contains('row-active')) bg = NORMATIVE_ROW_BG['row-active'];
+      else if (tr.classList.contains('row-canceled')) bg = NORMATIVE_ROW_BG['row-canceled'];
+      else if (tr.classList.contains('row-replaced')) bg = NORMATIVE_ROW_BG['row-replaced'];
+      tr.querySelectorAll('td').forEach(td => {
+        td.style.setProperty('background-color', bg, 'important');
+      });
+    });
+  });
+}
+
 function beautifyNormativeHtml(root) {
   if (!root) return;
   unwrapNormativeTableCopy(root);
   applyNormativeTableLayout(root);
+  applyNormativeRowColors(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
