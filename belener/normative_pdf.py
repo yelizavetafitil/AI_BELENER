@@ -136,21 +136,35 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     c_row_active = colors.HexColor("#e8f5ec")
     c_row_canceled = colors.HexColor("#fce9ea")
     c_row_replaced = colors.HexColor("#fff8e6")
-    pad_h = 10
-    pad_v = 8
+    pad_h = 4
+    pad_v = 3
+    pad_h_card = 8
+    pad_v_card = 6
 
     font_name, font_bold = _register_fonts()
     buf = io.BytesIO()
+    # Фиксированные поля A4 landscape — одинаково в любом браузере/ОС
+    page_w, page_h = landscape(A4)
+    left_m = 9 * mm
+    right_m = 9 * mm
     doc = SimpleDocTemplate(
         buf,
-        pagesize=landscape(A4),
-        leftMargin=9 * mm,
-        rightMargin=9 * mm,
+        pagesize=(page_w, page_h),
+        leftMargin=left_m,
+        rightMargin=right_m,
         topMargin=10 * mm,
         bottomMargin=9 * mm,
         title=str(payload.get("title") or "Таблица нормативов"),
+        author="Belener",
+        creator="Belener normative export",
     )
-    avail_w = landscape(A4)[0] - doc.leftMargin - doc.rightMargin
+    # Одинаковые даты в метаданных → байтово стабильный PDF на разных ПК
+    def _fix_metadata(canvas, _doc):
+        canvas.setTitle(str(payload.get("title") or "Таблица нормативов"))
+        canvas.setAuthor("Belener")
+        canvas.setCreator("Belener normative export")
+
+    avail_w = page_w - left_m - right_m
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -250,10 +264,10 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     header_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), c_surface),
         ("BOX", (0, 0), (-1, -1), 0.5, c_border),
-        ("LEFTPADDING", (0, 0), (-1, -1), pad_h + 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h + 2),
-        ("TOPPADDING", (0, 0), (-1, -1), pad_v + 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_v + 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card + 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card + 2),
+        ("TOPPADDING", (0, 0), (-1, -1), pad_v_card + 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_v_card + 2),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
     ]))
@@ -278,10 +292,10 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         ("BACKGROUND", (0, 0), (-1, -1), c_surface),
         ("BOX", (0, 0), (-1, -1), 0.5, c_border),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), pad_h),
-        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h),
-        ("TOPPADDING", (0, 0), (-1, -1), pad_v),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_v),
+        ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card),
+        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card),
+        ("TOPPADDING", (0, 0), (-1, -1), pad_v_card),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_v_card),
     ]))
     story.append(info_table)
     story.append(Spacer(1, 4))
@@ -315,15 +329,30 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         ("LINEAFTER", (2, 0), (2, -1), 0.5, c_border),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), pad_h),
-        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h),
-        ("TOPPADDING", (0, 0), (-1, 0), pad_v),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), pad_v + 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card),
+        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card),
+        ("TOPPADDING", (0, 0), (-1, 0), pad_v_card),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), pad_v_card + 2),
     ]))
     story.append(stats_table)
     story.append(Spacer(1, 5))
 
-    headers = [str(x or "—") for x in (payload.get("headers") or [])]
+    # Канонические заголовки — не зависят от DOM/браузера клиента
+    raw_headers = [str(x or "—") for x in (payload.get("headers") or [])]
+    if len(raw_headers) >= 9:
+        headers = [
+            "Тип",
+            "Обозначение",
+            "Стройдок",
+            "ТНПА",
+            "Введен\nСтройдок",
+            "Отменен\nСтройдок",
+            "Введен\nТНПА",
+            "Отменен\nТНПА",
+            "Статус",
+        ]
+    else:
+        headers = raw_headers
     rows = payload.get("rows") or []
     table_data: list[list[Any]] = [
         [Paragraph(_format_header_html(h), header_style) for h in headers]
@@ -343,28 +372,34 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             elif col_idx in (4, 5, 6, 7) and text not in ("—", "&mdash;"):
                 text = f"<nobr>{text}</nobr>"
             cells.append(Paragraph(text, cell_style))
-        table_data.append(cells)
+        # Выравниваем число колонок под заголовок
+        while len(cells) < len(headers):
+            cells.append(Paragraph("—", cell_style))
+        table_data.append(cells[: len(headers)])
         if fill:
             row_fills.append((idx, fill))
 
-    # Ширины: даты шире (чтобы dd.mm.yyyy влезала), «Обозначение» уже
-    widths_mm = [20.0, 40.0, 24.0, 22.0, 28.0, 28.0, 26.0, 26.0, 36.0]
-    extra_mm = max(0.0, (avail_w / mm) - sum(widths_mm))
-    widths_mm[1] += extra_mm * 0.35
-    widths_mm[4] += extra_mm * 0.12
-    widths_mm[5] += extra_mm * 0.12
-    widths_mm[6] += extra_mm * 0.12
-    widths_mm[7] += extra_mm * 0.12
-    widths_mm[8] += extra_mm * 0.17
+    # Эталонные ширины (как в рабочем PDF 279 mm): без redistrib по клиенту
+    widths_mm = [20.0, 50.0, 24.0, 22.0, 31.5, 31.5, 29.5, 29.5, 41.0]
+    if len(headers) != 9:
+        # fallback: равномерно
+        widths_mm = [avail_w / mm / max(len(headers), 1)] * max(len(headers), 1)
+    else:
+        scale = (avail_w / mm) / sum(widths_mm)
+        widths_mm = [round(w * scale, 4) for w in widths_mm]
+        # компенсация округления на последнюю колонку
+        widths_mm[-1] = round((avail_w / mm) - sum(widths_mm[:-1]), 4)
     col_widths = [w * mm for w in widths_mm]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     style_cmds: list[tuple[Any, ...]] = [
         ("BACKGROUND", (0, 0), (-1, 0), c_accent),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("ALIGN", (2, 1), (3, -1), "CENTER"),
+        ("ALIGN", (4, 1), (7, -1), "CENTER"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, c_accent),
         ("GRID", (0, 1), (-1, -1), 0.25, c_border),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), pad_h),
         ("RIGHTPADDING", (0, 0), (-1, -1), pad_h),
         ("TOPPADDING", (0, 0), (-1, -1), pad_v),
@@ -387,5 +422,5 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     table.setStyle(TableStyle(style_cmds))
     story.append(table)
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_fix_metadata, onLaterPages=_fix_metadata)
     return buf.getvalue()

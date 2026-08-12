@@ -54,6 +54,49 @@ def test_format_header_html_two_lines_no_space():
     assert _format_header_html("Статус") == "Статус"
 
 
+def test_pdf_column_widths_stable():
+    """Ширины колонок фиксированы — одинаковый байтовый PDF при том же payload."""
+    from belener.normative_pdf import build_normative_pdf_bytes
+
+    payload = {
+        "title": "Таблица нормативов",
+        "meta": ["Файл: sample.pdf", "Листов: 1", "Дата проверки актуальности: 12.08.2026"],
+        "summary": "Всего в документе: 1; найдено в Стройдок: 1; найдено в ТНПА: 1; актуально: 1",
+        "headers": [
+            "Тип",
+            "Обозначение",
+            "Стройдок",
+            "ТНПА",
+            "Введен Стройдок",
+            "Отменен Стройдок",
+            "Введен ТНПА",
+            "Отменен ТНПА",
+            "Статус",
+        ],
+        "rows": [
+            {
+                "fill": "active",
+                "cells": [
+                    {"text": "СТБ"},
+                    {"text": "СТБ 2073-2010"},
+                    {"text": "Стройдок", "href": "https://normy.stn.by/ips.php?1"},
+                    {"text": "ТНПА", "href": "https://tnpa.by/#!/DocumentCard/1/2"},
+                    {"text": "01.01.2011"},
+                    {"text": "—"},
+                    {"text": "01.01.2011"},
+                    {"text": "—"},
+                    {"text": "актуален", "bold": True},
+                ],
+            }
+        ],
+    }
+    pdf1 = build_normative_pdf_bytes(payload)
+    pdf2 = build_normative_pdf_bytes(payload)
+    assert pdf1.startswith(b"%PDF")
+    assert pdf1 == pdf2
+    assert len(pdf1) > 800
+
+
 def test_build_normative_pdf_computes_summary_from_rows():
     payload = {
         "title": "Таблица нормативов",

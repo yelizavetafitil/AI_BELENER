@@ -460,7 +460,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     summary,
     headers,
     rows,
-    widths: [20, 40, 24, 22, 28, 28, 26, 26, 36],
+    widths: [20, 50, 24, 22, 31.5, 31.5, 29.5, 29.5, 41],
   };
 }
 

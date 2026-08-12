@@ -1170,19 +1170,37 @@ def stn_timeout_sec() -> int:
 def tnpa_timeout_sec() -> int:
     """tnpa.by отвечает медленно (часто 30–50 с на запрос)."""
     try:
-        return max(20, min(int(os.environ.get("PDF_TNPA_TIMEOUT", "60").strip()), 120))
+        return max(20, min(int(os.environ.get("PDF_TNPA_TIMEOUT", "55").strip()), 120))
     except ValueError:
-        return 60
+        return 55
+
+
+def tnpa_parallel_workers() -> int:
+    """Параллельные запросы к tnpa.by (по умолчанию выше, чем STN)."""
+    try:
+        raw = (os.environ.get("PDF_TNPA_PARALLEL") or os.environ.get("PDF_STN_PARALLEL") or "3").strip()
+        return max(1, min(int(raw), 6))
+    except ValueError:
+        return 3
+
+
+def tnpa_max_queries() -> int:
+    try:
+        return max(1, min(int(os.environ.get("PDF_TNPA_MAX_QUERIES", "3").strip()), 6))
+    except ValueError:
+        return 3
 
 
 def tnpa_batch_budget_sec(page_count: int = 1, refs_count: int = 0) -> float:
     """Резерв на пакетную проверку tnpa.by (параллельно со STN)."""
     pages = max(1, int(page_count))
     refs = max(int(refs_count), 0)
-    per_ref = 8.0
-    base = max(90.0, refs * per_ref + pages * 1.5)
-    cap = gost_check_total_budget_sec(page_count) * 0.45
-    return min(max(base, 120.0), cap)
+    workers = max(1, tnpa_parallel_workers())
+    # ~timeout на ref / workers + запас
+    per_ref = max(12.0, float(tnpa_timeout_sec()) / workers + 4.0)
+    base = max(150.0, refs * per_ref + pages * 2.0)
+    cap = gost_check_total_budget_sec(page_count) * 0.55
+    return min(max(base, 180.0), max(cap, 180.0))
 
 
 def pipeline_tnpa_deadline(
@@ -1196,8 +1214,8 @@ def pipeline_tnpa_deadline(
     reserve = tnpa_batch_budget_sec(page_count, refs_count)
     end = min(total_deadline, now + reserve)
     if end > now + 1.0:
-        return max(now + 20.0, end)
-    return now + min(reserve, 90.0)
+        return max(now + 30.0, end)
+    return now + min(reserve, 120.0)
 
 
 def stn_parallel_workers() -> int:

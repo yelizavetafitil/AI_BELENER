@@ -17,7 +17,8 @@ from datetime import date, datetime
 from belener.config import (
     stn_lookup_enabled,
     stn_max_refs,
-    stn_parallel_workers,
+    tnpa_max_queries,
+    tnpa_parallel_workers,
     tnpa_timeout_sec,
 )
 from belener.stn_lookup import (
@@ -27,7 +28,6 @@ from belener.stn_lookup import (
     _digits_compatible,
     _norm_code,
     is_stn_checkable,
-    search_queries,
     search_query,
     validity_status,
 )
@@ -51,19 +51,23 @@ class TnpaClient:
     def __init__(self, base_url: str | None = None, *, timeout_sec: int | None = None) -> None:
         self.base = (base_url or tnpa_base_url()).rstrip("/")
         self.timeout = timeout_sec if timeout_sec is not None else tnpa_timeout_sec()
-        self._http_lock = threading.RLock()
-
-    def _open(self, req: urllib.request.Request):
-        with self._http_lock:
-            return urllib.request.urlopen(req, timeout=self.timeout)
+        self._cache: dict[tuple[str, int, int], list[dict]] = {}
+        self._cache_lock = threading.Lock()
 
     def search_docs(self, query: str, *, page: int = 1, per_page: int = 30) -> list[dict]:
+        q = (query or "").strip()
+        cache_key = (q.upper(), page, per_page)
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return [dict(x) for x in cached]
+
         params = urllib.parse.urlencode(
             {
                 "page": page,
                 "per-page": per_page,
                 "sort": "b.KL",
-                "SearchParam": (query or "").upper(),
+                "SearchParam": q.upper(),
                 "lang": "ru",
                 "stateID": -1,
                 "onlyActive": "null",
@@ -72,32 +76,61 @@ class TnpaClient:
         req = urllib.request.Request(
             f"{self.base}/api/tnpadocs?{params}",
             headers={
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; Belener/1.0; +local normative checker)",
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": f"{self.base}/",
             },
         )
         last_err: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                with self._open(req) as resp:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     raw = resp.read().decode("utf-8", errors="replace")
                 data = json.loads(raw)
+                rows: list[dict] = []
                 if isinstance(data, list):
-                    return [dict(x) for x in data if isinstance(x, dict)]
-                if isinstance(data, dict):
+                    rows = [dict(x) for x in data if isinstance(x, dict)]
+                elif isinstance(data, dict):
                     for key in ("items", "data", "models"):
                         if isinstance(data.get(key), list):
-                            return [dict(x) for x in data[key] if isinstance(x, dict)]
-                return []
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+                            rows = [dict(x) for x in data[key] if isinstance(x, dict)]
+                            break
+                with self._cache_lock:
+                    self._cache[cache_key] = [dict(x) for x in rows]
+                return rows
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
                 last_err = e
-                if attempt == 0 and "timed out" in str(e).casefold():
-                    time.sleep(0.4)
+                msg = str(e).casefold()
+                retryable = any(
+                    x in msg
+                    for x in ("timed out", "timeout", "temporarily", "reset", "refused", "503", "502")
+                )
+                if attempt < 2 and retryable:
+                    time.sleep(0.5 * (attempt + 1))
                     continue
                 raise
         if last_err is not None:
             raise last_err
         return []
+
+
+def _tnpa_search_queries(kind: str, ref: str) -> list[str]:
+    """Короткий приоритетный список запросов для tnpa.by (без лишних OCR-вариантов)."""
+    from belener.stn_lookup import _extract_number_part
+
+    kind = (kind or "").strip()
+    full = search_query(kind, ref)
+    num = _extract_number_part(kind, ref)
+    out: list[str] = []
+    for q in (full, num, f"{kind} {num}".strip() if num else ""):
+        q = _clean_stn_query(q)
+        if q and q not in out:
+            out.append(q)
+    return out[: tnpa_max_queries()]
 
 
 def _parse_tnpa_date(raw: object) -> date | None:
@@ -214,7 +247,7 @@ def lookup_one_tnpa(
     kind = (kind or "").strip()
     ref = (ref or "").strip()
     sheet_ref = ref
-    queries = search_queries(kind, ref)
+    queries = _tnpa_search_queries(kind, ref)
     query = queries[0] if queries else search_query(kind, ref)
     out = StnCheckResult(kind=kind, ref=sheet_ref, query=query, found=False)
 
@@ -225,15 +258,16 @@ def lookup_one_tnpa(
 
     cli = client or _default_client()
     t0 = time.monotonic()
+    skipped_budget = False
     try:
         if deadline is not None and time.monotonic() >= deadline:
             out.status = "пропущено (бюджет времени)"
             return out
         tried: list[str] = []
         match: dict | None = None
-        # TNPA иногда находит документ только на одном из вариантов запроса.
-        for raw_q in queries[:10]:
+        for raw_q in queries:
             if deadline is not None and time.monotonic() >= deadline:
+                skipped_budget = True
                 break
             q = _clean_stn_query(raw_q)
             if not q or q in tried:
@@ -244,8 +278,8 @@ def lookup_one_tnpa(
             if match:
                 break
         if not match:
-            out.status = "нет в ТНПА"
             out.query = "; ".join(tried[:4])
+            out.status = "пропущено (бюджет времени)" if skipped_budget else "нет в ТНПА"
             return out
 
         rn = str(match.get("RN") or "")
@@ -261,7 +295,7 @@ def lookup_one_tnpa(
         out.query = "; ".join(tried[:4])
         log.info("TNPA lookup %s %s -> %s in %.1fs", kind, ref, out.status, time.monotonic() - t0)
         return out
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
         log.warning("TNPA lookup failed kind=%s ref=%s: %s", kind, ref, e)
         out.error = str(e)
         if "timed out" in str(e).casefold():
@@ -301,32 +335,23 @@ def refine_and_check_normative_refs_tnpa(
     if not items:
         return list(refs or []), []
 
-    # tnpa.by медленный — отдельный клиент на поток, без общей блокировки HTTP.
-    workers = min(stn_parallel_workers(), len(items))
+    # Параллельные клиенты + общий кэш на shared client при workers=1
+    workers = min(tnpa_parallel_workers(), len(items))
     checks: list[StnCheckResult] = []
+    shared_cli = client or TnpaClient()
 
     def _run_one(item: dict[str, str]) -> StnCheckResult:
-        cli = client if client is not None else TnpaClient()
         return lookup_one_tnpa(
             str(item.get("kind") or ""),
             str(item.get("ref") or ""),
-            client=cli,
+            client=shared_cli,
             today=today,
             deadline=deadline,
         )
 
     if workers <= 1:
-        shared_cli = client or _default_client()
         for item in items:
-            checks.append(
-                lookup_one_tnpa(
-                    str(item.get("kind") or ""),
-                    str(item.get("ref") or ""),
-                    client=shared_cli,
-                    today=today,
-                    deadline=deadline,
-                )
-            )
+            checks.append(_run_one(item))
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futs = {pool.submit(_run_one, item): item for item in items}
