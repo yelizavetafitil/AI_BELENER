@@ -1699,7 +1699,7 @@ body {
 .normative-table-container table {
   width: 660px;
   min-width: 660px;
-  max-width: 100%;
+  max-width: 660px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -1707,7 +1707,7 @@ body {
 .msg.assistant .msg-content .normative-table-container table {
   width: 660px;
   min-width: 660px;
-  max-width: 100%;
+  max-width: 660px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -1786,9 +1786,9 @@ body {
 .normative-table-container td:nth-child(1),
 .msg.assistant .msg-content .normative-table-container th:nth-child(1),
 .msg.assistant .msg-content .normative-table-container td:nth-child(1) {
-  width: 36px;
-  min-width: 36px;
-  max-width: 36px;
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
   text-align: center;
   padding-left: 4px !important;
   padding-right: 2px !important;
@@ -1798,22 +1798,24 @@ body {
 .normative-table-container td:nth-child(2),
 .msg.assistant .msg-content .normative-table-container th:nth-child(2),
 .msg.assistant .msg-content .normative-table-container td:nth-child(2) {
-  width: 112px;
-  min-width: 112px;
-  max-width: 112px;
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
   line-height: 1.15;
+  font-size: 11px;
+  text-align: left;
 }
 
 .normative-table-container th:nth-child(3),
 .normative-table-container td:nth-child(3),
 .msg.assistant .msg-content .normative-table-container th:nth-child(3),
 .msg.assistant .msg-content .normative-table-container td:nth-child(3) {
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
   text-align: center;
   overflow: visible;
 }
@@ -1822,9 +1824,9 @@ body {
 .normative-table-container td:nth-child(4),
 .msg.assistant .msg-content .normative-table-container th:nth-child(4),
 .msg.assistant .msg-content .normative-table-container td:nth-child(4) {
-  width: 54px;
-  min-width: 54px;
-  max-width: 54px;
+  width: 58px;
+  min-width: 58px;
+  max-width: 58px;
   text-align: center;
   overflow: visible;
 }
@@ -1845,9 +1847,9 @@ body {
 .msg.assistant .msg-content .normative-table-container td:nth-child(6),
 .msg.assistant .msg-content .normative-table-container td:nth-child(7),
 .msg.assistant .msg-content .normative-table-container td:nth-child(8) {
-  width: 72px;
-  min-width: 72px;
-  max-width: 72px;
+  width: 74px;
+  min-width: 74px;
+  max-width: 74px;
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -1867,9 +1869,9 @@ body {
 .normative-table-container td:nth-child(9),
 .msg.assistant .msg-content .normative-table-container th:nth-child(9),
 .msg.assistant .msg-content .normative-table-container td:nth-child(9) {
-  width: 94px;
-  min-width: 94px;
-  max-width: 94px;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
