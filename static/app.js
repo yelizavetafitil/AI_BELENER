@@ -541,9 +541,33 @@ function unwrapNormativeTableCopy(root) {
   });
 }
 
+const NORMATIVE_TABLE_COL_WIDTHS = [44, 76, 88, 60, 76, 76, 76, 76, 88];
+
+function applyNormativeTableLayout(root) {
+  if (!root) return;
+  root.querySelectorAll('.normative-table-container table').forEach(table => {
+    table.style.width = '660px';
+    table.style.minWidth = '660px';
+    table.style.maxWidth = '660px';
+    table.style.tableLayout = 'fixed';
+    let cg = table.querySelector('colgroup');
+    if (!cg) {
+      cg = document.createElement('colgroup');
+      const head = table.querySelector('thead');
+      table.insertBefore(cg, head || table.firstChild);
+    }
+    cg.replaceChildren(...NORMATIVE_TABLE_COL_WIDTHS.map(w => {
+      const col = document.createElement('col');
+      col.style.width = `${w}px`;
+      return col;
+    }));
+  });
+}
+
 function beautifyNormativeHtml(root) {
   if (!root) return;
   unwrapNormativeTableCopy(root);
+  applyNormativeTableLayout(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);

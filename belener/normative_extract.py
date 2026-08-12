@@ -1153,15 +1153,15 @@ def normative_refs_to_markdown(
         lines.append("<table>")
         lines.append(
             "<colgroup>"
-            "<col style=\"width:42px\">"
-            "<col style=\"width:84px\">"
-            "<col style=\"width:84px\">"
-            "<col style=\"width:58px\">"
-            "<col style=\"width:74px\">"
-            "<col style=\"width:74px\">"
-            "<col style=\"width:74px\">"
-            "<col style=\"width:74px\">"
-            "<col style=\"width:96px\">"
+            "<col style=\"width:44px\">"
+            "<col style=\"width:76px\">"
+            "<col style=\"width:88px\">"
+            "<col style=\"width:60px\">"
+            "<col style=\"width:76px\">"
+            "<col style=\"width:76px\">"
+            "<col style=\"width:76px\">"
+            "<col style=\"width:76px\">"
+            "<col style=\"width:88px\">"
             "</colgroup>"
         )
         lines.append("<thead><tr>")
