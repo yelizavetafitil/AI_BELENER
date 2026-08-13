@@ -70,6 +70,35 @@ def test_pick_best_tnpa_match_single_row():
     assert "2073" in _tnpa_designation(match)
 
 
+def test_pick_best_tnpa_match_gost_dotted():
+    """tnpa.by часто отдаёт Number без типа: «12.1.046-2014» + OND=ГОСТ."""
+    rows = [{"Number": "12.1.046-2014", "OND": "ГОСТ", "NND": "Нормы освещения"}]
+    match = _pick_best_tnpa_match("ГОСТ", "ГОСТ 12.1.046-2014", rows)
+    assert match is not None
+    assert "12.1.046" in _tnpa_designation(match)
+
+
+def test_tnpa_parallel_ignores_stn_parallel_one(monkeypatch):
+    monkeypatch.setenv("PDF_STN_PARALLEL", "1")
+    monkeypatch.delenv("PDF_TNPA_PARALLEL", raising=False)
+    from belener.config import tnpa_parallel_workers
+
+    assert tnpa_parallel_workers() >= 3
+
+
+def test_lookup_one_tnpa_timeout_is_not_missing(monkeypatch):
+    monkeypatch.setenv("PDF_STN_LOOKUP", "1")
+
+    class _TimeoutClient:
+        def search_docs(self, query: str, *, page: int = 1, per_page: int = 30):
+            raise TimeoutError("timed out")
+
+    out = lookup_one_tnpa("ГОСТ", "ГОСТ 12.1.046-2014", client=_TimeoutClient(), today=date(2026, 1, 1))
+    assert out.found is False
+    assert out.status == "ошибка проверки"
+    assert out.status != "нет в ТНПА"
+
+
 def test_pick_best_tnpa_match():
     rows = [
         {"Number": "10704-91", "OND": "ГОСТ", "NND": "Трубы стальные"},

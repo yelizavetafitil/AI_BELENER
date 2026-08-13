@@ -99,15 +99,29 @@ class TnpaClient:
                         if isinstance(data.get(key), list):
                             rows = [dict(x) for x in data[key] if isinstance(x, dict)]
                             break
-                with self._cache_lock:
-                    self._cache[cache_key] = [dict(x) for x in rows]
+                # Пустой ответ не кэшируем: tnpa.by иногда отдаёт [] при перегрузке.
+                if rows:
+                    with self._cache_lock:
+                        self._cache[cache_key] = [dict(x) for x in rows]
                 return rows
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
                 last_err = e
                 msg = str(e).casefold()
                 retryable = any(
                     x in msg
-                    for x in ("timed out", "timeout", "temporarily", "reset", "refused", "503", "502")
+                    for x in (
+                        "timed out",
+                        "timeout",
+                        "temporarily",
+                        "reset",
+                        "refused",
+                        "unreachable",
+                        "ssl",
+                        "eof",
+                        "503",
+                        "502",
+                        "429",
+                    )
                 )
                 if attempt < 2 and retryable:
                     time.sleep(0.5 * (attempt + 1))
@@ -196,9 +210,13 @@ def _pick_best_tnpa_match(kind: str, ref: str, rows: list[dict]) -> dict | None:
             if not code_ok and not name_ok:
                 continue
         score = 0
-        if code_n == target_full:
+        if code_n == target_full or (
+            target_digits
+            and row_digits == target_digits
+            and (kind.casefold() in code_n or not kind)
+        ):
             score += 100
-        elif target_full and target_full in code_n:
+        elif target_full and (target_full in code_n or code_n in target_full):
             score += 80
         elif target_digits and target_digits in row_digits:
             score += 60
@@ -370,6 +388,30 @@ def refine_and_check_normative_refs_tnpa(
                             error=str(e),
                         )
                     )
+
+    # Второй проход: таймауты/бюджет на медленном сервере не должны давать «нет в ТНПА»
+    retry_idx = [
+        i
+        for i, c in enumerate(checks)
+        if not c.found
+        and (
+            (c.status or "").startswith("пропущено")
+            or c.status == "ошибка проверки"
+        )
+    ]
+    if retry_idx:
+        log.warning("TNPA retry %s refs after timeouts/budget", len(retry_idx))
+        retry_deadline = time.monotonic() + min(180.0, 25.0 * len(retry_idx))
+        for i in retry_idx:
+            item = {"kind": checks[i].kind, "ref": checks[i].ref}
+            again = lookup_one_tnpa(
+                str(item.get("kind") or ""),
+                str(item.get("ref") or ""),
+                client=shared_cli,
+                today=today,
+                deadline=retry_deadline,
+            )
+            checks[i] = again
     return list(refs or []), checks
 
 

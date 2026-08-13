@@ -1176,9 +1176,9 @@ def tnpa_timeout_sec() -> int:
 
 
 def tnpa_parallel_workers() -> int:
-    """Параллельные запросы к tnpa.by (по умолчанию выше, чем STN)."""
+    """Параллельные запросы к tnpa.by. Не наследуем PDF_STN_PARALLEL=1 — иначе на сервере пропуски."""
     try:
-        raw = (os.environ.get("PDF_TNPA_PARALLEL") or os.environ.get("PDF_STN_PARALLEL") or "3").strip()
+        raw = (os.environ.get("PDF_TNPA_PARALLEL") or "3").strip()
         return max(1, min(int(raw), 6))
     except ValueError:
         return 3
@@ -1206,16 +1206,16 @@ def tnpa_batch_budget_sec(page_count: int = 1, refs_count: int = 0) -> float:
 def pipeline_tnpa_deadline(
     *, pipeline_t0: float, page_count: int = 1, refs_count: int = 0
 ) -> float:
-    """Отдельное окно для ТНПА — не делим бюджет со STN."""
+    """Окно ТНПА от текущего момента — не режем остатком OCR.
+
+    На медленном сервере OCR съедает общий лимит, и 3–5 ссылок помечались
+    «нет в ТНПА», хотя на быстром ПК те же документы находились.
+    """
     import time
 
     now = time.monotonic()
-    total_deadline = pipeline_t0 + gost_check_total_budget_sec(page_count)
     reserve = tnpa_batch_budget_sec(page_count, refs_count)
-    end = min(total_deadline, now + reserve)
-    if end > now + 1.0:
-        return max(now + 30.0, end)
-    return now + min(reserve, 120.0)
+    return now + max(reserve, 180.0)
 
 
 def stn_parallel_workers() -> int:
