@@ -1147,31 +1147,23 @@ def normative_refs_to_markdown(
 
         found_ips = 0
         found_tnpa = 0
-        active_green = 0
+        found_any = 0
 
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
         lines.append(
             "<colgroup>"
-            "<col style=\"width:58px\">"
-            "<col style=\"width:195px\">"
-            "<col style=\"width:98px\">"
-            "<col style=\"width:74px\">"
-            "<col style=\"width:94px\">"
-            "<col style=\"width:94px\">"
-            "<col style=\"width:94px\">"
-            "<col style=\"width:94px\">"
-            "<col style=\"width:135px\">"
+            "<col style=\"width:280px\">"
+            "<col style=\"width:120px\">"
+            "<col style=\"width:100px\">"
+            "<col style=\"width:218px\">"
+            "<col style=\"width:218px\">"
             "</colgroup>"
         )
         lines.append("<thead><tr>")
         lines.append(
-            "<th>Тип</th><th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
-            '<th class="th-2line"><span>Введен</span><span>Стройдок</span></th>'
-            '<th class="th-2line"><span>Отменен</span><span>Стройдок</span></th>'
-            '<th class="th-2line"><span>Введен</span><span>ТНПА</span></th>'
-            '<th class="th-2line"><span>Отменен</span><span>ТНПА</span></th>'
-            "<th>Статус</th>"
+            "<th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
+            "<th>Введен</th><th>Отменен</th>"
         )
         lines.append("</tr></thead>")
         lines.append("<tbody>")
@@ -1200,22 +1192,14 @@ def normative_refs_to_markdown(
             tnpa_cancel = "—"
 
             row_class = ""
-            status_html = "проверка вручную"
 
             stn_found = False
             tnpa_found = False
-            stn_state = None  # "актуален" | "отменён"
-            tnpa_state = None
 
             if c:
                 stn_found = bool(c.found) if hasattr(c, "found") else str(c.get("found")) == "1"
                 stn_intro = c.intro_date if hasattr(c, "intro_date") else c.get("intro_date") or "—"
                 stn_cancel = c.cancel_date if hasattr(c, "cancel_date") else c.get("cancel_date") or "—"
-                stn_status_val = c.status if hasattr(c, "status") else c.get("status") or ""
-                if stn_status_val == "актуален":
-                    stn_state = "актуален"
-                elif stn_status_val == "отменён":
-                    stn_state = "отменён"
                 if stn_found and getattr(c, "doc_id", None):
                     doc_id = c.doc_id if hasattr(c, "doc_id") else c.get("doc_id")
                     if doc_id:
@@ -1228,11 +1212,6 @@ def normative_refs_to_markdown(
                 tnpa_found = bool(c_tnpa.found) if hasattr(c_tnpa, "found") else str(c_tnpa.get("found")) == "1"
                 tnpa_intro = c_tnpa.intro_date if hasattr(c_tnpa, "intro_date") else c_tnpa.get("intro_date") or "—"
                 tnpa_cancel = c_tnpa.cancel_date if hasattr(c_tnpa, "cancel_date") else c_tnpa.get("cancel_date") or "—"
-                tnpa_status_val = c_tnpa.status if hasattr(c_tnpa, "status") else c_tnpa.get("status") or ""
-                if tnpa_status_val == "актуален":
-                    tnpa_state = "актуален"
-                elif tnpa_status_val == "отменён":
-                    tnpa_state = "отменён"
                 if tnpa_found and getattr(c_tnpa, "doc_id", None):
                     doc_id_tnpa = c_tnpa.doc_id if hasattr(c_tnpa, "doc_id") else c_tnpa.get("doc_id")
                     if doc_id_tnpa:
@@ -1246,21 +1225,21 @@ def normative_refs_to_markdown(
             if tnpa_found:
                 found_tnpa += 1
 
-            # Правила цвета/статуса:
-            # - зелёный: и STN, и TNPA актуальны
-            # - красный: и STN, и TNPA отменены
-            # - жёлтый: не совпадает / есть только один источник / статусы разные
-            #   (в т.ч. когда даты на одном из порталов не заполнены)
-            if stn_found and tnpa_found and stn_state == "актуален" and tnpa_state == "актуален":
+            def _pick_date(primary: str, secondary: str) -> str:
+                if primary and primary != "—":
+                    return primary
+                if secondary and secondary != "—":
+                    return secondary
+                return "—"
+
+            intro = _pick_date(stn_intro, tnpa_intro)
+            cancel = _pick_date(stn_cancel, tnpa_cancel)
+
+            if stn_found or tnpa_found:
                 row_class = ' class="row-active"'
-                status_html = "<strong>актуален</strong>"
-                active_green += 1
-            elif stn_found and tnpa_found and stn_state == "отменён" and tnpa_state == "отменён":
-                row_class = ' class="row-canceled"'
-                status_html = "<strong>отменён</strong>"
+                found_any += 1
             else:
-                row_class = ' class="row-replaced"'
-                status_html = "проверка вручную"
+                row_class = ' class="row-canceled"'
 
             pages_attr = ""
             pages_for_ref = ref_pages.get(str(ref), [])
@@ -1275,10 +1254,8 @@ def normative_refs_to_markdown(
 
             lines.append(f"<tr{row_class}{pages_attr}>")
             lines.append(
-                f"<td>{kind}</td><td>{ref}</td><td>{ips_link}</td><td>{tnpa_link}</td>"
-                f"<td>{stn_intro}</td><td>{stn_cancel}</td>"
-                f"<td>{tnpa_intro}</td><td>{tnpa_cancel}</td>"
-                f"<td>{status_html}</td>"
+                f"<td>{ref}</td><td>{ips_link}</td><td>{tnpa_link}</td>"
+                f"<td>{intro}</td><td>{cancel}</td>"
             )
             lines.append("</tr>")
 
@@ -1295,7 +1272,7 @@ def normative_refs_to_markdown(
 
         lines.append(
             f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
-            f"найдено в ТНПА: {found_tnpa}; актуально: {active_green}</em></p>"
+            f"найдено в ТНПА: {found_tnpa};<br>актуально: {found_any}</em></p>"
         )
         lines.append("")
 

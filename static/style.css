@@ -281,6 +281,17 @@ body {
   margin-bottom: 10px;
 }
 
+.nav-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nav-collapse-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .nav-section-title {
   font-size: 11px;
   font-weight: 800;
@@ -1071,10 +1082,6 @@ body {
   background-color: var(--norm-row-canceled) !important;
 }
 
-.msg.assistant .msg-content .normative-table-container tr.row-replaced td {
-  background-color: var(--norm-row-replaced) !important;
-}
-
 .msg.assistant .msg-content .normative-table-container tbody tr:hover td {
   filter: none;
 }
@@ -1511,7 +1518,7 @@ body {
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface-muted);
-  max-height: 220px;
+  max-height: min(40vh, 320px);
 }
 
 .file-chip.show + .file-preview-render:not(:empty) { display: block; }
@@ -1520,10 +1527,18 @@ body {
 .file-preview-render iframe {
   display: block;
   width: 100%;
-  height: 220px;
   border: 0;
-  object-fit: contain;
   background: #fff;
+}
+
+.file-preview-render img {
+  height: auto;
+  max-height: min(40vh, 320px);
+  object-fit: contain;
+}
+
+.file-preview-render iframe {
+  height: min(40vh, 320px);
 }
 
 .preview-note {
@@ -1843,85 +1858,56 @@ body {
   font-size: 12px;
 }
 
-/* Фиксированные ширины — всё в одну строку, горизонтальная прокрутка при необходимости */
+/* Фиксированные ширины — 5 колонок */
 .normative-table-container th:nth-child(1),
 .normative-table-container td:nth-child(1),
 .msg.assistant .msg-content .normative-table-container th:nth-child(1),
 .msg.assistant .msg-content .normative-table-container td:nth-child(1) {
-  width: 58px !important;
-  min-width: 58px !important;
-  max-width: 58px !important;
-  text-align: center;
+  width: 280px !important;
+  min-width: 280px !important;
+  max-width: 280px !important;
+  text-align: left;
 }
 
 .normative-table-container th:nth-child(2),
 .normative-table-container td:nth-child(2),
 .msg.assistant .msg-content .normative-table-container th:nth-child(2),
 .msg.assistant .msg-content .normative-table-container td:nth-child(2) {
-  width: 195px !important;
-  min-width: 195px !important;
-  max-width: 195px !important;
-  text-align: left;
+  width: 120px !important;
+  min-width: 120px !important;
+  max-width: 120px !important;
+  text-align: center;
+  overflow: visible;
 }
 
 .normative-table-container th:nth-child(3),
 .normative-table-container td:nth-child(3),
 .msg.assistant .msg-content .normative-table-container th:nth-child(3),
 .msg.assistant .msg-content .normative-table-container td:nth-child(3) {
-  width: 98px !important;
-  min-width: 98px !important;
-  max-width: 98px !important;
+  width: 100px !important;
+  min-width: 100px !important;
+  max-width: 100px !important;
   text-align: center;
   overflow: visible;
 }
 
 .normative-table-container th:nth-child(4),
-.normative-table-container td:nth-child(4),
-.msg.assistant .msg-content .normative-table-container th:nth-child(4),
-.msg.assistant .msg-content .normative-table-container td:nth-child(4) {
-  width: 74px !important;
-  min-width: 74px !important;
-  max-width: 74px !important;
-  text-align: center;
-  overflow: visible;
-}
-
 .normative-table-container th:nth-child(5),
-.normative-table-container th:nth-child(6),
-.normative-table-container th:nth-child(7),
-.normative-table-container th:nth-child(8),
+.normative-table-container td:nth-child(4),
 .normative-table-container td:nth-child(5),
-.normative-table-container td:nth-child(6),
-.normative-table-container td:nth-child(7),
-.normative-table-container td:nth-child(8),
+.msg.assistant .msg-content .normative-table-container th:nth-child(4),
 .msg.assistant .msg-content .normative-table-container th:nth-child(5),
-.msg.assistant .msg-content .normative-table-container th:nth-child(6),
-.msg.assistant .msg-content .normative-table-container th:nth-child(7),
-.msg.assistant .msg-content .normative-table-container th:nth-child(8),
-.msg.assistant .msg-content .normative-table-container td:nth-child(5),
-.msg.assistant .msg-content .normative-table-container td:nth-child(6),
-.msg.assistant .msg-content .normative-table-container td:nth-child(7),
-.msg.assistant .msg-content .normative-table-container td:nth-child(8) {
-  width: 94px !important;
-  min-width: 94px !important;
-  max-width: 94px !important;
+.msg.assistant .msg-content .normative-table-container td:nth-child(4),
+.msg.assistant .msg-content .normative-table-container td:nth-child(5) {
+  width: 218px !important;
+  min-width: 218px !important;
+  max-width: 218px !important;
   font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.normative-table-container th:nth-child(9),
-.normative-table-container td:nth-child(9),
-.msg.assistant .msg-content .normative-table-container th:nth-child(9),
-.msg.assistant .msg-content .normative-table-container td:nth-child(9) {
-  width: 135px !important;
-  min-width: 135px !important;
-  max-width: 135px !important;
   text-align: center;
 }
 
 .normative-table-container tr.row-active td { background-color: var(--norm-row-active) !important; }
 .normative-table-container tr.row-canceled td { background-color: var(--norm-row-canceled) !important; }
-.normative-table-container tr.row-replaced td { background-color: var(--norm-row-replaced) !important; }
 .normative-table-container tbody tr td { background-color: #ffffff; }
 .normative-table-container tbody tr:hover td { background-color: inherit; }
 .normative-table-container tbody tr[data-preview-page] { cursor: pointer; }
@@ -1954,12 +1940,23 @@ body {
   position: relative;
   width: 100%;
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 280px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background-color: var(--surface-muted);
   margin-top: 0;
+  overscroll-behavior: contain;
+}
+.normative-workspace-preview {
+  overscroll-behavior: contain;
+}
+.pdf-preview-stage {
+  box-sizing: border-box;
+}
+.pdf-preview-container.is-panning {
+  cursor: grabbing;
+  user-select: none;
 }
 .pdf-preview-tools {
   display: flex;
@@ -1982,21 +1979,16 @@ body {
 }
 .preview-zoom-btn:hover { background: var(--surface-muted); }
 .pdf-preview-img {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  bottom: 8px;
-  left: 8px;
   display: block;
   width: auto;
   height: auto;
-  max-width: calc(100% - 16px);
-  max-height: calc(100% - 16px);
-  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   object-position: center center;
-  cursor: zoom-in;
-  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: auto;
 }
 
 @media (max-width: 1100px) {

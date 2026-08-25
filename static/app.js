@@ -280,7 +280,6 @@ function _normativeRowFillColor(tr) {
   if (!cls) return null;
   if (cls.contains('row-active')) return '#e8f5ec';
   if (cls.contains('row-canceled')) return '#fce9ea';
-  if (cls.contains('row-replaced')) return '#fff8e6';
   return null;
 }
 
@@ -363,7 +362,7 @@ function buildNormativeTablePdfDocDefinition(workspaceEl) {
       {
         table: {
           headerRows: 1,
-          widths: [40, '*', 55, 60, 60, '*'],
+          widths: [70, 24, 22, 40, 40],
           body: [headerRow, ...bodyRows],
         },
         layout: {
@@ -407,9 +406,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
       ? 'active'
       : tr.classList.contains('row-canceled')
         ? 'canceled'
-        : tr.classList.contains('row-replaced')
-          ? 'replaced'
-          : '',
+        : '',
     cells: [...tr.querySelectorAll('td')].map(td => {
       const a = td.querySelector('a.stn-link[href]');
       return {
@@ -439,7 +436,10 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   const summaryEl =
     workspaceEl.querySelector('.normative-table-summary')
     || (listEl && [...listEl.querySelectorAll('p')].find(p => /Всего в документе:/i.test(p.textContent || '')));
-  let summary = summaryEl ? summaryEl.textContent.replace(/\s+/g, ' ').trim() : '';
+  let summary = summaryEl ? summaryEl.innerText.replace(/\r\n/g, '\n').trim() : '';
+  if (summary) {
+    summary = summary.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+  }
   if (!summary) {
     const m = (workspaceEl.innerText || '').match(
       /Всего в документе:\s*\d+;\s*найдено в Стройдок:\s*\d+;\s*найдено в ТНПА:\s*\d+;\s*актуально:\s*\d+/i
@@ -447,10 +447,10 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     if (m) summary = m[0].replace(/\s+/g, ' ').trim();
   }
   if (!summary && rows.length) {
-    const foundStn = rows.filter(r => r.cells[2] && r.cells[2].href).length;
-    const foundTnpa = rows.filter(r => r.cells[3] && r.cells[3].href).length;
-    const active = rows.filter(r => /актуален/i.test((r.cells[8] && r.cells[8].text) || '')).length;
-    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn}; найдено в ТНПА: ${foundTnpa}; актуально: ${active}`;
+    const foundStn = rows.filter(r => r.cells[1] && r.cells[1].href).length;
+    const foundTnpa = rows.filter(r => r.cells[2] && r.cells[2].href).length;
+    const active = rows.filter(r => r.fill === 'active').length;
+    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn}; найдено в ТНПА: ${foundTnpa};\nактуально: ${active}`;
   }
   summary = summary.replace(/ИПС/gi, 'Стройдок');
   return {
@@ -460,7 +460,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     summary,
     headers,
     rows,
-    widths: [20, 50, 24, 22, 31.5, 31.5, 29.5, 29.5, 41],
+    widths: [70, 24, 22, 40, 40],
   };
 }
 
@@ -541,11 +541,10 @@ function unwrapNormativeTableCopy(root) {
   });
 }
 
-const NORMATIVE_TABLE_COL_WIDTHS = [58, 195, 98, 74, 94, 94, 94, 94, 135];
+const NORMATIVE_TABLE_COL_WIDTHS = [280, 120, 100, 218, 218];
 const NORMATIVE_ROW_BG = {
   'row-active': '#e8f5ec',
   'row-canceled': '#fce9ea',
-  'row-replaced': '#fff8e6',
 };
 
 function applyNormativeTableLayout(root) {
@@ -582,7 +581,6 @@ function applyNormativeRowColors(root) {
       let bg = '#ffffff';
       if (tr.classList.contains('row-active')) bg = NORMATIVE_ROW_BG['row-active'];
       else if (tr.classList.contains('row-canceled')) bg = NORMATIVE_ROW_BG['row-canceled'];
-      else if (tr.classList.contains('row-replaced')) bg = NORMATIVE_ROW_BG['row-replaced'];
       tr.querySelectorAll('td').forEach(td => {
         td.style.setProperty('background-color', bg, 'important');
       });
@@ -623,36 +621,17 @@ function beautifyNormativeHtml(root) {
   });
 
   root.querySelectorAll('.normative-workspace').forEach(workspace => {
-    // Двухстрочные заголовки дат: «Введен» / «Стройдок|ТНПА»
-    const dateHeaders = [
-      [5, 'Введен', 'Стройдок'],
-      [6, 'Отменен', 'Стройдок'],
-      [7, 'Введен', 'ТНПА'],
-      [8, 'Отменен', 'ТНПА'],
-    ];
-    dateHeaders.forEach(([idx, line1, line2]) => {
-      workspace.querySelectorAll(`.normative-table-container thead th:nth-child(${idx})`).forEach(th => {
-        const flat = (th.textContent || '').replace(/\s+/g, '');
-        if (
-          flat === `${line1}${line2}`
-          || flat.startsWith(line1)
-          || /Введен|Отменен/i.test(th.textContent || '')
-        ) {
-          th.classList.add('th-2line');
-          // Только block-span без <br> — иначе появляется пустая строка между ними
-          th.innerHTML = `<span>${line1}</span><span>${line2}</span>`;
-        }
-      });
-    });
-    workspace.querySelectorAll('.normative-table-container tbody td:nth-child(3) a.stn-link').forEach(a => {
+    workspace.querySelectorAll('.normative-table-container tbody td:nth-child(2) a.stn-link').forEach(a => {
       if (!a.textContent.trim()) a.textContent = 'Стройдок';
     });
     workspace.querySelectorAll('.normative-table-summary').forEach(el => {
-      el.textContent = (el.textContent || '').replace(/ИПС/gi, 'Стройдок');
+      el.innerHTML = (el.innerHTML || '').replace(/ИПС/gi, 'Стройдок');
     });
   });
 
   root.querySelectorAll('.pdf-preview-container').forEach(box => {
+    ensurePreviewStage(box);
+    bindPreviewPan(box);
     box.scrollTop = 0;
     box.scrollLeft = 0;
     bindPreviewResizeObserver(box);
@@ -660,7 +639,12 @@ function beautifyNormativeHtml(root) {
   root.querySelectorAll('.pdf-preview-img').forEach(img => {
     if (!img.dataset.fitBound) {
       img.dataset.fitBound = '1';
-      img.addEventListener('load', () => fitPreviewImage(img));
+      img.draggable = false;
+      img.addEventListener('dragstart', (e) => e.preventDefault());
+      img.addEventListener('load', () => {
+        delete img.dataset.fitKey;
+        fitPreviewImage(img);
+      });
     }
     fitPreviewImage(img);
   });
@@ -668,30 +652,241 @@ function beautifyNormativeHtml(root) {
   ensureNormativeTablePdfDownloads(root);
 }
 
+function ensurePreviewStage(box) {
+  if (!box) return null;
+  box.querySelector('.pdf-preview-scrollpad')?.remove();
+  box.querySelector('.pdf-preview-inner')?.remove();
+  let stage = box.querySelector('.pdf-preview-stage');
+  const img = box.querySelector('.pdf-preview-img');
+  if (!img) return null;
+  if (!stage) {
+    stage = document.createElement('div');
+    stage.className = 'pdf-preview-stage';
+    img.replaceWith(stage);
+    stage.appendChild(img);
+  }
+  return stage;
+}
+
+function _previewAvailSize(box) {
+  return {
+    w: Math.max(box.clientWidth, 1),
+    h: Math.max(box.clientHeight, 1),
+  };
+}
+
+function _previewBaseSize(img, box) {
+  const { w: availW, h: availH } = _previewAvailSize(box);
+  const fit = Math.min(availW / img.naturalWidth, availH / img.naturalHeight);
+  return {
+    w: img.naturalWidth * fit,
+    h: img.naturalHeight * fit,
+  };
+}
+
+function setPreviewZoom(img, nextScale) {
+  if (!img) return;
+  const box = img.closest('.pdf-preview-container');
+  const scale = Math.min(4, Math.max(0.5, Number(nextScale) || 1));
+  img.dataset.scale = String(Math.round(scale * 100) / 100);
+  delete img.dataset.fitKey;
+  fitPreviewImage(img);
+  if (box && scale <= 1.01) {
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+  }
+}
+
 function fitPreviewImage(img) {
   if (!img) return;
   const box = img.closest('.pdf-preview-container');
   if (!box) return;
+  const stage = ensurePreviewStage(box);
+  if (!stage) return;
 
-  const userScale = Number(img.dataset.scale || '1');
-  img.style.width = '';
-  img.style.height = '';
-  img.style.maxWidth = '';
-  img.style.maxHeight = '';
-  img.style.objectFit = '';
-  img.style.transform = userScale === 1 ? 'none' : `scale(${userScale})`;
-  box.style.overflow = userScale > 1.01 ? 'auto' : 'hidden';
-  box.scrollTop = 0;
-  box.scrollLeft = 0;
+  const userScale = Math.max(0.5, Number(img.dataset.scale || '1') || 1);
+
+  if (!img.complete || !img.naturalWidth || box.clientWidth < 40 || box.clientHeight < 40) {
+    if (!img.dataset.fitRetry) {
+      img.dataset.fitRetry = '1';
+      requestAnimationFrame(() => {
+        img.dataset.fitRetry = '';
+        fitPreviewImage(img);
+      });
+    }
+    return;
+  }
+
+  const fitKey = `${box.clientWidth}x${box.clientHeight}x${userScale}`;
+  if (img.dataset.fitKey === fitKey) return;
+  img.dataset.fitKey = fitKey;
+
+  const base = _previewBaseSize(img, box);
+  img.dataset.baseW = String(base.w);
+  img.dataset.baseH = String(base.h);
+
+  img.draggable = false;
+  img.style.margin = '0';
+  img.style.objectFit = 'contain';
+  img.style.transform = 'none';
+  img.style.position = 'static';
+  img.style.maxWidth = 'none';
+  img.style.maxHeight = 'none';
+
+  if (userScale <= 1.01) {
+    stage.style.position = 'absolute';
+    stage.style.inset = '0';
+    stage.style.width = '100%';
+    stage.style.height = '100%';
+    stage.style.minWidth = '0';
+    stage.style.minHeight = '0';
+    stage.style.margin = '0';
+    stage.style.transform = 'none';
+    stage.style.display = 'flex';
+    stage.style.alignItems = 'center';
+    stage.style.justifyContent = 'center';
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.cursor = 'default';
+    box.style.overflow = 'hidden';
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+    return;
+  }
+
+  stage.style.position = 'relative';
+  stage.style.inset = 'auto';
+  stage.style.left = '';
+  stage.style.top = '';
+  stage.style.margin = '0';
+  stage.style.transform = 'none';
+
+  const displayW = base.w * userScale;
+  const displayH = base.h * userScale;
+  const { w: availW, h: availH } = _previewAvailSize(box);
+
+  stage.style.display = 'block';
+  stage.style.alignItems = '';
+  stage.style.justifyContent = '';
+  stage.style.width = `${Math.max(displayW, availW)}px`;
+  stage.style.height = `${Math.max(displayH, availH)}px`;
+  stage.style.minWidth = `${Math.max(displayW, availW)}px`;
+  stage.style.minHeight = `${Math.max(displayH, availH)}px`;
+  img.style.width = `${displayW}px`;
+  img.style.height = `${displayH}px`;
+  img.style.cursor = 'grab';
+  box.style.overflow = 'auto';
+}
+
+const _previewPanState = new WeakMap();
+let _previewPanBox = null;
+
+function initPreviewPanGlobal() {
+  if (window._previewPanGlobalInit) return;
+  window._previewPanGlobalInit = true;
+  window.addEventListener('mousemove', (e) => {
+    const box = _previewPanBox;
+    if (!box) return;
+    const state = _previewPanState.get(box);
+    if (!state || !state.active) return;
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) state.moved = true;
+    box.scrollLeft = state.scrollL - dx;
+    box.scrollTop = state.scrollT - dy;
+  });
+  const endPan = () => {
+    const box = _previewPanBox;
+    if (!box) return;
+    const state = _previewPanState.get(box);
+    if (!state || !state.active) return;
+    const img = box.querySelector('.pdf-preview-img');
+    if (state.moved && img) img.dataset.panMoved = '1';
+    state.active = false;
+    box.classList.remove('is-panning');
+    delete box.dataset.previewPanning;
+    if (img) img.style.cursor = Number(img.dataset.scale || '1') > 1.01 ? 'grab' : 'default';
+    _previewPanBox = null;
+  };
+  window.addEventListener('mouseup', endPan);
+  window.addEventListener('blur', endPan);
+}
+
+function initPreviewWheelGlobal() {
+  if (window._previewWheelInit) return;
+  window._previewWheelInit = true;
+  document.addEventListener('wheel', (e) => {
+    const previewRoot = e.target.closest('.pdf-preview-container, .normative-workspace-preview');
+    if (!previewRoot) return;
+    const box = previewRoot.classList.contains('pdf-preview-container')
+      ? previewRoot
+      : previewRoot.querySelector('.pdf-preview-container');
+    if (!box) return;
+    const img = box.querySelector('.pdf-preview-img');
+    if (!img) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
+    if (Math.abs(delta) < 1) return;
+    const current = Number(img.dataset.scale || '1');
+    const step = delta < 0 ? 0.12 : -0.12;
+    setPreviewZoom(img, current + step);
+  }, { passive: false, capture: true });
+}
+
+function bindPreviewPan(box) {
+  if (!box || box.dataset.panBound) return;
+  box.dataset.panBound = '1';
+  initPreviewPanGlobal();
+  initPreviewWheelGlobal();
+  box.addEventListener('dragstart', (e) => e.preventDefault());
+  box.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('.preview-zoom-btn, a, button')) return;
+    const img = box.querySelector('.pdf-preview-img');
+    if (!img) return;
+    const scale = Number(img.dataset.scale || '1');
+    if (scale <= 1.01) return;
+    box.dataset.previewPanning = '1';
+    _previewPanState.set(box, {
+      active: true,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollL: box.scrollLeft,
+      scrollT: box.scrollTop,
+    });
+    _previewPanBox = box;
+    box.classList.add('is-panning');
+    img.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  box.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.preview-zoom-btn, a, button')) return;
+    const img = box.querySelector('.pdf-preview-img');
+    if (!img) return;
+    const current = Number(img.dataset.scale || '1');
+    setPreviewZoom(img, current <= 1.01 ? 2 : 1);
+    e.preventDefault();
+  });
 }
 
 const _previewResizeObservers = new WeakMap();
+const _previewResizeTimers = new WeakMap();
 
 function bindPreviewResizeObserver(box) {
   if (!box || _previewResizeObservers.has(box)) return;
   const img = box.querySelector('.pdf-preview-img');
   if (!img) return;
-  const ro = new ResizeObserver(() => fitPreviewImage(img));
+  const ro = new ResizeObserver(() => {
+    if (box.dataset.previewPanning) return;
+    clearTimeout(_previewResizeTimers.get(box));
+    _previewResizeTimers.set(box, setTimeout(() => {
+      delete img.dataset.fitKey;
+      fitPreviewImage(img);
+    }, 120));
+  });
   ro.observe(box);
   _previewResizeObservers.set(box, ro);
 }
@@ -1035,10 +1230,11 @@ function renderFilePreview(f) {
   box.innerHTML = '';
   if (!isDrawingFile(f)) return;
   currentPreviewUrl = URL.createObjectURL(f);
-  if (/\.(png|jpe?g|bmp|gif|webp)$/i.test(f.name)) {
+  const mime = String(f.type || '').toLowerCase();
+  if (mime.startsWith('image/') || /\.(png|jpe?g|bmp|gif|webp|tif?f)$/i.test(f.name)) {
     box.innerHTML = `<img src="${currentPreviewUrl}" alt="Предпросмотр файла">`;
-  } else if (/\.pdf$/i.test(f.name)) {
-    box.innerHTML = `<iframe src="${currentPreviewUrl}#page=1&view=FitH" title="Предпросмотр PDF"></iframe>`;
+  } else if (mime === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+    box.innerHTML = `<iframe src="${currentPreviewUrl}#page=1&view=Fit" title="Предпросмотр PDF"></iframe>`;
   } else {
     box.innerHTML = '<div class="preview-note">Предпросмотр для этого формата недоступен, файл будет обработан как изображение.</div>';
   }
@@ -1093,10 +1289,30 @@ function fmtSize(b) {
 // ── drag & drop ───────────────────────────────────────────────────────────────
 
 let dragN = 0;
-document.addEventListener('dragenter', e => { e.preventDefault(); dragN++; document.getElementById('drop-overlay').classList.add('show'); });
-document.addEventListener('dragleave', e => { dragN--; if (dragN <= 0) { dragN = 0; document.getElementById('drop-overlay').classList.remove('show'); } });
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => {
+
+function _isFileDropZone(el) {
+  return !!(el && el.closest('.pdf-preview-container, .normative-workspace-preview, .normative-preview-shell, .normative-workspace, .msg-content'));
+}
+
+document.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  if (_isFileDropZone(e.target)) return;
+  dragN += 1;
+  document.getElementById('drop-overlay').classList.add('show');
+});
+document.addEventListener('dragleave', (e) => {
+  if (_isFileDropZone(e.target)) return;
+  dragN -= 1;
+  if (dragN <= 0) {
+    dragN = 0;
+    document.getElementById('drop-overlay').classList.remove('show');
+  }
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  if (_isFileDropZone(e.target)) return;
+});
+document.addEventListener('drop', (e) => {
   e.preventDefault(); dragN = 0;
   document.getElementById('drop-overlay').classList.remove('show');
   const f = e.dataTransfer.files[0];
@@ -1400,14 +1616,10 @@ const NAV_COLLAPSE_BP = 860; // совпадает с CSS @media (max-width: 860
 function initNavState() {
   const saved = localStorage.getItem('navCollapsed');
   const isSmall = window.innerWidth <= NAV_COLLAPSE_BP;
-  if (isSmall) {
-    // На узком экране по умолчанию скрываем; явный expand сохраняем.
-    if (saved === 'false') expandNav();
-    else collapseNav();
-    return;
-  }
-  // На десктопе всегда показываем историю (скрытая панель без кнопки — тупик).
-  expandNav();
+  if (saved === 'true') collapseNav();
+  else if (saved === 'false') expandNav();
+  else if (isSmall) collapseNav();
+  else expandNav();
 }
 
 let _wasSmallViewport = window.innerWidth <= NAV_COLLAPSE_BP;
@@ -1450,6 +1662,7 @@ function initCheckDate() {
 
 marked.use({ gfm: true });
 initNavState();
+initPreviewWheelGlobal();
 initCheckDate();
 loadModels();
 loadConversations();
@@ -1487,6 +1700,8 @@ function showNormativePreviewPage(groupId, pageNo) {
   }
   const img = target.querySelector('.pdf-preview-img');
   if (img) {
+    img.dataset.scale = '1';
+    delete img.dataset.fitKey;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => fitPreviewImage(img));
     });
@@ -1514,8 +1729,7 @@ document.addEventListener('click', (e) => {
     if (action === 'in') next = Math.min(4, current + 0.2);
     if (action === 'out') next = Math.max(0.5, current - 0.2);
     if (action === 'reset') next = 1;
-    img.dataset.scale = String(next);
-    fitPreviewImage(img);
+    setPreviewZoom(img, next);
     return;
   }
 

@@ -83,22 +83,37 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
     active = 0
     for row in rows:
         cells = row.get("cells") or []
+        fill = str(row.get("fill") or "").strip()
+        if 5 <= len(cells) < 9:
+            if str(cells[1].get("href") or "").strip():
+                found_ips += 1
+            if str(cells[2].get("href") or "").strip():
+                found_tnpa += 1
+            if fill == "active":
+                active += 1
+            continue
         if len(cells) >= 3 and str(cells[2].get("href") or "").strip():
             found_ips += 1
         if len(cells) >= 4 and str(cells[3].get("href") or "").strip():
             found_tnpa += 1
-        if len(cells) >= 9:
+        if fill == "active":
+            active += 1
+        elif len(cells) >= 9:
             status = str(cells[8].get("text") or "").strip().casefold()
             if status == "актуален" or "актуален" in status:
                 active += 1
-    return f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; найдено в ТНПА: {found_tnpa}; актуально: {active}"
+    return (
+        f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; "
+        f"найдено в ТНПА: {found_tnpa};\nактуально: {active}"
+    )
 
 
 def _parse_summary(summary: str) -> tuple[str, str, str, str]:
     import re
 
     m = re.search(
-        r"Всего в документе:\s*(\d+);\s*найдено в (?:ИПС|Стройдок):\s*(\d+);\s*найдено в ТНПА:\s*(\d+);\s*актуально:\s*(\d+)",
+        r"Всего в документе:\s*(\d+);\s*найдено в (?:ИПС|Стройдок):\s*(\d+);\s*"
+        r"найдено в ТНПА:\s*(\d+);[\s\n]*(?:актуально|найдено хотя бы в одном):\s*(\d+)",
         summary or "",
         re.I,
     )
@@ -310,13 +325,13 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
                 Paragraph(_esc("Найдено"), card_label_style),
                 Paragraph(_esc("В Стройдок"), card_label_style),
                 Paragraph(_esc("В ТНПА"), card_label_style),
-                Paragraph(_esc("Актуальны"), card_label_style),
+                Paragraph(_esc("Актуально"), card_label_style),
             ],
             [
-                Paragraph(f"<b>{_esc(total or '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(found_stn or '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(found_tnpa or '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(active or '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(total if total != '' else '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(found_stn if found_stn != '' else '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(found_tnpa if found_tnpa != '' else '—')}</b>", card_value_style),
+                Paragraph(f"<b>{_esc(active if active != '' else '—')}</b>", card_value_style),
             ],
         ],
         colWidths=[stat_w1, stat_w2, stat_w3, stat_w4],
@@ -339,17 +354,21 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
 
     # Канонические заголовки — не зависят от DOM/браузера клиента
     raw_headers = [str(x or "—") for x in (payload.get("headers") or [])]
-    if len(raw_headers) >= 9:
+    if len(raw_headers) >= 5:
         headers = [
-            "Тип",
             "Обозначение",
             "Стройдок",
             "ТНПА",
-            "Введен\nСтройдок",
-            "Отменен\nСтройдок",
-            "Введен\nТНПА",
-            "Отменен\nТНПА",
-            "Статус",
+            "Введен",
+            "Отменен",
+        ]
+    elif len(raw_headers) >= 9:
+        headers = [
+            "Обозначение",
+            "Стройдок",
+            "ТНПА",
+            "Введен",
+            "Отменен",
         ]
     else:
         headers = raw_headers
@@ -369,7 +388,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             href = str(cell.get("href") or "").strip()
             if href:
                 text = f'<link href="{_esc(href)}" color="#1d4ed8">{text}</link>'
-            elif col_idx in (4, 5, 6, 7) and text not in ("—", "&mdash;"):
+            elif col_idx in (3, 4) and text not in ("—", "&mdash;"):
                 text = f"<nobr>{text}</nobr>"
             cells.append(Paragraph(text, cell_style))
         # Выравниваем число колонок под заголовок
@@ -380,8 +399,8 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             row_fills.append((idx, fill))
 
     # Эталонные ширины (как в рабочем PDF 279 mm): без redistrib по клиенту
-    widths_mm = [20.0, 50.0, 24.0, 22.0, 31.5, 31.5, 29.5, 29.5, 41.0]
-    if len(headers) != 9:
+    widths_mm = [70.0, 24.0, 22.0, 40.0, 40.0]
+    if len(headers) != 5:
         # fallback: равномерно
         widths_mm = [avail_w / mm / max(len(headers), 1)] * max(len(headers), 1)
     else:
@@ -395,8 +414,8 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         ("BACKGROUND", (0, 0), (-1, 0), c_accent),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("ALIGN", (2, 1), (3, -1), "CENTER"),
-        ("ALIGN", (4, 1), (7, -1), "CENTER"),
+        ("ALIGN", (2, 1), (2, -1), "CENTER"),
+        ("ALIGN", (3, 1), (4, -1), "CENTER"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, c_accent),
         ("GRID", (0, 1), (-1, -1), 0.25, c_border),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

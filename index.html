@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="/ico.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=38">
+<link rel="stylesheet" href="/static/style.css?v=46">
 </head>
 <body>
 
@@ -40,11 +40,18 @@
       <div class="nav-section nav-section-grow">
         <div class="nav-section-head">
           <span class="nav-section-title">История</span>
-          <button class="icon-btn icon-btn-ghost" onclick="deleteAllChats()" title="Удалить все чаты">
+          <div class="nav-section-actions">
+            <button class="icon-btn icon-btn-ghost nav-collapse-btn" onclick="collapseNav()" title="Скрыть историю" aria-label="Скрыть историю">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <button class="icon-btn icon-btn-ghost" onclick="deleteAllChats()" title="Удалить все чаты">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
             </svg>
           </button>
+          </div>
         </div>
         <div class="chats-list" id="chats-list">
           <div class="chats-empty">Пока нет чатов — загрузите чертёж</div>
@@ -189,6 +196,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=56"></script>
+<script src="/static/app.js?v=67"></script>
 </body>
 </html>
