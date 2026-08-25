@@ -684,17 +684,85 @@ function _previewBaseSize(img, box) {
   };
 }
 
-function setPreviewZoom(img, nextScale) {
+function _capturePreviewZoomAnchor(img, box, anchor) {
+  if (!anchor || !box || !img) return;
+  const rect = box.getBoundingClientRect();
+  const viewX = anchor.clientX - rect.left;
+  const viewY = anchor.clientY - rect.top;
+  img.dataset.zoomViewX = String(viewX);
+  img.dataset.zoomViewY = String(viewY);
+  const oldScale = Number(img.dataset.scale || '1');
+  if (oldScale <= 1.01) {
+    const imgRect = img.getBoundingClientRect();
+    if (imgRect.width > 0 && imgRect.height > 0) {
+      const fracX = (anchor.clientX - imgRect.left) / imgRect.width;
+      const fracY = (anchor.clientY - imgRect.top) / imgRect.height;
+      img.dataset.zoomFracX = String(Math.min(1, Math.max(0, fracX)));
+      img.dataset.zoomFracY = String(Math.min(1, Math.max(0, fracY)));
+    }
+    return;
+  }
+  const base = _previewBaseSize(img, box);
+  const oldDisplayW = base.w * oldScale;
+  const oldDisplayH = base.h * oldScale;
+  if (oldDisplayW > 0 && oldDisplayH > 0) {
+    const fracX = (box.scrollLeft + viewX) / oldDisplayW;
+    const fracY = (box.scrollTop + viewY) / oldDisplayH;
+    img.dataset.zoomFracX = String(Math.min(1, Math.max(0, fracX)));
+    img.dataset.zoomFracY = String(Math.min(1, Math.max(0, fracY)));
+  }
+}
+
+function _applyPreviewZoomScroll(img, box, scale) {
+  if (!img || !box || !img.dataset.zoomFracX) return;
+  const fracX = Number(img.dataset.zoomFracX);
+  const fracY = Number(img.dataset.zoomFracY);
+  const viewX = Number(img.dataset.zoomViewX || 0);
+  const viewY = Number(img.dataset.zoomViewY || 0);
+  if (!Number.isFinite(fracX) || !Number.isFinite(fracY)) return;
+  const base = _previewBaseSize(img, box);
+  const newDisplayW = base.w * scale;
+  const newDisplayH = base.h * scale;
+  const maxScrollL = Math.max(0, box.scrollWidth - box.clientWidth);
+  const maxScrollT = Math.max(0, box.scrollHeight - box.clientHeight);
+  box.scrollLeft = Math.min(maxScrollL, Math.max(0, fracX * newDisplayW - viewX));
+  box.scrollTop = Math.min(maxScrollT, Math.max(0, fracY * newDisplayH - viewY));
+  delete img.dataset.zoomFracX;
+  delete img.dataset.zoomFracY;
+  delete img.dataset.zoomViewX;
+  delete img.dataset.zoomViewY;
+}
+
+function _previewZoomAnchorFromBox(box) {
+  if (!box) return null;
+  const rect = box.getBoundingClientRect();
+  return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+}
+
+function setPreviewZoom(img, nextScale, anchor) {
   if (!img) return;
   const box = img.closest('.pdf-preview-container');
   const scale = Math.min(4, Math.max(0.5, Number(nextScale) || 1));
-  img.dataset.scale = String(Math.round(scale * 100) / 100);
+  if (anchor && scale > 1.01) {
+    _capturePreviewZoomAnchor(img, box, anchor);
+  } else {
+    delete img.dataset.zoomFracX;
+    delete img.dataset.zoomFracY;
+    delete img.dataset.zoomViewX;
+    delete img.dataset.zoomViewY;
+  }
+  img.dataset.scale = String(Math.round(scale * 1000) / 1000);
   delete img.dataset.fitKey;
+  if (box) box.dataset.previewZooming = '1';
   fitPreviewImage(img);
-  if (box && scale <= 1.01) {
+  if (box && scale > 1.01 && img.dataset.zoomFracX) {
+    void box.offsetHeight;
+    _applyPreviewZoomScroll(img, box, scale);
+  } else if (box && scale <= 1.01) {
     box.scrollTop = 0;
     box.scrollLeft = 0;
   }
+  if (box) delete box.dataset.previewZooming;
 }
 
 function fitPreviewImage(img) {
@@ -728,10 +796,10 @@ function fitPreviewImage(img) {
   img.draggable = false;
   img.style.margin = '0';
   img.style.objectFit = 'contain';
-  img.style.transform = 'none';
   img.style.position = 'static';
   img.style.maxWidth = 'none';
   img.style.maxHeight = 'none';
+  img.style.willChange = userScale > 1.01 ? 'transform' : '';
 
   if (userScale <= 1.01) {
     stage.style.position = 'absolute';
@@ -749,6 +817,8 @@ function fitPreviewImage(img) {
     img.style.height = 'auto';
     img.style.maxWidth = '100%';
     img.style.maxHeight = '100%';
+    img.style.transform = 'none';
+    img.style.transformOrigin = '';
     img.style.cursor = 'default';
     box.style.overflow = 'hidden';
     box.scrollTop = 0;
@@ -774,14 +844,43 @@ function fitPreviewImage(img) {
   stage.style.height = `${Math.max(displayH, availH)}px`;
   stage.style.minWidth = `${Math.max(displayW, availW)}px`;
   stage.style.minHeight = `${Math.max(displayH, availH)}px`;
-  img.style.width = `${displayW}px`;
-  img.style.height = `${displayH}px`;
+  img.style.width = `${base.w}px`;
+  img.style.height = `${base.h}px`;
+  img.style.transform = `scale(${userScale})`;
+  img.style.transformOrigin = '0 0';
   img.style.cursor = 'grab';
   box.style.overflow = 'auto';
 }
 
 const _previewPanState = new WeakMap();
+const _previewWheelPending = new WeakMap();
 let _previewPanBox = null;
+
+function queuePreviewWheelZoom(img, delta, anchor) {
+  let pending = _previewWheelPending.get(img);
+  if (!pending) {
+    pending = {
+      scale: Number(img.dataset.scale || '1'),
+      anchor: { clientX: anchor.clientX, clientY: anchor.clientY },
+      rafId: 0,
+    };
+    _previewWheelPending.set(img, pending);
+  } else {
+    pending.anchor.clientX = anchor.clientX;
+    pending.anchor.clientY = anchor.clientY;
+  }
+  const intensity = Math.min(2.5, Math.max(0.35, Math.abs(delta) / 120));
+  const factor = delta < 0 ? (1 + 0.045 * intensity) : (1 / (1 + 0.045 * intensity));
+  pending.scale = Math.min(4, Math.max(0.5, pending.scale * factor));
+  if (pending.rafId) return;
+  pending.rafId = requestAnimationFrame(() => {
+    const p = _previewWheelPending.get(img);
+    if (!p) return;
+    p.rafId = 0;
+    _previewWheelPending.delete(img);
+    setPreviewZoom(img, p.scale, p.anchor);
+  });
+}
 
 function initPreviewPanGlobal() {
   if (window._previewPanGlobalInit) return;
@@ -830,9 +929,7 @@ function initPreviewWheelGlobal() {
     e.stopPropagation();
     const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
     if (Math.abs(delta) < 1) return;
-    const current = Number(img.dataset.scale || '1');
-    const step = delta < 0 ? 0.12 : -0.12;
-    setPreviewZoom(img, current + step);
+    queuePreviewWheelZoom(img, delta, { clientX: e.clientX, clientY: e.clientY });
   }, { passive: false, capture: true });
 }
 
@@ -867,7 +964,7 @@ function bindPreviewPan(box) {
     const img = box.querySelector('.pdf-preview-img');
     if (!img) return;
     const current = Number(img.dataset.scale || '1');
-    setPreviewZoom(img, current <= 1.01 ? 2 : 1);
+    setPreviewZoom(img, current <= 1.01 ? 2 : 1, { clientX: e.clientX, clientY: e.clientY });
     e.preventDefault();
   });
 }
@@ -880,7 +977,7 @@ function bindPreviewResizeObserver(box) {
   const img = box.querySelector('.pdf-preview-img');
   if (!img) return;
   const ro = new ResizeObserver(() => {
-    if (box.dataset.previewPanning) return;
+    if (box.dataset.previewPanning || box.dataset.previewZooming) return;
     clearTimeout(_previewResizeTimers.get(box));
     _previewResizeTimers.set(box, setTimeout(() => {
       delete img.dataset.fitKey;
@@ -1725,11 +1822,13 @@ document.addEventListener('click', (e) => {
     if (!img) return;
     const action = zoomBtn.dataset.action;
     const current = Number(img.dataset.scale || '1');
+    const box = img.closest('.pdf-preview-container');
     let next = current;
-    if (action === 'in') next = Math.min(4, current + 0.2);
-    if (action === 'out') next = Math.max(0.5, current - 0.2);
+    if (action === 'in') next = Math.min(4, current * 1.12);
+    if (action === 'out') next = Math.max(0.5, current / 1.12);
     if (action === 'reset') next = 1;
-    setPreviewZoom(img, next);
+    const anchor = action === 'reset' ? null : _previewZoomAnchorFromBox(box);
+    setPreviewZoom(img, next, anchor);
     return;
   }
 

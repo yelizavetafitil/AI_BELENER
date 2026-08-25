@@ -1953,6 +1953,7 @@ body {
 }
 .pdf-preview-stage {
   box-sizing: border-box;
+  transform: translateZ(0);
 }
 .pdf-preview-container.is-panning {
   cursor: grabbing;
@@ -1989,6 +1990,7 @@ body {
   user-select: none;
   -webkit-user-drag: none;
   pointer-events: auto;
+  backface-visibility: hidden;
 }
 
 @media (max-width: 1100px) {
