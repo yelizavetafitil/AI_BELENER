@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -13,6 +14,9 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
+from pathlib import Path
+
+import certifi
 
 from belener.config import (
     stn_lookup_enabled,
@@ -33,6 +37,65 @@ from belener.stn_lookup import (
 )
 
 log = logging.getLogger("belener.tnpa_lookup")
+
+_TNPA_INTERMEDIATE_PEM: bytes | None = None
+_TNPA_SSL_CTX: ssl.SSLContext | None = None
+_TNPA_SSL_LOCK = threading.Lock()
+
+
+def _der_to_pem(data: bytes) -> bytes:
+    import base64
+
+    body = base64.encodebytes(data).replace(b"\n", b"")
+    lines = [body[i : i + 64] for i in range(0, len(body), 64)]
+    return b"-----BEGIN CERTIFICATE-----\n" + b"\n".join(lines) + b"\n-----END CERTIFICATE-----\n"
+
+
+def _load_tnpa_intermediate_pem() -> bytes:
+    """Промежуточный CA tnpa.by (GlobalSign R6 AlphaSSL 2025) — часто нет в старых ca-bundle."""
+    global _TNPA_INTERMEDIATE_PEM
+    if _TNPA_INTERMEDIATE_PEM is not None:
+        return _TNPA_INTERMEDIATE_PEM
+
+    bundled = Path(__file__).resolve().parent / "certs" / "globalsign-r6-alphassl-2025.pem"
+    if bundled.is_file():
+        _TNPA_INTERMEDIATE_PEM = bundled.read_bytes()
+        return _TNPA_INTERMEDIATE_PEM
+
+    urls = (
+        "http://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt",
+        "https://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt",
+    )
+    for url in urls:
+        try:
+            with urllib.request.urlopen(url, timeout=12) as resp:
+                raw = resp.read()
+            if raw.startswith(b"-----BEGIN"):
+                _TNPA_INTERMEDIATE_PEM = raw if raw.endswith(b"\n") else raw + b"\n"
+            else:
+                _TNPA_INTERMEDIATE_PEM = _der_to_pem(raw)
+            return _TNPA_INTERMEDIATE_PEM
+        except Exception:
+            continue
+
+    _TNPA_INTERMEDIATE_PEM = b""
+    return _TNPA_INTERMEDIATE_PEM
+
+
+def _tnpa_ssl_context() -> ssl.SSLContext:
+    global _TNPA_SSL_CTX
+    with _TNPA_SSL_LOCK:
+        if _TNPA_SSL_CTX is not None:
+            return _TNPA_SSL_CTX
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        extra = _load_tnpa_intermediate_pem()
+        if extra:
+            try:
+                ctx.load_verify_locations(cadata=extra.decode("ascii", errors="ignore"))
+            except ssl.SSLError:
+                log.warning("TNPA: не удалось загрузить промежуточный CA")
+        _TNPA_SSL_CTX = ctx
+        return _TNPA_SSL_CTX
 
 
 def tnpa_base_url() -> str:
@@ -88,7 +151,7 @@ class TnpaClient:
         last_err: Exception | None = None
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with urllib.request.urlopen(req, timeout=self.timeout, context=_tnpa_ssl_context()) as resp:
                     raw = resp.read().decode("utf-8", errors="replace")
                 data = json.loads(raw)
                 rows: list[dict] = []

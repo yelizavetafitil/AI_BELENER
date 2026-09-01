@@ -1147,7 +1147,7 @@ def normative_refs_to_markdown(
 
         found_ips = 0
         found_tnpa = 0
-        found_any = 0
+        active_count = 0
 
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
@@ -1195,11 +1195,14 @@ def normative_refs_to_markdown(
 
             stn_found = False
             tnpa_found = False
+            stn_status_val = ""
+            tnpa_status_val = ""
 
             if c:
                 stn_found = bool(c.found) if hasattr(c, "found") else str(c.get("found")) == "1"
                 stn_intro = c.intro_date if hasattr(c, "intro_date") else c.get("intro_date") or "—"
                 stn_cancel = c.cancel_date if hasattr(c, "cancel_date") else c.get("cancel_date") or "—"
+                stn_status_val = c.status if hasattr(c, "status") else c.get("status") or ""
                 if stn_found and getattr(c, "doc_id", None):
                     doc_id = c.doc_id if hasattr(c, "doc_id") else c.get("doc_id")
                     if doc_id:
@@ -1212,6 +1215,7 @@ def normative_refs_to_markdown(
                 tnpa_found = bool(c_tnpa.found) if hasattr(c_tnpa, "found") else str(c_tnpa.get("found")) == "1"
                 tnpa_intro = c_tnpa.intro_date if hasattr(c_tnpa, "intro_date") else c_tnpa.get("intro_date") or "—"
                 tnpa_cancel = c_tnpa.cancel_date if hasattr(c_tnpa, "cancel_date") else c_tnpa.get("cancel_date") or "—"
+                tnpa_status_val = c_tnpa.status if hasattr(c_tnpa, "status") else c_tnpa.get("status") or ""
                 if tnpa_found and getattr(c_tnpa, "doc_id", None):
                     doc_id_tnpa = c_tnpa.doc_id if hasattr(c_tnpa, "doc_id") else c_tnpa.get("doc_id")
                     if doc_id_tnpa:
@@ -1235,9 +1239,11 @@ def normative_refs_to_markdown(
             intro = _pick_date(stn_intro, tnpa_intro)
             cancel = _pick_date(stn_cancel, tnpa_cancel)
 
-            if stn_found or tnpa_found:
+            stn_active = stn_found and stn_status_val == "актуален"
+            tnpa_active = tnpa_found and tnpa_status_val == "актуален"
+            if stn_active or tnpa_active:
                 row_class = ' class="row-active"'
-                found_any += 1
+                active_count += 1
             else:
                 row_class = ' class="row-canceled"'
 
@@ -1272,7 +1278,7 @@ def normative_refs_to_markdown(
 
         lines.append(
             f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
-            f"найдено в ТНПА: {found_tnpa};<br>актуально: {found_any}</em></p>"
+            f"найдено в ТНПА: {found_tnpa};<br>актуально: {active_count}</em></p>"
         )
         lines.append("")
 
