@@ -14,6 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Промежуточные CA tnpa.by (GlobalSign AlphaSSL R6 + R46) — в системное хранилище Docker.
+COPY belener/certs/globalsign-r6-alphassl-2025.pem /usr/local/share/ca-certificates/globalsign-r6-alphassl-ca-2025.crt
+COPY belener/certs/globalsign-r46-alphassl-2025.pem /usr/local/share/ca-certificates/globalsign-r46-alphassl-ca-2025.crt
+RUN update-ca-certificates
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -543,7 +543,16 @@ def ocr_region(
     psm_val = psm if psm is not None else ocr_psm_for_zone(zone)
     use_spell = _is_table_zone(zone) or (zone or "").casefold().startswith("stamp")
 
+    from belener.config import tile_ocr_offload_remote
+
     engine = ocr_engine()
+    # Offload тайлов нормативов: даже при engine=tesseract, если задан SURYA_OCR_URL.
+    offload = tile_ocr_offload_remote() and (zone or "").casefold().startswith(
+        ("tile_", "spec_", "supp_")
+    )
+    effective = engine
+    if offload and engine == "tesseract":
+        effective = "auto"
 
     if img is None:
         img = _render_clip(doc, page_index, clip, dpi)
@@ -565,20 +574,22 @@ def ocr_region(
             return finalize_ocr_text(raw, spell=use_spell)
 
     def _remote_ocr_pil(pil_img: Image.Image) -> str:
-        if engine in ("surya", "auto"):
+        if effective in ("surya", "auto"):
             from belener.surya_ocr import (
                 normalize_surya_table_text,
                 ocr_pil_image as surya_ocr,
                 surya_ocr_enabled,
+                surya_ocr_url,
             )
 
-            if surya_ocr_enabled():
+            # Offload: URL задан → зовём Surya даже если PDF_OCR_ENGINE=tesseract.
+            if surya_ocr_enabled() or (effective == "auto" and surya_ocr_url()):
                 raw = surya_ocr(pil_img, zone=zone, filename=f"{zone or 'zone'}.png")
                 if raw:
                     if _is_table_zone(zone):
                         raw = normalize_surya_table_text(raw)
                     return finalize_ocr_text(raw, spell=use_spell)
-        if engine in ("deepseek", "auto"):
+        if effective in ("deepseek", "auto"):
             from belener.deepseek_ocr import (
                 deepseek_ocr_enabled,
                 normalize_deepseek_table_text,
@@ -593,7 +604,7 @@ def ocr_region(
                     return finalize_ocr_text(raw, spell=use_spell)
         return ""
 
-    if engine in ("surya", "deepseek", "auto"):
+    if effective in ("surya", "deepseek", "auto"):
         if img is None:
             img = _render_clip(doc, page_index, clip, dpi)
         if img is not None:
@@ -602,7 +613,7 @@ def ocr_region(
             if (
                 ocr_multiview_enabled()
                 and ocr_multiview_for_surya()
-                and engine in ("surya", "auto")
+                and effective in ("surya", "auto")
                 and _is_table_zone(zone)
             ):
                 from belener.ocr_multiview import ocr_pil_multiview
@@ -616,13 +627,13 @@ def ocr_region(
                 remote = _remote_ocr_pil(img)
             if remote:
                 return remote
-        if engine in ("surya", "deepseek") and not ocr_fallback_tesseract():
+        if effective in ("surya", "deepseek") and not ocr_fallback_tesseract():
             return ""
 
-    if engine == "paddle" and not ocr_fallback_tesseract():
+    if effective == "paddle" and not ocr_fallback_tesseract():
         return ""
 
-    if not tesseract_available() and engine not in ("surya", "deepseek", "auto"):
+    if not tesseract_available() and effective not in ("surya", "deepseek", "auto"):
         return ""
 
     text = _ocr_with_tesseract(

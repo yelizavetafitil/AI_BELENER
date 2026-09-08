@@ -9,9 +9,41 @@ from belener.tnpa_lookup import (
 )
 
 
-def test_portal_column_label():
-    # kept intentionally blank: helpers are tested in the UI/PDF layers
-    assert True
+def test_tnpa_ca_bundle_contains_intermediate():
+    from pathlib import Path
+
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+
+    from belener.tnpa_lookup import _load_tnpa_intermediate_pem, _tnpa_trust_ca_path, reset_tnpa_ssl
+
+    reset_tnpa_ssl()
+    intermediate = _load_tnpa_intermediate_pem()
+    assert intermediate.count(b"BEGIN CERTIFICATE") >= 2
+    subjects = []
+    for block in intermediate.split(b"-----END CERTIFICATE-----"):
+        if b"BEGIN CERTIFICATE" not in block:
+            continue
+        pem = b"-----BEGIN CERTIFICATE-----" + block.split(b"-----BEGIN CERTIFICATE-----")[-1] + b"-----END CERTIFICATE-----\n"
+        cert = x509.load_pem_x509_certificate(pem, default_backend())
+        subjects.append(cert.subject.rfc4514_string())
+    assert any("R6 AlphaSSL" in s for s in subjects)
+    assert any("R46 AlphaSSL" in s for s in subjects)
+    bundle = Path(_tnpa_trust_ca_path()).read_bytes()
+    assert intermediate == bundle
+
+
+def test_tnpa_ssl_context_no_deadlock():
+    import concurrent.futures
+
+    from belener.tnpa_lookup import _tnpa_ssl_context, reset_tnpa_ssl
+
+    reset_tnpa_ssl()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = [pool.submit(_tnpa_ssl_context) for _ in range(4)]
+        ctxs = [f.result(timeout=10) for f in futs]
+    assert ctxs[0] is not None
+    assert all(c is ctxs[0] for c in ctxs)
 
 
 def test_portal_doc_url_tnpa():

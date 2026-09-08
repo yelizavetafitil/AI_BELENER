@@ -1145,6 +1145,10 @@ def resolve_number_conflicts(
             )
             if not prefix and not one_digit and not gost_ocr:
                 continue
+            # СН/СП РБ: соседние номера (2.02.03/2.02.05) и усечённый OCR
+            # (2.02.0 → 2.02.05) — разные документы, не схлопывать.
+            if ka in ("СН", "СП") and (one_digit or prefix):
+                continue
             if one_digit and not prefix and _contexts_distinct(a, b):
                 continue
             if one_digit and ka == "ОСТ" and len(ba) == len(bb):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import fitz
@@ -188,6 +189,36 @@ def _pdf_text_in_rect(page: fitz.Page, rect: fitz.Rect) -> str:
         return ""
 
 
+def _tile_ocr_use_remote() -> bool:
+    from belener.config import tile_ocr_offload_remote
+
+    return tile_ocr_offload_remote()
+
+
+def _ocr_tile_remote(
+    doc: fitz.Document,
+    page_index: int,
+    rect: fitz.Rect,
+    img,
+    *,
+    dpi: int,
+    zone: str,
+) -> str:
+    from belener.ocr import ocr_region
+
+    scaled = _scale_image_for_ocr(img, TILE_OCR_MAX_SIDE)
+    if scaled is None:
+        return ""
+    return ocr_region(
+        doc,
+        page_index,
+        rect,
+        dpi=min(dpi, 280),
+        zone=zone or "tile",
+        img=scaled,
+    )
+
+
 def _ocr_tile_tesseract(
     img, *, dpi: int, deadline: float, tile_max_sec: float, zone: str = "", fast: bool = False
 ) -> str:
@@ -263,14 +294,24 @@ def ocr_tile(
     ocr = ""
     img = _render_clip(doc, page_index, rect, dpi=dpi)
     if img is not None:
-        ocr = _ocr_tile_tesseract(
-            _scale_image_for_ocr(img, TILE_OCR_MAX_SIDE),
-            dpi=min(dpi, 280),
-            deadline=deadline,
-            tile_max_sec=tile_max_sec,
-            zone=zone,
-            fast=fast,
-        )
+        if _tile_ocr_use_remote():
+            ocr = _ocr_tile_remote(
+                doc,
+                page_index,
+                rect,
+                img,
+                dpi=min(dpi, 280),
+                zone=zone,
+            )
+        else:
+            ocr = _ocr_tile_tesseract(
+                _scale_image_for_ocr(img, TILE_OCR_MAX_SIDE),
+                dpi=min(dpi, 280),
+                deadline=deadline,
+                tile_max_sec=tile_max_sec,
+                zone=zone,
+                fast=fast,
+            )
 
     if ocr:
         parts.append(ocr)
@@ -571,6 +612,7 @@ def extract_document_tiles(
     *,
     max_pages: int | None = None,
     pipeline_deadline: float | None = None,
+    source_path: str | None = None,
 ) -> dict[str, Any]:
     """OCR документа по тайлам в рамках общего бюджета времени."""
     from belener.config import (
@@ -580,6 +622,7 @@ def extract_document_tiles(
         tile_ocr_dpi_for_pages,
         tile_ocr_max_pages,
         tile_ocr_overlap_frac,
+        tile_ocr_parallel_workers,
     )
 
     force_ocr = normative_force_tile_ocr()
@@ -625,52 +668,107 @@ def extract_document_tiles(
     tiles_done = 0
     budget_exhausted = False
 
-    for i in range(pages_to_scan):
-        left_total = deadline - time.monotonic()
-        pages_left = pages_to_scan - i
-        # Резерв на каждый оставшийся лист — не оставляем хвост без OCR.
-        reserve_rest = max(0, pages_left - 1) * min_pass
-        available = left_total - reserve_rest
-        if available < min_pass * 0.55 and pages_left > 1:
-            # Жёстко: всё же даём минимальный проход текущему листу.
-            available = max(min_pass * 0.7, left_total / max(1, pages_left))
-        if left_total < 2.5:
-            budget_exhausted = True
-            log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
-            break
-        page_rect = doc[i].rect
-        page_jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap)
-        page_supps = supplements_for_page_scan(page_rect, pages_to_scan)
-        tiles_expected += len(page_jobs) + len(page_supps)
-        page_share = left_total / max(1, pages_left)
-        this_budget = max(min_pass * 0.7, min(per_page_cap + 3.0, page_share, max(available, min_pass * 0.7)))
-        page_deadline = min(deadline, time.monotonic() + this_budget)
-        use_preview_words = pages_to_scan <= 12
-        pw: list = []
-        zs: list = []
-        chunks, page_done, page_expected = extract_page_tiles(
-            doc,
-            i,
-            dpi=dpi,
-            deadline=page_deadline,
-            tile_max_sec=min(tile_max, max(8.0, this_budget - 0.5)),
-            overlap_frac=overlap,
-            cols=cols,
-            rows=rows,
-            force_ocr=force_ocr,
-            document_pages=pages_to_scan,
-            word_sink=pw if use_preview_words else None,
-            zone_sink=zs if use_preview_words else None,
+    parallel_workers = tile_ocr_parallel_workers() if _tile_ocr_use_remote() else 1
+    use_parallel = parallel_workers > 1 and bool(source_path) and pages_to_scan > 1
+
+    def _process_page(i: int) -> tuple[int, list[str], int, int, list, list, bool]:
+        page_doc = fitz.open(source_path) if use_parallel else doc
+        try:
+            # Searchable лист: слой PDF + превью words, без GPU/CPU OCR по сетке.
+            if not force_ocr and _page_has_usable_text(page_doc, i):
+                layer = (page_doc[i].get_text("text") or "").strip()
+                log.info(
+                    "tile OCR: text-layer page=%s chars=%s (skip grid, keep GPU free)",
+                    i + 1,
+                    len(layer),
+                )
+                return i, ([layer] if layer else []), 0, 0, [], [], False
+
+            left_total = deadline - time.monotonic()
+            pages_left = pages_to_scan - i
+            min_pass_local = min_pass
+            reserve_rest = max(0, pages_left - 1) * min_pass_local
+            available = left_total - reserve_rest
+            if available < min_pass_local * 0.55 and pages_left > 1:
+                available = max(min_pass_local * 0.7, left_total / max(1, pages_left))
+            if left_total < 2.5:
+                return i, [], 0, 0, [], [], True
+            page_rect = page_doc[i].rect
+            page_jobs = page_tile_jobs(page_rect, cols=cols, rows=rows, overlap_frac=overlap)
+            page_supps = supplements_for_page_scan(page_rect, pages_to_scan)
+            page_expected = len(page_jobs) + len(page_supps)
+            page_share = left_total / max(1, pages_left)
+            this_budget = max(min_pass_local * 0.7, min(per_page_cap + 3.0, page_share, max(available, min_pass_local * 0.7)))
+            page_deadline = min(deadline, time.monotonic() + this_budget)
+            use_preview_words = pages_to_scan <= 12
+            pw: list = []
+            zs: list = []
+            chunks, page_done, _page_expected = extract_page_tiles(
+                page_doc,
+                i,
+                dpi=dpi,
+                deadline=page_deadline,
+                tile_max_sec=min(tile_max, max(8.0, this_budget - 0.5)),
+                overlap_frac=overlap,
+                cols=cols,
+                rows=rows,
+                force_ocr=force_ocr,
+                document_pages=pages_to_scan,
+                word_sink=pw if use_preview_words else None,
+                zone_sink=zs if use_preview_words else None,
+            )
+            partial = page_done < page_expected
+            return i, chunks, page_done, page_expected, pw, zs, partial
+        finally:
+            if use_parallel:
+                page_doc.close()
+
+    page_results: dict[int, tuple[list[str], int, int, list, list, bool]] = {}
+
+    if use_parallel:
+        log.info(
+            "tile OCR parallel workers=%s pages=%s engine=remote path=%s",
+            parallel_workers,
+            pages_to_scan,
+            source_path,
         )
-        tiles_done += page_done
+        with ThreadPoolExecutor(max_workers=parallel_workers) as pool:
+            futures = {pool.submit(_process_page, i): i for i in range(pages_to_scan)}
+            for fut in as_completed(futures):
+                i, chunks, page_done, page_expected, pw, zs, partial = fut.result()
+                page_results[i] = (chunks, page_done, page_expected, pw, zs, partial)
+                tiles_done += page_done
+                tiles_expected += page_expected
+                if partial:
+                    budget_exhausted = True
+    else:
+        for i in range(pages_to_scan):
+            i, chunks, page_done, page_expected, pw, zs, partial = _process_page(i)
+            page_results[i] = (chunks, page_done, page_expected, pw, zs, partial)
+            tiles_done += page_done
+            tiles_expected += page_expected
+            if partial:
+                budget_exhausted = True
+                if page_expected > 0:
+                    log.warning("tile OCR: partial page=%s tiles=%s/%s", i + 1, page_done, page_expected)
+            if page_expected == 0 and not chunks and deadline - time.monotonic() < 2.5:
+                budget_exhausted = True
+                log.warning("tile OCR: budget stop before page=%s/%s", i + 1, pages_to_scan)
+                break
+            if deadline - time.monotonic() < 3 and i + 1 < pages_to_scan and page_expected > 0:
+                budget_exhausted = True
+                log.warning("tile OCR: budget low after page=%s/%s", i + 1, pages_to_scan)
+                break
+
+    for i in sorted(page_results):
+        chunks, page_done, page_expected, pw, zs, partial = page_results[i]
         pages_processed += 1
         page_tiles.append(chunks)
         for s in chunks:
             if s and s not in all_sources:
                 all_sources.append(s)
-        if page_done < page_expected:
+        if partial:
             budget_exhausted = True
-            log.warning("tile OCR: partial page=%s tiles=%s/%s", i + 1, page_done, page_expected)
         text_words = doc[i].get_text("words") or []
         combined: list = []
         if _page_has_usable_text(doc, i):
@@ -682,7 +780,7 @@ def extract_document_tiles(
             page_tile_zones.append(zs)
             if pw and not _page_has_usable_text(doc, i):
                 log.info("tile OCR preview words page=%s count=%s zones=%s", i + 1, len(pw), len(zs))
-        elif use_preview_words and time.monotonic() < deadline + 30:
+        elif pages_to_scan <= 12 and time.monotonic() < deadline + 30:
             pw2 = collect_page_preview_words(
                 doc,
                 i,
@@ -694,11 +792,6 @@ def extract_document_tiles(
         else:
             page_preview_words.append([])
             page_tile_zones.append([])
-        if deadline - time.monotonic() < 3:
-            budget_exhausted = True
-            if i + 1 < pages_to_scan:
-                log.warning("tile OCR: budget low after page=%s/%s", i + 1, pages_to_scan)
-            break
 
     page_texts = [merge_page_text(chunks) for chunks in page_tiles]
     elapsed = time.monotonic() - t0

@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir "transformers>=4.56.1,<5.0.0" \
 
 COPY app.py .
 
-ENV SURYA_DEVICE=cpu
+ENV SURYA_DEVICE=auto
 ENV HF_HOME=/models/huggingface
 ENV TRANSFORMERS_CACHE=/models/huggingface
 ENV TORCH_HOME=/models/torch

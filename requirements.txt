@@ -17,3 +17,4 @@ pandas>=2.0
 reportlab
 ldap3>=2.9
 cryptography>=42.0
+certifi>=2024.2.2

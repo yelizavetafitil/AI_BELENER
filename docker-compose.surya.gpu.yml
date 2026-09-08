@@ -1,0 +1,33 @@
+# Surya на NVIDIA GPU (любая карта: 30xx / 40xx / 50xx …)
+#
+#   cp .env.gpu.example .env
+#   ./scripts/up_ocr.sh
+#
+# Или вручную:
+#   docker compose -f docker-compose.yml -f docker-compose.surya.yml -f docker-compose.surya.gpu.yml --profile surya up -d --build
+
+services:
+  surya-ocr:
+    build:
+      context: ./services/surya_ocr
+      dockerfile: Dockerfile.gpu
+    environment:
+      SURYA_DEVICE: ${SURYA_DEVICE:-auto}
+      SURYA_REQUIRE_GPU: ${SURYA_REQUIRE_GPU:-0}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    # Compose Desktop/Linux: gpus (без deploy.reservations — конфликт с mem_reservation)
+    gpus: all
+
+  web:
+    environment:
+      PDF_OCR_ENGINE: ${PDF_OCR_ENGINE:-surya}
+      SURYA_OCR_URL: http://surya-ocr:8081
+      PDF_OCR_FALLBACK_TESS: ${PDF_OCR_FALLBACK_TESS:-1}
+      PDF_TILE_OCR_OFFLOAD: ${PDF_TILE_OCR_OFFLOAD:-1}
+      PDF_TILE_OCR_PARALLEL: ${PDF_TILE_OCR_PARALLEL:-2}
+      PDF_NORMATIVE_FORCE_OCR: ${PDF_NORMATIVE_FORCE_OCR:-0}
+      PDF_TILE_TEXT_SKIP_OCR_MIN: ${PDF_TILE_TEXT_SKIP_OCR_MIN:-80}
+      PDF_GOST_CHECK_BUDGET_MAX: ${PDF_GOST_CHECK_BUDGET_MAX:-7200}
+      PDF_GOST_EXTRA_PER_PAGE_SEC: ${PDF_GOST_EXTRA_PER_PAGE_SEC:-12}
+      PDF_TILE_OCR_DPI: ${PDF_TILE_OCR_DPI:-260}

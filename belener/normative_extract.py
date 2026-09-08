@@ -846,11 +846,32 @@ def _page_refs_for_preview(
     refs: list[dict],
     page_normative_refs: list[list[dict]] | None,
 ) -> list[dict]:
+    """Подсветка листа: только то, что есть в итоговой таблице."""
+    from belener.normative_refs import _canonical_key
+
+    page_refs: list[dict] = []
     if page_normative_refs is not None:
         if page_index < len(page_normative_refs):
-            return list(page_normative_refs[page_index] or [])
-        return []
-    return list(refs or [])
+            page_refs = list(page_normative_refs[page_index] or [])
+        else:
+            return []
+    else:
+        return list(refs or [])
+    if not refs:
+        return page_refs
+    table_keys = {
+        _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or ""))
+        for item in refs
+    }
+    table_keys.discard("")
+    on_page = [
+        item
+        for item in page_refs
+        if _canonical_key(str(item.get("kind") or ""), str(item.get("ref") or "")) in table_keys
+    ]
+    # Таблица уже объединена с page_normative_refs — on_page должен совпасть.
+    # Fallback: не гасим подсветку, если ключи по какой-то причине разъехались.
+    return on_page if on_page else page_refs
 
 
 def _pages_by_ref(page_normative_refs: list[list[dict]] | None) -> dict[str, list[int]]:
@@ -1010,7 +1031,12 @@ def extract_normatives_from_document(
     pipeline_deadline: float | None = None,
 ) -> dict[str, Any]:
     """Нормативы: сетка тайлов по листу → OCR (основной путь)."""
-    return extract_normatives_document_crops(doc, filename, pipeline_deadline=pipeline_deadline)
+    return extract_normatives_document_crops(
+        doc,
+        filename,
+        pipeline_deadline=pipeline_deadline,
+        source_path=source_path,
+    )
 
 
 def extract_normatives_from_image_path(
@@ -1062,6 +1088,7 @@ def normative_refs_to_markdown(
     tnpa_checks: list | None = None,
     check_date: date | None = None,
     stn_error: str = "",
+    tnpa_error: str = "",
     page_count: int = 0,
     pages_processed: int = 0,
     budget_exhausted: bool = False,
@@ -1100,6 +1127,7 @@ def normative_refs_to_markdown(
         lines.append("</div>")
 
     ref_pages = _pages_by_ref(page_normative_refs)
+    found_tnpa = 0
 
     if not refs:
         lines.append(
@@ -1223,6 +1251,17 @@ def normative_refs_to_markdown(
                             f'<a class="stn-link stn-link-tnpa" '
                             f'href="{tnpa_base}/#!/DocumentCard/{doc_id_tnpa}" target="_blank">ТНПА</a>'
                         )
+                elif tnpa_status_val == "ошибка проверки" or (
+                    str(c_tnpa.error if hasattr(c_tnpa, "error") else c_tnpa.get("error") or "").strip()
+                ):
+                    err_tip = str(
+                        c_tnpa.error if hasattr(c_tnpa, "error") else c_tnpa.get("error") or "нет связи"
+                    ).replace('"', "'")
+                    tnpa_link = (
+                        f'<span class="stn-link stn-link-muted" title="{err_tip}">нет связи</span>'
+                    )
+                elif (tnpa_status_val or "").startswith("пропущено"):
+                    tnpa_link = '<span class="stn-link stn-link-muted" title="бюджет времени">пропуск</span>'
 
             if stn_found:
                 found_ips += 1
@@ -1302,6 +1341,10 @@ def normative_refs_to_markdown(
             stn_error = "Проверка ИПС не выполнена — не хватило времени после OCR."
     if stn_error:
         lines.extend(["", f"<p><em>⚠ {stn_error}</em></p>", ""])
+
+    tnpa_error = (tnpa_error or "").strip()
+    if tnpa_error:
+        lines.extend(["", f"<p><em>⚠ {tnpa_error}</em></p>", ""])
 
     lines.append("</div>")  # workspace-list
 
@@ -1397,6 +1440,7 @@ def normative_result_to_markdown(
         tnpa_checks=tnpa,
         check_date=check_date,
         stn_error=str(result.get("stn_error") or ""),
+        tnpa_error=str(result.get("tnpa_error") or ""),
         page_count=int(result.get("page_count") or 0),
         pages_processed=int(result.get("pages_processed") or 0),
         budget_exhausted=bool(result.get("budget_exhausted")),

@@ -6,7 +6,7 @@ from typing import Any
 
 import fitz
 
-from belener.normative_refs import merge_normative_refs_from_sources
+from belener.normative_refs import merge_normative_refs, merge_normative_refs_from_sources
 from belener.tile_ocr import (
     PIPELINE,
     TILE_COLS,
@@ -47,14 +47,51 @@ def extract_normatives_document_crops(
     filename: str = "document.pdf",
     *,
     pipeline_deadline: float | None = None,
+    source_path: str | None = None,
 ) -> dict[str, Any]:
-    tiles = extract_document_tiles(doc, filename, pipeline_deadline=pipeline_deadline)
-    page_texts = tiles.get("page_texts") or []
+    from belener.scanned import page_text_layer_usable
+
+    tiles = extract_document_tiles(
+        doc,
+        filename,
+        pipeline_deadline=pipeline_deadline,
+        source_path=source_path,
+    )
+    page_texts = list(tiles.get("page_texts") or [])
+    all_sources = list(tiles.get("all_sources") or [])
+
+    # Полный текстовый слой листа — даже если tile OCR оборвался по бюджету.
+    # Иначе на searchable PDF теряются ГОСТ/СН из непройденных тайлов.
+    pages_n = int(tiles.get("pages_planned") or tiles.get("pages_processed") or doc.page_count or 0)
+    pages_n = max(pages_n, int(tiles.get("pages_processed") or 0))
+    pages_n = min(max(1, pages_n), doc.page_count)
+    for i in range(pages_n):
+        if not page_text_layer_usable(doc, i):
+            continue
+        try:
+            layer = (doc[i].get_text("text") or "").strip()
+        except Exception:
+            layer = ""
+        if not layer:
+            continue
+        if i < len(page_texts):
+            if layer not in page_texts[i]:
+                page_texts[i] = f"{layer}\n\n{page_texts[i]}".strip() if page_texts[i] else layer
+        else:
+            page_texts.append(layer)
+        if layer not in all_sources:
+            all_sources.insert(0, layer)
+
     page_normative_refs = [
         _finalize_refs([text]) if str(text or "").strip() else []
         for text in page_texts
     ]
-    refs = _finalize_refs(tiles["all_sources"])
+    # Сначала постраничные (как жёлтая подсветка), потом документный merge —
+    # иначе соседи СН/СП пропадают из таблицы или уезжают в конец списка.
+    refs = merge_normative_refs(
+        *[prefs for prefs in page_normative_refs if prefs],
+        _finalize_refs(all_sources),
+    )
     return {
         "ok": True,
         "filename": filename,
@@ -71,6 +108,6 @@ def extract_normatives_document_crops(
         "page_tile_zones": tiles.get("page_tile_zones") or [],
         "vision_model": None,
         "source_text_chars": sum(len(s) for s in page_texts),
-        "page_texts": tiles["all_sources"],
+        "page_texts": all_sources,
         "drawing": None,
     }

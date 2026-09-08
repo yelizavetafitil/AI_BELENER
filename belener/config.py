@@ -162,6 +162,74 @@ def ocr_engine() -> str:
     return "tesseract"
 
 
+def remote_ocr_url_configured() -> bool:
+    """Есть ли внешний OCR-сервис (Surya / DeepSeek / Paddle)."""
+    if (os.environ.get("SURYA_OCR_URL") or "").strip():
+        return True
+    if (os.environ.get("DEEPSEEK_OCR_URL") or "").strip():
+        return True
+    if paddle_ocr_url():
+        return True
+    return False
+
+
+_REMOTE_GPU_CACHE: tuple[float, bool] | None = None
+
+
+def remote_ocr_is_gpu(*, ttl_sec: float = 60.0) -> bool:
+    """Surya/Paddle на CUDA (VRAM) — кэш health, чтобы не дёргать на каждый тайл."""
+    global _REMOTE_GPU_CACHE
+    import time
+
+    now = time.monotonic()
+    if _REMOTE_GPU_CACHE is not None and now - _REMOTE_GPU_CACHE[0] < ttl_sec:
+        return _REMOTE_GPU_CACHE[1]
+
+    gpu = False
+    try:
+        from belener.ocr_http import health_get_json
+
+        surya = (os.environ.get("SURYA_OCR_URL") or "").strip()
+        if surya:
+            info = health_get_json(surya, timeout=2.5) or {}
+            device = str(info.get("device") or "").casefold()
+            g = info.get("gpu")
+            if device.startswith("cuda") or (isinstance(g, dict) and g.get("cuda")):
+                gpu = True
+        if not gpu and paddle_ocr_url():
+            info = health_get_json(paddle_ocr_url(), timeout=2.5) or {}
+            if info.get("gpu") is True or str(info.get("device") or "").casefold().startswith("cuda"):
+                gpu = True
+    except Exception:
+        gpu = False
+
+    _REMOTE_GPU_CACHE = (now, gpu)
+    return gpu
+
+
+def tile_ocr_offload_remote() -> bool:
+    """
+    Offload тайлов с web/CPU на OCR-сервис (Surya/Paddle).
+
+    - PDF_TILE_OCR_OFFLOAD=1/0 — жёстко
+    - auto (по умолчанию): GPU-сервис → да; engine=surya/paddle/… → да;
+      engine=tesseract + только CPU-Surya → нет (иначе медленнее и грузит CPU зря)
+    """
+    raw = (os.environ.get("PDF_TILE_OCR_OFFLOAD") or "auto").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return remote_ocr_url_configured()
+    # auto
+    eng = ocr_engine()
+    if eng in ("surya", "deepseek", "paddle"):
+        return remote_ocr_url_configured()
+    if eng == "auto":
+        return remote_ocr_url_configured()
+    # tesseract: только если удалённый OCR реально на GPU (как у Владика для ИИ)
+    return remote_ocr_url_configured() and remote_ocr_is_gpu()
+
+
 def paddle_ocr_url() -> str:
     return (os.environ.get("PADDLE_OCR_URL") or "").strip().rstrip("/")
 
@@ -740,8 +808,12 @@ def stn_batch_budget_sec() -> float:
 
 
 def normative_force_tile_ocr() -> bool:
-    """Всегда Tesseract на тайлах — текстовый слой PDF часто неполный на сканах."""
-    return (os.environ.get("PDF_NORMATIVE_FORCE_OCR") or "1").strip().lower() in (
+    """Всегда OCR на тайлах (даже при текстовом слое). По умолчанию выкл —
+
+    searchable PDF уже читаются слоем + merge; принудительный OCR жрёт GPU/CPU
+    и раньше обрывал бюджет. Для плохих сканов: PDF_NORMATIVE_FORCE_OCR=1.
+    """
+    return (os.environ.get("PDF_NORMATIVE_FORCE_OCR") or "0").strip().lower() in (
         "1",
         "true",
         "yes",
@@ -862,10 +934,12 @@ def ocr_budget_for_gost_check(*, pipeline_deadline: float | None = None, page_co
 
 
 def tile_ocr_parallel_workers() -> int:
+    """Параллель страниц при remote OCR. На GPU держим низко — VRAM не thrash."""
     try:
-        return max(1, min(int(os.environ.get("PDF_TILE_OCR_PARALLEL", "3").strip()), 4))
+        default = "2" if tile_ocr_offload_remote() else "1"
+        return max(1, min(int(os.environ.get("PDF_TILE_OCR_PARALLEL", default).strip()), 4))
     except ValueError:
-        return 3
+        return 2
 
 
 def normative_tile_overlap_frac() -> float:
@@ -1196,7 +1270,6 @@ def tnpa_batch_budget_sec(page_count: int = 1, refs_count: int = 0) -> float:
     pages = max(1, int(page_count))
     refs = max(int(refs_count), 0)
     workers = max(1, tnpa_parallel_workers())
-    # ~timeout на ref / workers + запас
     per_ref = max(12.0, float(tnpa_timeout_sec()) / workers + 4.0)
     base = max(150.0, refs * per_ref + pages * 2.0)
     cap = gost_check_total_budget_sec(page_count) * 0.55
@@ -1206,13 +1279,10 @@ def tnpa_batch_budget_sec(page_count: int = 1, refs_count: int = 0) -> float:
 def pipeline_tnpa_deadline(
     *, pipeline_t0: float, page_count: int = 1, refs_count: int = 0
 ) -> float:
-    """Окно ТНПА от текущего момента — не режем остатком OCR.
-
-    На медленном сервере OCR съедает общий лимит, и 3–5 ссылок помечались
-    «нет в ТНПА», хотя на быстром ПК те же документы находились.
-    """
+    """Окно ТНПА от текущего момента — не режем остатком OCR."""
     import time
 
+    del pipeline_t0  # совместимость вызовов; бюджет независим от OCR
     now = time.monotonic()
     reserve = tnpa_batch_budget_sec(page_count, refs_count)
     return now + max(reserve, 180.0)
@@ -1241,10 +1311,11 @@ def stn_ocr_variant_limit() -> int:
 
 
 def stn_max_refs() -> int:
+    """Сколько нормативов проверять в STN/ТНПА (длинные тома часто >40)."""
     try:
-        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "40").strip()), 50))
+        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "80").strip()), 150))
     except ValueError:
-        return 40
+        return 80
 
 
 def normative_skip_tiles_min_refs() -> int:

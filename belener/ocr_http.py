@@ -200,14 +200,24 @@ def try_ocr_batch_endpoints(
 
 
 def health_get(base: str, *, timeout: float = 5.0) -> bool:
+    return bool(health_get_json(base, timeout=timeout))
+
+
+def health_get_json(base: str, *, timeout: float = 5.0) -> dict[str, Any] | None:
+    """GET /health → JSON dict или None."""
     if not base:
-        return False
-    for path in ("/health", "/api/health", "/"):
+        return None
+    for path in ("/health", "/api/health"):
         try:
             req = urllib.request.Request(f"{base.rstrip('/')}{path}", method="GET")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                if resp.status == 200:
-                    return True
+                if resp.status != 200:
+                    continue
+                raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return data
+                return {"ok": True}
         except Exception:
             continue
-    return False
+    return None
