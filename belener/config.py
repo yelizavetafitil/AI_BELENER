@@ -1337,19 +1337,12 @@ def stn_ocr_variant_limit() -> int:
 
 
 def stn_max_refs() -> int:
-    """Сколько нормативов проверять в STN/ТНПА.
+    """Устарело: обрезка списка нормативов отключена — всегда проверяем все.
 
-    0 (по умолчанию) — без лимита, проверять все найденные.
-    >0 — обрезать список (для отладки/быстрых прогонов).
+    PDF_STN_MAX_REFS игнорируется (раньше на серверах оставалось 50 в .env
+    и контейнер продолжал skip даже после дефолта 0).
     """
-    try:
-        raw = (os.environ.get("PDF_STN_MAX_REFS") or "0").strip()
-        v = int(raw)
-        if v <= 0:
-            return 0
-        return min(v, 10_000)
-    except ValueError:
-        return 0
+    return 0
 
 
 def normative_skip_tiles_min_refs() -> int:

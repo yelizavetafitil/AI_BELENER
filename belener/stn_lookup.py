@@ -22,7 +22,6 @@ from belener.config import (
     stn_login,
     stn_lookup_enabled,
     stn_max_queries,
-    stn_max_refs,
     stn_ocr_variant_limit,
     stn_parallel_workers,
     stn_password,
@@ -832,12 +831,6 @@ def refine_and_check_normative_refs(
             continue
         seen.add(key)
         items.append(dict(item))
-    max_refs = stn_max_refs()
-    skipped = 0
-    if max_refs > 0 and len(items) > max_refs:
-        skipped = len(items) - max_refs
-        items = items[:max_refs]
-        log.warning("STN: truncated to %s refs (skipped=%s); set PDF_STN_MAX_REFS=0 for all", max_refs, skipped)
 
     if not items:
         return list(refs or []), []
@@ -888,6 +881,7 @@ def refine_and_check_normative_refs(
         return list(refs or []), checks
 
     workers = min(stn_parallel_workers(), len(items))
+    log.info("STN batch: checking all %s refs (%s workers)", len(items), workers)
     refined_map: dict[tuple[str, str], dict[str, str]] = {}
     checks_map: dict[tuple[str, str], StnCheckResult] = {}
     lock = threading.Lock()
@@ -955,11 +949,10 @@ def refine_and_check_normative_refs(
         checks.append(check)
 
     log.info(
-        "STN batch: %s refs in %.1fs (%s workers, skipped=%s)",
+        "STN batch: %s refs in %.1fs (%s workers)",
         len(checks),
         time.monotonic() - t0,
         workers,
-        skipped,
     )
     return list(refs or []), checks
 

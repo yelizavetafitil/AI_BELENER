@@ -21,7 +21,6 @@ import certifi
 
 from belener.config import (
     stn_lookup_enabled,
-    stn_max_refs,
     tnpa_max_queries,
     tnpa_parallel_workers,
     tnpa_timeout_sec,
@@ -723,17 +722,12 @@ def refine_and_check_normative_refs_tnpa(
             continue
         seen.add(key)
         items.append(dict(item))
-    max_refs = stn_max_refs()
-    if max_refs > 0 and len(items) > max_refs:
-        skipped = len(items) - max_refs
-        items = items[:max_refs]
-        log.warning("TNPA: truncated to %s refs (skipped=%s); set PDF_STN_MAX_REFS=0 for all", max_refs, skipped)
     if not items:
         return list(refs or []), []
 
     # Параллельные клиенты + общий кэш на shared client при workers=1
     workers = min(tnpa_parallel_workers(), len(items))
-    log.info("TNPA batch: %s refs (%s workers)", len(items), workers)
+    log.info("TNPA batch: checking all %s refs (%s workers)", len(items), workers)
     t_batch = time.monotonic()
     try:
         warm_tnpa_ssl_trust(urllib.parse.urlparse(tnpa_base_url()).hostname or "tnpa.by")
