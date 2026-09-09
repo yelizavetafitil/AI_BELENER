@@ -834,9 +834,10 @@ def refine_and_check_normative_refs(
         items.append(dict(item))
     max_refs = stn_max_refs()
     skipped = 0
-    if len(items) > max_refs:
+    if max_refs > 0 and len(items) > max_refs:
         skipped = len(items) - max_refs
         items = items[:max_refs]
+        log.warning("STN: truncated to %s refs (skipped=%s); set PDF_STN_MAX_REFS=0 for all", max_refs, skipped)
 
     if not items:
         return list(refs or []), []

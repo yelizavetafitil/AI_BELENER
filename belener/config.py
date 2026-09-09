@@ -1337,11 +1337,19 @@ def stn_ocr_variant_limit() -> int:
 
 
 def stn_max_refs() -> int:
-    """Сколько нормативов проверять в STN/ТНПА (длинные тома часто >40)."""
+    """Сколько нормативов проверять в STN/ТНПА.
+
+    0 (по умолчанию) — без лимита, проверять все найденные.
+    >0 — обрезать список (для отладки/быстрых прогонов).
+    """
     try:
-        return max(1, min(int(os.environ.get("PDF_STN_MAX_REFS", "80").strip()), 150))
+        raw = (os.environ.get("PDF_STN_MAX_REFS") or "0").strip()
+        v = int(raw)
+        if v <= 0:
+            return 0
+        return min(v, 10_000)
     except ValueError:
-        return 80
+        return 0
 
 
 def normative_skip_tiles_min_refs() -> int:
