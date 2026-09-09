@@ -14,13 +14,24 @@ def test_budget_scales_with_page_count():
     one = gost_check_total_budget_sec(1)
     twelve = gost_check_total_budget_sec(12)
     hundred = gost_check_total_budget_sec(100)
-    assert one == 300.0
+    two_hundred = gost_check_total_budget_sec(200)
+    assert one == 600.0
     assert twelve > one
+    # 2..12: полный rate 28 с/лист
     assert twelve == one + 11 * 28.0
     assert hundred > twelve
-    assert hundred <= 3600.0
+    # 100 листов: полный OCR без упирания в минутный «хвост»
+    assert hundred >= 3000.0
+    assert hundred <= 14400.0
+    # 200+ листов: заметно больше старого потолка 1 ч
+    assert two_hundred > hundred
+    assert two_hundred > 3600.0
+    assert two_hundred >= 4800.0  # ≥ ~80 мин — хватает на full-page OCR
+    assert two_hundred <= 14400.0
     assert normative_ocr_budget_sec(12) >= normative_ocr_budget_sec(1)
+    assert normative_ocr_budget_sec(200) >= 4000.0
     assert "мин" in gost_check_budget_human(12)
+    assert "ч" in gost_check_budget_human(200)
 
 
 def test_tile_grid_shrinks_for_many_pages():

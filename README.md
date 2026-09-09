@@ -108,8 +108,9 @@ docker compose exec db psql -U belener -d belnipiai -c "DELETE FROM tenant_setti
 | `PDF_STN_LOGIN` / `PDF_STN_PASSWORD` | Учётная запись ИПС (запасной вариант, если не задано в админке) |
 | `PDF_STN_LOOKUP` | `1` — проверять на STN, `0` — только список с листа |
 | `PDF_TILE_OCR_DPI` | Качество OCR (320 — баланс скорость/точность) |
-| `PDF_GOST_CHECK_BUDGET` | Общий лимит OCR + STN (сек.) на один запрос |
-| `PDF_GOST_EXTRA_PER_PAGE_SEC` | Доп. секунды за каждый лист после первого (многостраничные PDF) |
+| `PDF_GOST_CHECK_BUDGET` | Базовый лимит OCR + STN (сек.) на 1 лист (по умолчанию 600) |
+| `PDF_GOST_EXTRA_PER_PAGE_SEC` | Добавка с/лист для коротких томов; далее ступени 85%/72% (не ниже 22/20 с) |
+| `PDF_GOST_CHECK_BUDGET_MAX` | Потолок на один запрос (по умолчанию 14400 ≈ 4 ч; тома 200+ листов) |
 | `PDF_TILE_OCR_MAX_PAGES` | `0` — все листы; иначе лимит листов |
 | `BELENER_SSD_ROOT` | Путь к кэшу на SSD (по умолчанию `G:/BelenerCache`) |
 | `PDF_ZONE_CACHE` | `1` — кэш PNG-тайлов на SSD между запусками |

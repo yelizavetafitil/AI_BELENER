@@ -726,28 +726,49 @@ def tile_ocr_time_budget_sec() -> float:
 
 
 def gost_check_extra_per_page_sec() -> float:
+    """Базовая добавка с/лист для коротких/средних томов.
+
+    Минимум 20 с: иначе длинные тома обрываются на OCR. По умолчанию 28 с —
+    запас на полный лист (сетка 1×1) + STN/TNPA хвост.
+    """
     try:
-        # Минимум 28 с/лист: иначе длинные тома (40+) обрываются на середине OCR.
-        return max(28.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "28").strip()))
+        return max(20.0, float(os.environ.get("PDF_GOST_EXTRA_PER_PAGE_SEC", "28").strip()))
     except ValueError:
         return 28.0
 
 
 def gost_check_total_budget_max_sec() -> float:
-    """Верхний предел общего времени (1 лист ≈ PDF_GOST_CHECK_BUDGET, далее +N с/лист)."""
+    """Верхний предел общего времени (тома 200+ листов — до нескольких часов)."""
     try:
-        return max(220.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET_MAX", "3600").strip()))
+        return max(600.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET_MAX", "14400").strip()))
     except ValueError:
-        return 3600.0
+        return 14400.0
 
 
 def gost_check_total_budget_sec(page_count: int = 1) -> float:
+    """Общий лимит OCR + STN/TNPA на один запрос.
+
+    Ступенчато по объёму (точность на коротких, покрытие на длинных):
+    - листы 2–40: полный rate (env / 28 с)
+    - 41–120: ~85% rate, не ниже 22 с/лист
+    - 121+: ~72% rate, не ниже 20 с/лист (хватает на full-page OCR при сниженном DPI)
+    """
     try:
-        base = max(60.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET", "300").strip()))
+        base = max(60.0, float(os.environ.get("PDF_GOST_CHECK_BUDGET", "600").strip()))
     except ValueError:
-        base = 300.0
+        base = 600.0
     pages = max(1, int(page_count))
-    extra = gost_check_extra_per_page_sec() * max(0, pages - 1)
+    if pages <= 1:
+        return min(base, gost_check_total_budget_max_sec())
+
+    rate = gost_check_extra_per_page_sec()
+    mid = max(rate * 0.85, 22.0)
+    lo = max(rate * 0.72, 20.0)
+    extra_pages = pages - 1
+    n_hi = min(extra_pages, 39)  # pages 2..40
+    n_mid = min(max(0, extra_pages - 39), 80)  # pages 41..120
+    n_lo = max(0, extra_pages - 119)  # pages 121+
+    extra = n_hi * rate + n_mid * mid + n_lo * lo
     return min(base + extra, gost_check_total_budget_max_sec())
 
 
@@ -871,8 +892,13 @@ def normative_ocr_budget_sec(page_count: int = 1, *, doc: Any | None = None) -> 
     if pages == 1:
         per_tile = 11.0
     elif full_page:
-        # A4 скан целиком: планируем с запасом, чтобы закрыть все листы тома.
-        per_tile = 24.0 if pages <= 50 else 20.0
+        # A4 скан целиком: планируем с запасом под весь том (согласовано со ступенями бюджета).
+        if pages <= 50:
+            per_tile = 24.0
+        elif pages <= 120:
+            per_tile = 22.0
+        else:
+            per_tile = 20.0
     elif pages <= 12:
         per_tile = 9.5
     else:
