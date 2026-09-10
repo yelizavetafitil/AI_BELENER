@@ -362,7 +362,9 @@ def _heartbeat_while_all(
             continue
 
 
-def stream_extract_pdf_normative(path: str, filename: str, question: str, *, check_date=None):
+def stream_extract_pdf_normative(
+    path: str, filename: str, question: str, *, check_date=None, search_tnpa: bool = True
+):
     """PDF → OCR страниц (плитки) → таблица нормативов + проверка ГОСТ на STN."""
     import time
     from datetime import date
@@ -507,13 +509,20 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
                 _maybe_post_done()
 
         threading.Thread(target=_stn_run, daemon=True).start()
-        threading.Thread(target=_tnpa_run, daemon=True).start()
+        if search_tnpa:
+            threading.Thread(target=_tnpa_run, daemon=True).start()
+        else:
+            tnpa_done.set()
+            _maybe_post_done()
     else:
         stn_done.set()
         tnpa_done.set()
         _maybe_post_done()
 
-    yield from _sse_status("Проверка ИПС и превью с подсветкой…")
+    if search_tnpa and stn_lookup_enabled():
+        yield from _sse_status("Проверка Стройдок, ТНПА и превью…")
+    else:
+        yield from _sse_status("Проверка Стройдок и превью…")
     yield from _heartbeat_while_all(
         [post_done],
         page_count=page_count,
@@ -535,7 +544,9 @@ def stream_extract_pdf_normative(path: str, filename: str, question: str, *, che
     yield "data: [DONE]\n\n"
 
 
-def stream_extract_image_normative(path: str, filename: str, question: str, *, check_date=None):
+def stream_extract_image_normative(
+    path: str, filename: str, question: str, *, check_date=None, search_tnpa: bool = True
+):
     """Изображение → OCR → таблица нормативов."""
     import time
     from datetime import date
@@ -664,13 +675,20 @@ def stream_extract_image_normative(path: str, filename: str, question: str, *, c
                 _maybe_post_done()
 
         threading.Thread(target=_stn_run, daemon=True).start()
-        threading.Thread(target=_tnpa_run, daemon=True).start()
+        if search_tnpa:
+            threading.Thread(target=_tnpa_run, daemon=True).start()
+        else:
+            tnpa_done.set()
+            _maybe_post_done()
     else:
         stn_done.set()
         tnpa_done.set()
         _maybe_post_done()
 
-    yield from _sse_status("Проверка ИПС и превью с подсветкой…")
+    if search_tnpa and stn_lookup_enabled():
+        yield from _sse_status("Проверка Стройдок, ТНПА и превью…")
+    else:
+        yield from _sse_status("Проверка Стройдок и превью…")
     yield from _heartbeat_while_all(
         [post_done],
         page_count=page_count,
@@ -1299,6 +1317,8 @@ def api_chat(conv_id):
     user_override = request.form.get("model_override", "").strip().lower() in ("1", "true", "yes", "on")
     gost_mode = request.form.get("mode", "").strip()
     check_date = _parse_check_date(request.form.get("check_date"))
+    search_tnpa_raw = (request.form.get("search_tnpa") or "1").strip().lower()
+    search_tnpa = search_tnpa_raw not in ("0", "false", "no", "off")
     file = request.files.get("file")
 
     tmp_path = file_name = extracted_text = None
@@ -1396,6 +1416,7 @@ def api_chat(conv_id):
                             file_name or "document.pdf",
                             question,
                             check_date=check_date,
+                            search_tnpa=search_tnpa,
                         )
                     else:
                         gen = stream_extract_pdf(
@@ -1460,6 +1481,7 @@ def api_chat(conv_id):
                             file_name or "image.png",
                             question,
                             check_date=check_date,
+                            search_tnpa=search_tnpa,
                         ):
                             if chunk.startswith("data: ") and chunk != "data: [DONE]\n\n":
                                 try:

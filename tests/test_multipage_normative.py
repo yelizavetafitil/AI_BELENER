@@ -4,6 +4,8 @@ from belener.config import (
     gost_check_budget_human,
     gost_check_total_budget_sec,
     normative_ocr_budget_sec,
+    pipeline_tnpa_deadline,
+    tnpa_batch_budget_sec,
     tile_grid_for_page_count,
 )
 from belener.normative_extract import normative_refs_to_markdown
@@ -32,6 +34,22 @@ def test_budget_scales_with_page_count():
     assert normative_ocr_budget_sec(200) >= 4000.0
     assert "мин" in gost_check_budget_human(12)
     assert "ч" in gost_check_budget_human(200)
+
+
+def test_tnpa_budget_scales_with_refs_and_pages(monkeypatch):
+    monkeypatch.setenv("PDF_TNPA_TIMEOUT", "55")
+    monkeypatch.setenv("PDF_TNPA_PARALLEL", "3")
+    small = tnpa_batch_budget_sec(page_count=1, refs_count=5)
+    large = tnpa_batch_budget_sec(page_count=100, refs_count=40)
+    assert large > small
+    assert small >= 180.0
+    assert large <= gost_check_total_budget_sec(100) * 0.56
+
+    import time
+
+    t0 = time.monotonic()
+    dl = pipeline_tnpa_deadline(pipeline_t0=t0, page_count=100, refs_count=40)
+    assert dl >= t0 + 180.0
 
 
 def test_tile_grid_shrinks_for_many_pages():

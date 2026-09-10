@@ -1537,6 +1537,8 @@ async function sendMessage() {
   if (isGostCheck) fd.append('mode', 'gost');
   const checkDateEl = document.getElementById('check-date');
   if (checkDateEl && checkDateEl.value) fd.append('check_date', checkDateEl.value);
+  const searchTnpaEl = document.getElementById('search-tnpa');
+  fd.append('search_tnpa', searchTnpaEl && !searchTnpaEl.checked ? '0' : '1');
   if (modelWasOverridden) fd.append('model_override', '1');
   if (fc) fd.append('file', fc);
 

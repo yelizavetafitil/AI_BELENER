@@ -1197,6 +1197,28 @@ body {
   gap: 10px;
 }
 
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.form-check {
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+}
+
+.form-check-input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .form-label,
 .check-date-label {
   font-size: 12px;

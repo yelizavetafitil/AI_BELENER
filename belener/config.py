@@ -1276,7 +1276,7 @@ def tnpa_timeout_sec() -> int:
 
 
 def tnpa_parallel_workers() -> int:
-    """Параллельные запросы к tnpa.by. Не наследуем PDF_STN_PARALLEL=1 — иначе на сервере пропуски."""
+    """Параллельные запросы к tnpa.by. Не наследуем PDF_STN_PARALLEL=1."""
     try:
         raw = (os.environ.get("PDF_TNPA_PARALLEL") or "3").strip()
         return max(1, min(int(raw), 6))
@@ -1308,7 +1308,7 @@ def pipeline_tnpa_deadline(
     """Окно ТНПА от текущего момента — не режем остатком OCR."""
     import time
 
-    del pipeline_t0  # совместимость вызовов; бюджет независим от OCR
+    del pipeline_t0
     now = time.monotonic()
     reserve = tnpa_batch_budget_sec(page_count, refs_count)
     return now + max(reserve, 180.0)

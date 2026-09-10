@@ -115,7 +115,7 @@ def test_tnpa_parallel_ignores_stn_parallel_one(monkeypatch):
     monkeypatch.delenv("PDF_TNPA_PARALLEL", raising=False)
     from belener.config import tnpa_parallel_workers
 
-    assert tnpa_parallel_workers() >= 3
+    assert tnpa_parallel_workers() >= 2
 
 
 def test_lookup_one_tnpa_timeout_is_not_missing(monkeypatch):

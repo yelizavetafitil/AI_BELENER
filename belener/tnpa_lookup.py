@@ -291,37 +291,19 @@ def _tnpa_append_trust_pem(pem: bytes) -> bool:
 
 
 def warm_tnpa_ssl_trust(host: str | None = None) -> None:
-    """Перед запросами: bundled CA + AIA с сервера + известные GlobalSign URL."""
+    """Быстрый SSL warm: только bundled R6/R46 (без сетевого probe — он давал 20с+)."""
     global _TNPA_SSL_PROBE_DONE
-    host = (host or "tnpa.by").split("//")[-1].split("/")[0]
-    _load_tnpa_intermediate_pem()
-
+    del host  # AIA/probe только при verify failed
     with _TNPA_SSL_LOCK:
         if _TNPA_SSL_PROBE_DONE:
             return
-
     try:
-        issuer, leaf_der = _tnpa_probe_leaf(host)
-        if issuer:
-            log.info("TNPA SSL: tnpa.by issuer=%s", issuer)
-        if leaf_der:
-            aia_pem = _tnpa_intermediate_from_aia(leaf_der)
-            if aia_pem and _tnpa_append_trust_pem(aia_pem):
-                log.info("TNPA SSL: промежуточный CA загружен из AIA сертификата")
+        _load_tnpa_intermediate_pem()
+        _tnpa_ssl_context()
     except Exception as e:
-        log.warning("TNPA SSL: probe tnpa.by: %s", e)
-
-    for url in _TNPA_KNOWN_INTERMEDIATE_URLS:
-        try:
-            pem = _tnpa_download_pem(url)
-            if pem and _tnpa_append_trust_pem(pem):
-                log.info("TNPA SSL: загружен CA %s", url.rsplit("/", 1)[-1])
-        except Exception:
-            continue
-
+        log.warning("TNPA SSL warm (bundled): %s", e)
     with _TNPA_SSL_LOCK:
         _TNPA_SSL_PROBE_DONE = True
-    _tnpa_ssl_context()
 
 
 def _tnpa_refresh_ssl_on_verify_error(host: str | None = None) -> bool:
@@ -484,15 +466,17 @@ class TnpaClient:
                     ssl_refreshed = True
                     if _tnpa_refresh_ssl_on_verify_error(host):
                         continue
+                # Таймаут не повторяем — иначе 3×55 с на ref и «зависание» UI.
+                if any(x in msg for x in ("timed out", "timeout")):
+                    raise
                 retryable = any(
                     x in msg
                     for x in (
-                        "timed out",
-                        "timeout",
                         "temporarily",
                         "reset",
                         "refused",
                         "unreachable",
+                        "ssl",
                         "eof",
                         "503",
                         "502",
@@ -509,7 +493,7 @@ class TnpaClient:
 
 
 def _tnpa_search_queries(kind: str, ref: str) -> list[str]:
-    """Короткий приоритетный список запросов для tnpa.by (без лишних OCR-вариантов)."""
+    """Короткий приоритетный список запросов для tnpa.by."""
     from belener.stn_lookup import _extract_number_part
 
     kind = (kind or "").strip()
@@ -662,6 +646,7 @@ def lookup_one_tnpa(
             match = _pick_best_tnpa_match(kind, ref, rows)
             if match:
                 break
+            # Пустой ответ: сразу следующий вариант, без ожидания.
         if not match:
             out.query = "; ".join(tried[:4])
             out.status = "пропущено (бюджет времени)" if skipped_budget else "нет в ТНПА"
@@ -717,7 +702,6 @@ def refine_and_check_normative_refs_tnpa(
     if not items:
         return list(refs or []), []
 
-    # Параллельные клиенты + общий кэш на shared client при workers=1
     workers = min(tnpa_parallel_workers(), len(items))
     log.info("TNPA batch: checking all %s refs (%s workers)", len(items), workers)
     t_batch = time.monotonic()
@@ -725,41 +709,51 @@ def refine_and_check_normative_refs_tnpa(
         warm_tnpa_ssl_trust(urllib.parse.urlparse(tnpa_base_url()).hostname or "tnpa.by")
     except Exception as e:
         log.warning("TNPA SSL warm failed: %s", e)
-    checks: list[StnCheckResult] = []
     shared_cli = client or TnpaClient()
+    checks_by_item: dict[tuple[str, str], StnCheckResult] = {}
 
-    def _run_one(item: dict[str, str]) -> StnCheckResult:
-        return lookup_one_tnpa(
+    def _item_key(item: dict[str, str]) -> tuple[str, str]:
+        return (
+            str(item.get("kind") or "").strip().casefold(),
+            str(item.get("ref") or "").strip().casefold(),
+        )
+
+    def _run_one(item: dict[str, str]) -> tuple[tuple[str, str], StnCheckResult]:
+        key = _item_key(item)
+        result = lookup_one_tnpa(
             str(item.get("kind") or ""),
             str(item.get("ref") or ""),
             client=shared_cli,
             today=today,
             deadline=deadline,
         )
+        return key, result
 
     if workers <= 1:
         for item in items:
-            checks.append(_run_one(item))
+            key, result = _run_one(item)
+            checks_by_item[key] = result
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futs = {pool.submit(_run_one, item): item for item in items}
             for fut in as_completed(futs):
+                item = futs[fut]
+                key = _item_key(item)
                 try:
-                    checks.append(fut.result())
+                    _, result = fut.result()
+                    checks_by_item[key] = result
                 except Exception as e:
-                    item = futs[fut]
-                    checks.append(
-                        StnCheckResult(
-                            kind=str(item.get("kind") or ""),
-                            ref=str(item.get("ref") or ""),
-                            query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
-                            found=False,
-                            status="ошибка проверки",
-                            error=str(e),
-                        )
+                    checks_by_item[key] = StnCheckResult(
+                        kind=str(item.get("kind") or ""),
+                        ref=str(item.get("ref") or ""),
+                        query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
+                        found=False,
+                        status="ошибка проверки",
+                        error=str(e),
                     )
 
-    # Второй проход: таймауты/бюджет на медленном сервере не должны давать «нет в ТНПА»
+    checks = [checks_by_item[_item_key(item)] for item in items]
+
     retry_idx = [
         i
         for i, c in enumerate(checks)
@@ -770,10 +764,10 @@ def refine_and_check_normative_refs_tnpa(
         )
     ]
     if retry_idx:
-        log.warning("TNPA retry %s refs after timeouts/budget", len(retry_idx))
         retry_deadline = time.monotonic() + min(180.0, 25.0 * len(retry_idx))
+        log.warning("TNPA retry %s refs after timeouts/budget", len(retry_idx))
         for i in retry_idx:
-            item = {"kind": checks[i].kind, "ref": checks[i].ref}
+            item = items[i]
             again = lookup_one_tnpa(
                 str(item.get("kind") or ""),
                 str(item.get("ref") or ""),
@@ -781,12 +775,21 @@ def refine_and_check_normative_refs_tnpa(
                 today=today,
                 deadline=retry_deadline,
             )
-            checks[i] = again
+            if again.found or not (again.status or "").startswith("пропущено"):
+                checks[i] = again
+
     found = sum(1 for c in checks if c.found)
+    skipped = sum(
+        1
+        for c in checks
+        if not c.found
+        and ((c.status or "").startswith("пропущено") or c.status == "ошибка проверки")
+    )
     log.info(
-        "TNPA batch: %s refs, found %s in %.1fs",
+        "TNPA batch: %s refs, found %s, miss/skip %s in %.1fs",
         len(checks),
         found,
+        skipped,
         time.monotonic() - t_batch,
     )
     return list(refs or []), checks
