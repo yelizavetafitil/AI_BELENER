@@ -141,6 +141,39 @@ def test_pick_best_tnpa_match():
     assert "10704" in _tnpa_designation(match)
 
 
+def test_pick_best_tnpa_prefers_newer_year():
+    """СН 2.01.05-2019 заменён → берём СН 2.01.05-2025."""
+    rows = [
+        {
+            "Number": "2.01.05-2019",
+            "OND": "СН",
+            "NND": "Ветровые воздействия",
+            "DTTN": "2020-09-08",
+            "DTTK": "2026-04-19",
+            "PRIZN_BD": "0",
+        },
+        {
+            "Number": "2.01.05-2025",
+            "OND": "СН",
+            "NND": "Ветровые воздействия",
+            "DTTN": "2026-04-19",
+            "DTTK": None,
+            "PRIZN_BD": "1",
+        },
+    ]
+    match = _pick_best_tnpa_match("СН", "СН 2.01.05", rows)
+    assert match is not None
+    assert "2025" in _tnpa_designation(match)
+
+
+def test_sn_digits_compatible_without_year():
+    from belener.stn_lookup import _digits_compatible
+
+    assert _digits_compatible("20105", "201052019") is True
+    assert _digits_compatible("20105", "201052025") is True
+    assert _digits_compatible("201052022", "201052019") is False
+
+
 class _FakeTnpaClient:
     def __init__(self, rows=None):
         self.rows = rows or []

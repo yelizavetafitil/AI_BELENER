@@ -27,6 +27,30 @@ CARD_HTML = """
 </table>
 """
 
+AMENDMENT_CARD_HTML = """
+<table class="doc-card-table">
+<tr><td class="doc-card-header">Обозначение</td><td>Изменение №1 СНиП 3.05.02-88</td></tr>
+<tr><td class="doc-card-header">Дата введения</td><td>01.06.1994</td></tr>
+<tr><td class="doc-card-header">Дата отмены</td><td>—</td></tr>
+</table>
+"""
+
+SN_BASE_CARD_HTML = """
+<table class="doc-card-table">
+<tr><td class="doc-card-header">Обозначение</td><td>СН 2.01.01-2022</td></tr>
+<tr><td class="doc-card-header">Дата введения</td><td>08.09.2022</td></tr>
+<tr><td class="doc-card-header">Дата отмены</td><td>09.06.2025</td></tr>
+</table>
+"""
+
+SN_AMENDMENT_CARD_HTML = """
+<table class="doc-card-table">
+<tr><td class="doc-card-header">Обозначение</td><td>Изменение №1 СН 2.01.01-2022</td></tr>
+<tr><td class="doc-card-header">Дата введения</td><td>09.06.2025</td></tr>
+<tr><td class="doc-card-header">Дата отмены</td><td>—</td></tr>
+</table>
+"""
+
 
 def test_is_stn_checkable():
     assert is_stn_checkable("ГОСТ")
@@ -127,6 +151,10 @@ class _FakeClient(StnClient):
     def __init__(self) -> None:
         self.base = "https://example.test/"
         self.timeout = 5
+        self._logged_in = True
+        self._login_user = ""
+        self._login_pass = ""
+        self._login_error = ""
 
     def search_all(self, queries: list[str]):
         for q in queries:
@@ -156,9 +184,18 @@ class _FakeClient(StnClient):
         match = _pick_best_match(kind, ref, rows)
         return match, "; ".join(queries[:4])
 
+    def search_escalated_rows(self, kind, ref, queries, *, max_queries=None, deadline=None):
+        rows = self.search_all(queries[: max_queries or len(queries)])
+        return rows, "; ".join(queries[:4])
+
     def fetch_card(self, doc_id: str) -> str:
+        if doc_id == "117":
+            return AMENDMENT_CARD_HTML
         assert doc_id == "160"
         return CARD_HTML
+
+    def _ensure_logged_in(self) -> None:
+        self._logged_in = True
 
 
 def test_search_escalated_falls_back_to_full(monkeypatch):
@@ -168,6 +205,9 @@ def test_search_escalated_falls_back_to_full(monkeypatch):
         def __init__(self) -> None:
             self.base = "https://example.test/"
             self.timeout = 5
+            self._logged_in = True
+            self._login_user = ""
+            self._login_pass = ""
 
         def search_quick_pages(self, query: str, *, max_pages: int = 1):
             return []
@@ -184,6 +224,12 @@ def test_search_escalated_falls_back_to_full(monkeypatch):
                     }
                 ]
             return []
+
+        def search_escalated_rows(self, kind, ref, queries, *, max_queries=None, deadline=None):
+            rows = []
+            for q in queries[: max_queries or len(queries)]:
+                rows.extend(self.search_full(q))
+            return rows, "; ".join(queries[:4])
 
         def fetch_card(self, doc_id: str) -> str:
             return """
@@ -202,15 +248,55 @@ def test_search_escalated_falls_back_to_full(monkeypatch):
     assert res.stn_code == "СТБ 2073-2010"
 
 
-def test_pick_base_not_amendment(monkeypatch):
+def test_prefer_freshest_amendment_when_base_canceled(monkeypatch):
+    """База отменена — берём актуальное изменение с более поздней датой введения."""
     monkeypatch.setattr("belener.stn_lookup.stn_lookup_enabled", lambda: True)
     res = lookup_one("СНиП", "СНиП 3.05.02-88", client=_FakeClient(), today=date(2026, 6, 11))
     assert res.found
-    assert res.stn_code == "СНиП 3.05.02-88"
-    assert res.intro_date == "01.07.1988"
-    assert res.cancel_date == "25.04.2026"
-    assert res.status == "отменён"
-    assert "Изменение" not in res.stn_code
+    assert "Изменение" in res.stn_code
+    assert res.intro_date == "01.06.1994"
+    assert res.status == "актуален"
+
+
+def test_prefer_sn_amendment_2025_over_canceled_base(monkeypatch):
+    """СН 2.01.01: база 2022 отменена, Изменение №1 действует с 09.06.2025."""
+    monkeypatch.setattr("belener.stn_lookup.stn_lookup_enabled", lambda: True)
+
+    class _SnClient(_FakeClient):
+        def search_all(self, queries: list[str]):
+            for q in queries:
+                if "2.01.01" in q.replace(" ", ""):
+                    return [
+                        {
+                            "docid": "b1",
+                            "code": "СН 2.01.01-2022",
+                            "name": "Основы проектирования",
+                            "activitydate": "2022-09-08",
+                            "status": "0",
+                        },
+                        {
+                            "docid": "a1",
+                            "code": "Изменение №1 СН 2.01.01-2022",
+                            "name": "Основы проектирования",
+                            "activitydate": "2025-06-09",
+                            "status": "1",
+                        },
+                    ]
+            return []
+
+        def fetch_card(self, doc_id: str) -> str:
+            if doc_id == "a1":
+                return SN_AMENDMENT_CARD_HTML
+            if doc_id == "b1":
+                return SN_BASE_CARD_HTML
+            raise AssertionError(doc_id)
+
+    res = lookup_one("СН", "СН 2.01.01", client=_SnClient(), today=date(2026, 9, 10))
+    assert res.found
+    assert res.stn_code == "Изменение №1 СН 2.01.01-2022"
+    assert res.intro_date == "09.06.2025"
+    assert res.status == "актуален"
+    assert not (res.cancel_date or "").strip() or res.cancel_date in ("—", "-")
 
 
 def test_check_fund_kinds(monkeypatch):
@@ -307,6 +393,12 @@ def test_tkp_not_found_without_ips(monkeypatch):
         def search_escalated(self, kind, ref, queries, *, max_queries=None, deadline=None):
             return None, "; ".join(queries[:4])
 
+        def search_escalated_rows(self, kind, ref, queries, *, max_queries=None, deadline=None):
+            return [], "; ".join(queries[:4])
+
+        def _ensure_logged_in(self) -> None:
+            self._logged_in = False
+
     res = lookup_one("ТКП", "ТКП 45-4.03-267-2012", client=_EmptyClient(), today=date(2026, 6, 11))
     assert not res.found
     assert "IPS" in res.status
@@ -336,6 +428,10 @@ def test_ref_keeps_sheet_ref_on_stn(monkeypatch):
 
             match = _pick_best_match(kind, ref, rows)
             return match, "; ".join(queries[:4])
+
+        def search_escalated_rows(self, kind, ref, queries, *, max_queries=None, deadline=None):
+            rows = self.search_all(queries[: max_queries or len(queries)])
+            return rows, "; ".join(queries[:4])
 
         def fetch_card(self, doc_id: str) -> str:
             if doc_id == "999":

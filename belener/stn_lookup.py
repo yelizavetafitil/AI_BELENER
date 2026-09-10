@@ -215,10 +215,14 @@ def _core_digits(kind: str, ref: str) -> str:
 
 
 def _body_year_digits(digits: str) -> tuple[str, str]:
-    """Разделить номер и год (2 или 4 цифры в конце)."""
+    """Разделить номер и год (2 или 4 цифры в конце).
+
+    2-значный год только если всего ≥6 цифр (ГОСТ 10704-91), иначе
+    «СН 2.01.05» → 20105 ошибочно режется на 201+05.
+    """
     if len(digits) >= 6 and digits[-4:].isdigit() and 1900 <= int(digits[-4:]) <= 2039:
         return digits[:-4], digits[-4:]
-    if len(digits) >= 3 and digits[-2:].isdigit():
+    if len(digits) >= 6 and digits[-2:].isdigit():
         return digits[:-2], digits[-2:]
     return digits, ""
 
@@ -234,6 +238,15 @@ def _digits_compatible(target: str, candidate: str) -> bool:
         return False
     if tb == cb:
         return True
+    # Лист без года (СН 2.01.05 → 20105): в фонде 201052019 / 201052025.
+    if not ty and candidate.startswith(target):
+        rest = candidate[len(target) :]
+        if rest == "":
+            return True
+        if len(rest) == 2 and rest.isdigit():
+            return True
+        if len(rest) == 4 and rest.isdigit() and 1900 <= int(rest) <= 2039:
+            return True
     if len(tb) == len(cb) and sum(a != b for a, b in zip(tb, cb)) == 1:
         return True
     return False
@@ -408,50 +421,83 @@ def validity_status(
     return "неизвестно"
 
 
-def _pick_best_match(kind: str, ref: str, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not rows:
-        return None
+def _is_amendment_code(code: str) -> bool:
+    return bool(re.search(r"изменени", code or "", re.I))
 
+
+def _amendment_number(code: str) -> int:
+    m = re.search(r"изменени[ея]\s*№?\s*(\d+)", code or "", re.I)
+    return int(m.group(1)) if m else 0
+
+
+def _year_from_code(code: str) -> int:
+    years = [int(y) for y in re.findall(r"(?:^|[^0-9])((?:19|20)\d{2})(?![0-9])", code or "")]
+    return max(years) if years else 0
+
+
+def _parse_list_activity_date(raw: object) -> date | None:
+    s = str(raw or "").strip()
+    if not s or s in ("—", "-", "–"):
+        return None
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return parse_ru_date(s)
+
+
+def _stn_row_compatible(kind: str, ref: str, row: dict[str, Any]) -> bool:
     target_full = _norm_code(search_query(kind, ref))
     target_digits = _core_digits(kind, ref)
-    best: dict[str, Any] | None = None
-    best_score = -999
+    code = str(row.get("code") or "")
+    name = str(row.get("name") or "")
+    code_n = _norm_code(code)
+    name_n = _norm_code(name)
+    row_digits = re.sub(r"\D", "", code_n)
+    name_digits = re.sub(r"\D", "", name_n)
+    if target_digits and len(target_digits) >= 4:
+        code_ok = _digits_compatible(target_digits, row_digits) or target_full in code_n
+        name_ok = _digits_compatible(target_digits, name_digits) or target_full in name_n
+        return bool(code_ok or name_ok)
+    if target_full and (target_full in code_n or target_full in name_n):
+        return True
+    return bool(kind and kind.casefold() in code_n)
 
-    for row in rows:
-        code = str(row.get("code") or "")
-        name = str(row.get("name") or "")
-        code_n = _norm_code(code)
-        name_n = _norm_code(name)
-        row_digits = re.sub(r"\D", "", code_n)
-        name_digits = re.sub(r"\D", "", name_n)
 
-        if target_digits and len(target_digits) >= 4:
-            code_ok = _digits_compatible(target_digits, row_digits) or target_full in code_n
-            name_ok = _digits_compatible(target_digits, name_digits) or target_full in name_n
-            if not code_ok and not name_ok:
-                continue
+def _stn_row_freshness(row: dict[str, Any]) -> tuple:
+    """Ключ сортировки: свежее выше (дата введения/списка, год, № изменения)."""
+    code = str(row.get("code") or "")
+    act = _parse_list_activity_date(row.get("activitydate")) or date.min
+    year = _year_from_code(code)
+    amend_n = _amendment_number(code)
+    # status «0» в списке ИПС часто = недействующий
+    status = str(row.get("status") or "").strip()
+    active_rank = 0 if status in ("0", "false", "False") else 1
+    return (active_rank, act.toordinal(), year, amend_n, 1 if _is_amendment_code(code) else 0)
 
-        score = 0
-        if re.search(r"изменение", code, re.I):
-            score -= 40
-        if code_n == target_full:
-            score += 120
-        elif target_full and target_full in code_n:
-            score += 105
-        elif target_digits and _digits_compatible(target_digits, row_digits):
-            score += 95
-        elif target_digits and _digits_compatible(target_digits, name_digits):
-            score += 75
-        elif kind.casefold() in code_n:
-            score += 35
-        else:
-            score += 15
 
-        if score > best_score:
-            best_score = score
-            best = row
+def _rank_stn_candidates(kind: str, ref: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Все строки с тем же номером (база + изменения), свежие первыми."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        if not _stn_row_compatible(kind, ref, row):
+            continue
+        doc_id = str(row.get("docid") or "")
+        key = doc_id or _norm_code(str(row.get("code") or ""))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    out.sort(key=_stn_row_freshness, reverse=True)
+    return out
 
-    return best if best_score >= 35 else None
+
+def _pick_best_match(kind: str, ref: str, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Самая свежая карточка среди базы и изменений с тем же номером."""
+    ranked = _rank_stn_candidates(kind, ref, rows)
+    return ranked[0] if ranked else None
 
 
 def _parse_list_response(raw: str) -> tuple[list[dict[str, Any]], bool]:
@@ -648,7 +694,7 @@ class StnClient:
         max_queries: int | None = None,
         deadline: float | None = None,
     ) -> tuple[dict[str, Any] | None, str]:
-        """Quick, затем full по каждому варианту запроса (full нужен, если quick пуст)."""
+        """Quick + full по вариантам запроса; среди всех строк — самая свежая."""
         limit = max_queries if max_queries is not None else stn_max_queries()
         if kind == "ТКП":
             # Больше вариантов запросов: разные коды органа / ОКы номеров.
@@ -662,22 +708,57 @@ class StnClient:
             if not q or q in tried:
                 continue
             tried.append(q)
-            max_pages = 1 if kind != "ТКП" else 2
+            max_pages = 2 if kind in ("ТКП", "СН", "СП", "СНиП", "ГОСТ", "СТБ") else 1
             quick_rows = self.search_quick_pages(q, max_pages=max_pages)
             if quick_rows:
                 rows.extend(quick_rows)
-                match = _pick_best_match(kind, ref, rows)
-                if match:
-                    return match, "; ".join(tried[:4])
             if deadline is not None and time.monotonic() >= deadline:
                 break
+            # Full нужен: в quick часто нет «Изменение №N …», а база уже отменена.
             full_rows = self.search_full(q)
             if full_rows:
                 rows.extend(full_rows)
-                match = _pick_best_match(kind, ref, rows)
-                if match:
-                    return match, "; ".join(tried[:4])
-        return None, "; ".join(tried[:4])
+            match = _pick_best_match(kind, ref, rows)
+            if match and len(_rank_stn_candidates(kind, ref, rows)) >= 1:
+                # Для СН/СП/ГОСТ собираем ещё один запрос — часто изменение на другой странице.
+                if kind in ("СН", "СП", "СНиП", "ГОСТ", "СТБ", "ТКП") and len(tried) < min(limit, 2):
+                    continue
+                return match, "; ".join(tried[:4])
+        match = _pick_best_match(kind, ref, rows)
+        return match, "; ".join(tried[:4])
+
+    def search_escalated_rows(
+        self,
+        kind: str,
+        ref: str,
+        queries: list[str],
+        *,
+        max_queries: int | None = None,
+        deadline: float | None = None,
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Все найденные строки (база + изменения) + использованные запросы."""
+        limit = max_queries if max_queries is not None else stn_max_queries()
+        if kind == "ТКП":
+            limit = min(max(limit, 6), 12)
+        tried: list[str] = []
+        rows: list[dict[str, Any]] = []
+        for raw_q in queries[:limit]:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            q = _clean_stn_query(raw_q)
+            if not q or q in tried:
+                continue
+            tried.append(q)
+            max_pages = 2 if kind in ("ТКП", "СН", "СП", "СНиП", "ГОСТ", "СТБ") else 1
+            rows.extend(self.search_quick_pages(q, max_pages=max_pages) or [])
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            rows.extend(self.search_full(q) or [])
+            if _rank_stn_candidates(kind, ref, rows) and len(tried) >= (
+                2 if kind in ("СН", "СП", "СНиП", "ГОСТ", "СТБ", "ТКП") else 1
+            ):
+                break
+        return rows, "; ".join(tried[:4])
 
     def fetch_card(self, doc_id: str) -> str:
         self._ensure_logged_in()
@@ -693,6 +774,23 @@ class StnClient:
             return resp.read().decode("utf-8", errors="replace")
 
 
+def _lookup_rows(
+    kind: str,
+    ref: str,
+    *,
+    client: StnClient,
+    queries: list[str],
+    deadline: float | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    if hasattr(client, "search_escalated_rows"):
+        return client.search_escalated_rows(kind, ref, queries, deadline=deadline)
+    if hasattr(client, "search_escalated"):
+        match, used = client.search_escalated(kind, ref, queries, deadline=deadline)
+        return ([match] if match else []), used
+    rows = client.search_all(queries)
+    return rows, "; ".join(queries[:4])
+
+
 def _lookup_match(
     kind: str,
     ref: str,
@@ -701,11 +799,30 @@ def _lookup_match(
     queries: list[str],
     deadline: float | None = None,
 ) -> tuple[dict[str, Any] | None, str]:
-    if hasattr(client, "search_escalated"):
-        return client.search_escalated(kind, ref, queries, deadline=deadline)
-    rows = client.search_all(queries)
-    match = _pick_best_match(kind, ref, rows)
-    return match, "; ".join(queries[:4])
+    rows, used = _lookup_rows(kind, ref, client=client, queries=queries, deadline=deadline)
+    return _pick_best_match(kind, ref, rows), used
+
+
+def _result_from_stn_card(
+    *,
+    kind: str,
+    sheet_ref: str,
+    match: dict[str, Any],
+    fields: dict[str, str],
+    used_q: str,
+    today: date | None,
+) -> StnCheckResult:
+    intro = parse_ru_date(fields.get("Дата введения", ""))
+    cancel = parse_ru_date(fields.get("Дата отмены", ""))
+    stn_code = fields.get("Обозначение") or str(match.get("code") or "")
+    out = StnCheckResult(kind=kind, ref=sheet_ref, query=used_q, found=True)
+    out.doc_id = str(match.get("docid") or "")
+    out.stn_code = stn_code
+    out.stn_name = fields.get("Наименование") or str(match.get("name") or "")
+    out.intro_date = fields.get("Дата введения", "")
+    out.cancel_date = fields.get("Дата отмены", "")
+    out.status = validity_status(intro, cancel, today=today)
+    return out
 
 
 def lookup_one(
@@ -744,9 +861,10 @@ def lookup_one(
             out.status = cli._login_error or "ошибка входа IPS"
             out.error = out.status
             return out
-        match, used_q = _lookup_match(kind, ref, client=cli, queries=queries, deadline=deadline)
+
+        rows, used_q = _lookup_rows(kind, ref, client=cli, queries=queries, deadline=deadline)
         variant_retry = False
-        if not match:
+        if not _rank_stn_candidates(kind, ref, rows):
             variant_cap = stn_ocr_variant_limit()
             if variant_cap > 0 and kind not in ("ТКП", "СП", "СН", "СНиП"):
                 extra: list[str] = []
@@ -757,16 +875,23 @@ def lookup_one(
                             extra.append(q)
                 if extra:
                     variant_retry = True
-                    match, used_q = _lookup_match(
+                    more, used_q = _lookup_rows(
                         kind, ref, client=cli, queries=extra, deadline=deadline
                     )
-        if match and variant_retry:
-            sheet_digits = _core_digits(kind, ref)
-            code_digits = re.sub(r"\D", "", _norm_code(str(match.get("code") or "")))
-            if sheet_digits and code_digits and sheet_digits != code_digits:
-                match = None
+                    rows.extend(more)
 
-        if not match:
+        ranked = _rank_stn_candidates(kind, ref, rows)
+        if variant_retry and ranked:
+            sheet_digits = _core_digits(kind, ref)
+            filtered: list[dict[str, Any]] = []
+            for cand in ranked:
+                code_digits = re.sub(r"\D", "", _norm_code(str(cand.get("code") or "")))
+                if sheet_digits and code_digits and sheet_digits != code_digits:
+                    continue
+                filtered.append(cand)
+            ranked = filtered
+
+        if not ranked:
             if getattr(cli, "_logged_in", False):
                 out.status = "нет в ИПС"
             else:
@@ -774,24 +899,53 @@ def lookup_one(
             out.query = used_q
             return out
 
-        doc_id = str(match.get("docid") or "")
-        card_html = cli.fetch_card(doc_id)
-        fields = parse_card_html(card_html)
-        intro = parse_ru_date(fields.get("Дата введения", ""))
-        cancel = parse_ru_date(fields.get("Дата отмены", ""))
+        # Карточки базы + изменений: предпочитаем «актуален», иначе самую свежую.
+        best: StnCheckResult | None = None
+        best_intro = date.min
+        for match in ranked[:8]:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            doc_id = str(match.get("docid") or "")
+            if not doc_id:
+                continue
+            card_html = cli.fetch_card(doc_id)
+            fields = parse_card_html(card_html)
+            cand = _result_from_stn_card(
+                kind=kind,
+                sheet_ref=sheet_ref,
+                match=match,
+                fields=fields,
+                used_q=used_q,
+                today=today,
+            )
+            if cand.status == "актуален":
+                log.info(
+                    "STN lookup %s %s -> %s (%s) in %.1fs",
+                    kind,
+                    ref,
+                    cand.status,
+                    cand.stn_code,
+                    time.monotonic() - t0,
+                )
+                return cand
+            intro = parse_ru_date(cand.intro_date) or date.min
+            if best is None or intro >= best_intro:
+                best = cand
+                best_intro = intro
 
-        stn_code = fields.get("Обозначение") or str(match.get("code") or "")
-        out.found = True
-        out.doc_id = doc_id
-        out.stn_code = stn_code
-        out.stn_name = fields.get("Наименование") or str(match.get("name") or "")
-        out.intro_date = fields.get("Дата введения", "")
-        out.cancel_date = fields.get("Дата отмены", "")
-        out.status = validity_status(intro, cancel, today=today)
+        if best is not None:
+            log.info(
+                "STN lookup %s %s -> %s (%s) in %.1fs",
+                kind,
+                ref,
+                best.status,
+                best.stn_code,
+                time.monotonic() - t0,
+            )
+            return best
+
+        out.status = "нет в ИПС" if getattr(cli, "_logged_in", False) else "нет в открытом фонде (нужен вход IPS)"
         out.query = used_q
-        if _norm_code(stn_code) != _norm_code(sheet_ref):
-            out.ref = sheet_ref
-        log.info("STN lookup %s %s -> %s in %.1fs", kind, ref, out.status, time.monotonic() - t0)
         return out
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
         log.warning("STN lookup failed kind=%s ref=%s: %s", kind, ref, e)

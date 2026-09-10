@@ -31,6 +31,7 @@ from belener.stn_lookup import (
     _core_digits,
     _digits_compatible,
     _norm_code,
+    _year_from_code,
     is_stn_checkable,
     search_query,
     validity_status,
@@ -557,22 +558,13 @@ def _tnpa_designation(row: dict) -> str:
 
 
 def _pick_best_tnpa_match(kind: str, ref: str, rows: list[dict]) -> dict | None:
+    """Среди всех строк с тем же номером (годы/«Взамен») — самая свежая действующая."""
     if not rows:
         return None
     target_full = _norm_code(search_query(kind, ref))
     target_digits = _core_digits(kind, ref)
-    if len(rows) == 1:
-        row = rows[0]
-        code_n = _norm_code(_tnpa_designation(row))
-        row_digits = re.sub(r"\D", "", code_n)
-        if code_n == target_full or (
-            target_digits and len(target_digits) >= 4
-            and (_digits_compatible(target_digits, row_digits) or target_full in code_n)
-        ):
-            return row
-    best: dict | None = None
-    best_score = -999
-    for row in rows:
+
+    def _compatible(row: dict) -> bool:
         code = _tnpa_designation(row)
         name = str(row.get("NND") or "")
         code_n = _norm_code(code)
@@ -582,28 +574,28 @@ def _pick_best_tnpa_match(kind: str, ref: str, rows: list[dict]) -> dict | None:
         if target_digits and len(target_digits) >= 4:
             code_ok = _digits_compatible(target_digits, row_digits) or target_full in code_n
             name_ok = _digits_compatible(target_digits, name_digits) or target_full in name_n
-            if not code_ok and not name_ok:
-                continue
-        score = 0
-        if code_n == target_full or (
-            target_digits
-            and row_digits == target_digits
-            and (kind.casefold() in code_n or not kind)
-        ):
-            score += 100
-        elif target_full and (target_full in code_n or code_n in target_full):
-            score += 80
-        elif target_digits and target_digits in row_digits:
-            score += 60
-        elif target_full and target_full in name_n:
-            score += 40
-        if score > best_score:
-            best_score = score
-            best = row
-    # Порог ниже, чем в STN, потому что формат номера на tnpa.by
-    # может отличаться (доп. пробелы/дефисы/части обозначения).
-    # При этом фильтр по digits/совпадению остаётся строгим.
-    return best if best_score >= 20 else None
+            return bool(code_ok or name_ok)
+        if target_full and (target_full in code_n or code_n in target_full or target_full in name_n):
+            return True
+        return False
+
+    candidates = [row for row in rows if _compatible(row)]
+    if not candidates:
+        return None
+
+    today = date.today()
+
+    def _freshness(row: dict) -> tuple:
+        code = _tnpa_designation(row)
+        intro = _parse_tnpa_date(row.get("DTTN")) or date.min
+        year = _year_from_code(code)
+        prizn = str(row.get("PRIZN_BD") or "").strip()
+        active = 0 if prizn == "0" else 1
+        cancel = _parse_tnpa_date(_tnpa_cancel_raw(row))
+        still_ok = 0 if (cancel is not None and cancel <= today) else 1
+        return (active, still_ok, intro.toordinal(), year)
+
+    return max(candidates, key=_freshness)
 
 
 def _tnpa_cancel_raw(row: dict) -> object:
