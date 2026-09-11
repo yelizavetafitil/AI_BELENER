@@ -535,7 +535,8 @@ def stream_extract_pdf_normative(
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
-        tnpa_checks=tnpa_checks,
+        tnpa_checks=tnpa_checks if search_tnpa else None,
+        include_tnpa=search_tnpa,
         check_date=validity_date,
         source_path=path,
         preview_pages=preview_box.get("pages"),
@@ -696,11 +697,13 @@ def stream_extract_image_normative(
         t0=pipeline_t0,
     )
 
+    include_ctx = "контекст" in (question or "").casefold()
     report = normative_result_to_markdown(
         result,
         include_context=include_ctx,
         stn_checks=stn_checks,
-        tnpa_checks=tnpa_checks,
+        tnpa_checks=tnpa_checks if search_tnpa else None,
+        include_tnpa=search_tnpa,
         check_date=validity_date,
         source_path=path,
         preview_pages=preview_box.get("pages"),

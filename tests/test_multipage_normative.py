@@ -163,3 +163,25 @@ def test_material_prefix_not_preferred_in_merge():
     gost = [r for r in out if r["kind"] == "ГОСТ" and "2590" in r["ref"]]
     assert gost
     assert gost[0]["ref"].startswith("ГОСТ")
+
+
+def test_hide_tnpa_column_when_search_disabled():
+    md = normative_refs_to_markdown(
+        [{"kind": "ГОСТ", "ref": "ГОСТ 10704-91"}],
+        filename="x.pdf",
+        include_tnpa=False,
+        preview_pages=[{"page": 1, "url": "/api/preview/a.jpg"}],
+    )
+    assert "<th>ТНПА</th>" not in md
+    assert "найдено в ТНПА" not in md
+    assert "<th>Стройдок</th>" in md
+    assert "найдено в Стройдок" in md
+
+    md_on = normative_refs_to_markdown(
+        [{"kind": "ГОСТ", "ref": "ГОСТ 10704-91"}],
+        filename="x.pdf",
+        include_tnpa=True,
+        preview_pages=[{"page": 1, "url": "/api/preview/a.jpg"}],
+    )
+    assert "<th>ТНПА</th>" in md_on
+    assert "найдено в ТНПА" in md_on

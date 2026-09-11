@@ -442,17 +442,23 @@ function buildNormativeTablePdfPayload(workspaceEl) {
   }
   if (!summary) {
     const m = (workspaceEl.innerText || '').match(
-      /Всего в документе:\s*\d+;\s*найдено в Стройдок:\s*\d+;\s*найдено в ТНПА:\s*\d+;\s*актуально:\s*\d+/i
+      /Всего в документе:\s*\d+;\s*найдено в Стройдок:\s*\d+;(?:\s*найдено в ТНПА:\s*\d+;)?\s*актуально:\s*\d+/i
     );
     if (m) summary = m[0].replace(/\s+/g, ' ').trim();
   }
   if (!summary && rows.length) {
     const foundStn = rows.filter(r => r.cells[1] && r.cells[1].href).length;
-    const foundTnpa = rows.filter(r => r.cells[2] && r.cells[2].href).length;
     const active = rows.filter(r => r.fill === 'active').length;
-    summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn}; найдено в ТНПА: ${foundTnpa};\nактуально: ${active}`;
+    const hasTnpa = headers.some(h => /тнпа/i.test(h));
+    if (hasTnpa) {
+      const foundTnpa = rows.filter(r => r.cells[2] && r.cells[2].href).length;
+      summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn}; найдено в ТНПА: ${foundTnpa};\nактуально: ${active}`;
+    } else {
+      summary = `Всего в документе: ${rows.length}; найдено в Стройдок: ${foundStn};\nактуально: ${active}`;
+    }
   }
   summary = summary.replace(/ИПС/gi, 'Стройдок');
+  const hasTnpaCol = headers.some(h => /тнпа/i.test(h));
   return {
     title: 'Таблица нормативов (ГОСТ/СП/СН и др.)',
     filename: `${filenameText.replace(/\.[^.]+$/, '')}-normatives.pdf`,
@@ -460,7 +466,7 @@ function buildNormativeTablePdfPayload(workspaceEl) {
     summary,
     headers,
     rows,
-    widths: [70, 24, 22, 40, 40],
+    widths: hasTnpaCol ? [70, 24, 22, 40, 40] : [80, 30, 45, 45],
   };
 }
 

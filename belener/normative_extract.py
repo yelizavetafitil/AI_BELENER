@@ -1086,6 +1086,7 @@ def normative_refs_to_markdown(
     include_context: bool = False,
     stn_checks: list | None = None,
     tnpa_checks: list | None = None,
+    include_tnpa: bool | None = None,
     check_date: date | None = None,
     stn_error: str = "",
     tnpa_error: str = "",
@@ -1128,6 +1129,8 @@ def normative_refs_to_markdown(
 
     ref_pages = _pages_by_ref(page_normative_refs)
     found_tnpa = 0
+    # Явно False — колонка скрыта (поиск ТНПА выключен). Иначе колонка есть.
+    show_tnpa = True if include_tnpa is None else bool(include_tnpa)
 
     if not refs:
         lines.append(
@@ -1153,7 +1156,7 @@ def normative_refs_to_markdown(
                 except Exception:
                     pass
 
-        if tnpa_checks:
+        if show_tnpa and tnpa_checks:
             try:
                 from belener.tnpa_lookup import tnpa_base_url
 
@@ -1179,20 +1182,35 @@ def normative_refs_to_markdown(
 
         lines.append('<div class="normative-table-container">')
         lines.append("<table>")
-        lines.append(
-            "<colgroup>"
-            "<col style=\"width:280px\">"
-            "<col style=\"width:120px\">"
-            "<col style=\"width:100px\">"
-            "<col style=\"width:218px\">"
-            "<col style=\"width:218px\">"
-            "</colgroup>"
-        )
-        lines.append("<thead><tr>")
-        lines.append(
-            "<th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
-            "<th>Введен</th><th>Отменен</th>"
-        )
+        if show_tnpa:
+            lines.append(
+                "<colgroup>"
+                "<col style=\"width:280px\">"
+                "<col style=\"width:120px\">"
+                "<col style=\"width:100px\">"
+                "<col style=\"width:218px\">"
+                "<col style=\"width:218px\">"
+                "</colgroup>"
+            )
+            lines.append("<thead><tr>")
+            lines.append(
+                "<th>Обозначение</th><th>Стройдок</th><th>ТНПА</th>"
+                "<th>Введен</th><th>Отменен</th>"
+            )
+        else:
+            lines.append(
+                "<colgroup>"
+                "<col style=\"width:320px\">"
+                "<col style=\"width:140px\">"
+                "<col style=\"width:240px\">"
+                "<col style=\"width:240px\">"
+                "</colgroup>"
+            )
+            lines.append("<thead><tr>")
+            lines.append(
+                "<th>Обозначение</th><th>Стройдок</th>"
+                "<th>Введен</th><th>Отменен</th>"
+            )
         lines.append("</tr></thead>")
         lines.append("<tbody>")
 
@@ -1239,7 +1257,7 @@ def normative_refs_to_markdown(
                             f'target="_blank">Стройдок</a>'
                         )
 
-            if c_tnpa:
+            if show_tnpa and c_tnpa:
                 tnpa_found = bool(c_tnpa.found) if hasattr(c_tnpa, "found") else str(c_tnpa.get("found")) == "1"
                 tnpa_intro = c_tnpa.intro_date if hasattr(c_tnpa, "intro_date") else c_tnpa.get("intro_date") or "—"
                 tnpa_cancel = c_tnpa.cancel_date if hasattr(c_tnpa, "cancel_date") else c_tnpa.get("cancel_date") or "—"
@@ -1275,11 +1293,11 @@ def normative_refs_to_markdown(
                     return secondary
                 return "—"
 
-            intro = _pick_date(stn_intro, tnpa_intro)
-            cancel = _pick_date(stn_cancel, tnpa_cancel)
+            intro = _pick_date(stn_intro, tnpa_intro if show_tnpa else "—")
+            cancel = _pick_date(stn_cancel, tnpa_cancel if show_tnpa else "—")
 
             stn_active = stn_found and stn_status_val == "актуален"
-            tnpa_active = tnpa_found and tnpa_status_val == "актуален"
+            tnpa_active = show_tnpa and tnpa_found and tnpa_status_val == "актуален"
             if stn_active or tnpa_active:
                 row_class = ' class="row-active"'
                 active_count += 1
@@ -1298,10 +1316,16 @@ def normative_refs_to_markdown(
                 pages_attr = f' data-preview-page="{pages_for_ref[0]}" data-preview-pages="{pages_csv}"{title}'
 
             lines.append(f"<tr{row_class}{pages_attr}>")
-            lines.append(
-                f"<td>{ref}</td><td>{ips_link}</td><td>{tnpa_link}</td>"
-                f"<td>{intro}</td><td>{cancel}</td>"
-            )
+            if show_tnpa:
+                lines.append(
+                    f"<td>{ref}</td><td>{ips_link}</td><td>{tnpa_link}</td>"
+                    f"<td>{intro}</td><td>{cancel}</td>"
+                )
+            else:
+                lines.append(
+                    f"<td>{ref}</td><td>{ips_link}</td>"
+                    f"<td>{intro}</td><td>{cancel}</td>"
+                )
             lines.append("</tr>")
 
         lines.append("</tbody></table>")
@@ -1315,10 +1339,16 @@ def normative_refs_to_markdown(
         )
         lines.append("")
 
-        lines.append(
-            f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
-            f"найдено в ТНПА: {found_tnpa};<br>актуально: {active_count}</em></p>"
-        )
+        if show_tnpa:
+            lines.append(
+                f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips}; '
+                f"найдено в ТНПА: {found_tnpa};<br>актуально: {active_count}</em></p>"
+            )
+        else:
+            lines.append(
+                f'<p class="normative-table-summary"><em>Всего в документе: {len(refs)}; найдено в Стройдок: {found_ips};'
+                f"<br>актуально: {active_count}</em></p>"
+            )
         lines.append("")
 
     stn_error = (stn_error or "").strip()
@@ -1343,7 +1373,7 @@ def normative_refs_to_markdown(
         lines.extend(["", f"<p><em>⚠ {stn_error}</em></p>", ""])
 
     tnpa_error = (tnpa_error or "").strip()
-    if tnpa_error:
+    if show_tnpa and tnpa_error:
         lines.extend(["", f"<p><em>⚠ {tnpa_error}</em></p>", ""])
 
     lines.append("</div>")  # workspace-list
@@ -1421,6 +1451,7 @@ def normative_result_to_markdown(
     include_context: bool = False,
     stn_checks: list | None = None,
     tnpa_checks: list | None = None,
+    include_tnpa: bool | None = None,
     check_date: date | None = None,
     source_path: str = "",
     preview_pages: list[dict[str, Any]] | None = None,
@@ -1431,16 +1462,20 @@ def normative_result_to_markdown(
     tnpa = tnpa_checks
     if tnpa is None:
         tnpa = result.get("tnpa_checks")
+    show_tnpa = include_tnpa
+    if show_tnpa is None:
+        show_tnpa = True
     return normative_refs_to_markdown(
         list(result.get("normative_refs") or []),
         filename=str(result.get("filename") or ""),
         pipeline=str(result.get("pipeline") or ""),
         include_context=include_context,
         stn_checks=checks,
-        tnpa_checks=tnpa,
+        tnpa_checks=tnpa if show_tnpa else None,
+        include_tnpa=bool(show_tnpa),
         check_date=check_date,
         stn_error=str(result.get("stn_error") or ""),
-        tnpa_error=str(result.get("tnpa_error") or ""),
+        tnpa_error=str(result.get("tnpa_error") or "") if show_tnpa else "",
         page_count=int(result.get("page_count") or 0),
         pages_processed=int(result.get("pages_processed") or 0),
         budget_exhausted=bool(result.get("budget_exhausted")),

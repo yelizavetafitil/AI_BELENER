@@ -77,6 +77,8 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
     rows = payload.get("rows") or []
     if not rows:
         return ""
+    headers = [str(x or "") for x in (payload.get("headers") or [])]
+    has_tnpa = any("тнпа" in h.casefold() for h in headers)
     total = len(rows)
     found_ips = 0
     found_tnpa = 0
@@ -84,7 +86,7 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
     for row in rows:
         cells = row.get("cells") or []
         fill = str(row.get("fill") or "").strip()
-        if 5 <= len(cells) < 9:
+        if has_tnpa and 5 <= len(cells) < 9:
             if str(cells[1].get("href") or "").strip():
                 found_ips += 1
             if str(cells[2].get("href") or "").strip():
@@ -92,9 +94,15 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
             if fill == "active":
                 active += 1
             continue
+        if not has_tnpa and len(cells) >= 2:
+            if str(cells[1].get("href") or "").strip():
+                found_ips += 1
+            if fill == "active":
+                active += 1
+            continue
         if len(cells) >= 3 and str(cells[2].get("href") or "").strip():
             found_ips += 1
-        if len(cells) >= 4 and str(cells[3].get("href") or "").strip():
+        if has_tnpa and len(cells) >= 4 and str(cells[3].get("href") or "").strip():
             found_tnpa += 1
         if fill == "active":
             active += 1
@@ -102,9 +110,14 @@ def _compute_summary_from_rows(payload: dict[str, Any]) -> str:
             status = str(cells[8].get("text") or "").strip().casefold()
             if status == "актуален" or "актуален" in status:
                 active += 1
+    if has_tnpa:
+        return (
+            f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; "
+            f"найдено в ТНПА: {found_tnpa};\nактуально: {active}"
+        )
     return (
-        f"Всего в документе: {total}; найдено в Стройдок: {found_ips}; "
-        f"найдено в ТНПА: {found_tnpa};\nактуально: {active}"
+        f"Всего в документе: {total}; найдено в Стройдок: {found_ips};\n"
+        f"актуально: {active}"
     )
 
 
@@ -117,9 +130,17 @@ def _parse_summary(summary: str) -> tuple[str, str, str, str]:
         summary or "",
         re.I,
     )
-    if not m:
-        return "", "", "", ""
-    return m.group(1), m.group(2), m.group(3), m.group(4)
+    if m:
+        return m.group(1), m.group(2), m.group(3), m.group(4)
+    m2 = re.search(
+        r"Всего в документе:\s*(\d+);\s*найдено в (?:ИПС|Стройдок):\s*(\d+);"
+        r"[\s\n]*(?:актуально|найдено хотя бы в одном):\s*(\d+)",
+        summary or "",
+        re.I,
+    )
+    if m2:
+        return m2.group(1), m2.group(2), "", m2.group(3)
+    return "", "", "", ""
 
 
 def _sheet_from_meta(meta_lines: list[str]) -> str:
@@ -315,46 +336,83 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
     story.append(info_table)
     story.append(Spacer(1, 4))
 
-    stat_w1 = avail_w / 4.0
-    stat_w2 = avail_w / 4.0
-    stat_w3 = avail_w / 4.0
-    stat_w4 = avail_w - stat_w1 - stat_w2 - stat_w3
-    stats_table = Table(
-        [
-            [
-                Paragraph(_esc("Найдено"), card_label_style),
-                Paragraph(_esc("В Стройдок"), card_label_style),
-                Paragraph(_esc("В ТНПА"), card_label_style),
-                Paragraph(_esc("Актуально"), card_label_style),
-            ],
-            [
-                Paragraph(f"<b>{_esc(total if total != '' else '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(found_stn if found_stn != '' else '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(found_tnpa if found_tnpa != '' else '—')}</b>", card_value_style),
-                Paragraph(f"<b>{_esc(active if active != '' else '—')}</b>", card_value_style),
-            ],
-        ],
-        colWidths=[stat_w1, stat_w2, stat_w3, stat_w4],
+    show_tnpa_stats = found_tnpa != "" or any(
+        "тнпа" in str(h or "").casefold() for h in (payload.get("headers") or [])
     )
-    stats_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), c_surface),
-        ("BOX", (0, 0), (-1, -1), 0.5, c_border),
-        ("LINEAFTER", (0, 0), (0, -1), 0.5, c_border),
-        ("LINEAFTER", (1, 0), (1, -1), 0.5, c_border),
-        ("LINEAFTER", (2, 0), (2, -1), 0.5, c_border),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card),
-        ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card),
-        ("TOPPADDING", (0, 0), (-1, 0), pad_v_card),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), pad_v_card + 2),
-    ]))
+    if show_tnpa_stats:
+        stat_w1 = avail_w / 4.0
+        stat_w2 = avail_w / 4.0
+        stat_w3 = avail_w / 4.0
+        stat_w4 = avail_w - stat_w1 - stat_w2 - stat_w3
+        stats_table = Table(
+            [
+                [
+                    Paragraph(_esc("Найдено"), card_label_style),
+                    Paragraph(_esc("В Стройдок"), card_label_style),
+                    Paragraph(_esc("В ТНПА"), card_label_style),
+                    Paragraph(_esc("Актуально"), card_label_style),
+                ],
+                [
+                    Paragraph(f"<b>{_esc(total if total != '' else '—')}</b>", card_value_style),
+                    Paragraph(f"<b>{_esc(found_stn if found_stn != '' else '—')}</b>", card_value_style),
+                    Paragraph(f"<b>{_esc(found_tnpa if found_tnpa != '' else '—')}</b>", card_value_style),
+                    Paragraph(f"<b>{_esc(active if active != '' else '—')}</b>", card_value_style),
+                ],
+            ],
+            colWidths=[stat_w1, stat_w2, stat_w3, stat_w4],
+        )
+        stats_style = [
+            ("BACKGROUND", (0, 0), (-1, -1), c_surface),
+            ("BOX", (0, 0), (-1, -1), 0.5, c_border),
+            ("LINEAFTER", (0, 0), (0, -1), 0.5, c_border),
+            ("LINEAFTER", (1, 0), (1, -1), 0.5, c_border),
+            ("LINEAFTER", (2, 0), (2, -1), 0.5, c_border),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card),
+            ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card),
+            ("TOPPADDING", (0, 0), (-1, 0), pad_v_card),
+            ("BOTTOMPADDING", (0, 1), (-1, 1), pad_v_card + 2),
+        ]
+    else:
+        stat_w1 = avail_w / 3.0
+        stat_w2 = avail_w / 3.0
+        stat_w3 = avail_w - stat_w1 - stat_w2
+        stats_table = Table(
+            [
+                [
+                    Paragraph(_esc("Найдено"), card_label_style),
+                    Paragraph(_esc("В Стройдок"), card_label_style),
+                    Paragraph(_esc("Актуально"), card_label_style),
+                ],
+                [
+                    Paragraph(f"<b>{_esc(total if total != '' else '—')}</b>", card_value_style),
+                    Paragraph(f"<b>{_esc(found_stn if found_stn != '' else '—')}</b>", card_value_style),
+                    Paragraph(f"<b>{_esc(active if active != '' else '—')}</b>", card_value_style),
+                ],
+            ],
+            colWidths=[stat_w1, stat_w2, stat_w3],
+        )
+        stats_style = [
+            ("BACKGROUND", (0, 0), (-1, -1), c_surface),
+            ("BOX", (0, 0), (-1, -1), 0.5, c_border),
+            ("LINEAFTER", (0, 0), (0, -1), 0.5, c_border),
+            ("LINEAFTER", (1, 0), (1, -1), 0.5, c_border),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), pad_h_card),
+            ("RIGHTPADDING", (0, 0), (-1, -1), pad_h_card),
+            ("TOPPADDING", (0, 0), (-1, 0), pad_v_card),
+            ("BOTTOMPADDING", (0, 1), (-1, 1), pad_v_card + 2),
+        ]
+    stats_table.setStyle(TableStyle(stats_style))
     story.append(stats_table)
     story.append(Spacer(1, 5))
 
     # Канонические заголовки — не зависят от DOM/браузера клиента
     raw_headers = [str(x or "—") for x in (payload.get("headers") or [])]
-    if len(raw_headers) >= 5:
+    has_tnpa_header = any("тнпа" in h.casefold() for h in raw_headers)
+    if has_tnpa_header or len(raw_headers) >= 5:
         headers = [
             "Обозначение",
             "Стройдок",
@@ -362,11 +420,10 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             "Введен",
             "Отменен",
         ]
-    elif len(raw_headers) >= 9:
+    elif len(raw_headers) == 4:
         headers = [
             "Обозначение",
             "Стройдок",
-            "ТНПА",
             "Введен",
             "Отменен",
         ]
@@ -388,7 +445,7 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             href = str(cell.get("href") or "").strip()
             if href:
                 text = f'<link href="{_esc(href)}" color="#1d4ed8">{text}</link>'
-            elif col_idx in (3, 4) and text not in ("—", "&mdash;"):
+            elif col_idx >= (3 if has_tnpa_header or len(headers) >= 5 else 2) and text not in ("—", "&mdash;"):
                 text = f"<nobr>{text}</nobr>"
             cells.append(Paragraph(text, cell_style))
         # Выравниваем число колонок под заголовок
@@ -399,11 +456,13 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
             row_fills.append((idx, fill))
 
     # Эталонные ширины (как в рабочем PDF 279 mm): без redistrib по клиенту
-    widths_mm = [70.0, 24.0, 22.0, 40.0, 40.0]
-    if len(headers) != 5:
-        # fallback: равномерно
-        widths_mm = [avail_w / mm / max(len(headers), 1)] * max(len(headers), 1)
+    if len(headers) == 5:
+        widths_mm = [70.0, 24.0, 22.0, 40.0, 40.0]
+    elif len(headers) == 4:
+        widths_mm = [80.0, 30.0, 45.0, 45.0]
     else:
+        widths_mm = [avail_w / mm / max(len(headers), 1)] * max(len(headers), 1)
+    if len(headers) in (4, 5):
         scale = (avail_w / mm) / sum(widths_mm)
         widths_mm = [round(w * scale, 4) for w in widths_mm]
         # компенсация округления на последнюю колонку
@@ -414,8 +473,6 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         ("BACKGROUND", (0, 0), (-1, 0), c_accent),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("ALIGN", (2, 1), (2, -1), "CENTER"),
-        ("ALIGN", (3, 1), (4, -1), "CENTER"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, c_accent),
         ("GRID", (0, 1), (-1, -1), 0.25, c_border),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -424,6 +481,19 @@ def build_normative_pdf_bytes(payload: dict[str, Any]) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), pad_v),
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad_v),
     ]
+    if len(headers) >= 5:
+        style_cmds.extend(
+            [
+                ("ALIGN", (2, 1), (2, -1), "CENTER"),
+                ("ALIGN", (3, 1), (4, -1), "CENTER"),
+            ]
+        )
+    elif len(headers) == 4:
+        style_cmds.extend(
+            [
+                ("ALIGN", (2, 1), (3, -1), "CENTER"),
+            ]
+        )
     fill_map = {
         "active": c_row_active,
         "canceled": c_row_canceled,
