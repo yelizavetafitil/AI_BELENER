@@ -1400,8 +1400,18 @@ def normative_refs_to_markdown(
                 ]
                 if statuses and all("IPS" in s or "вход" in s.casefold() for s in statuses if s):
                     stn_error = statuses[0]
-                elif statuses and len(set(statuses)) == 1 and statuses[0]:
+                elif (
+                    statuses
+                    and len(set(statuses)) == 1
+                    and statuses[0]
+                    and statuses[0] != "нет в ИПС"
+                ):
                     stn_error = statuses[0]
+                elif statuses and all(s == "нет в ИПС" for s in statuses):
+                    stn_error = (
+                        "Стройдок: документы не найдены в ИПС "
+                        "(проверьте PDF_STN_LOGIN/PDF_STN_PASSWORD в .env)"
+                    )
     if stn_error:
         lines.extend(["", f"<p><em>⚠ {stn_error}</em></p>", ""])
 

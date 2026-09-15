@@ -144,23 +144,35 @@ def _tnpa_check_is_route_blocked(check: StnCheckResult) -> bool:
 
 
 def tnpa_probe_host(client: TnpaClient) -> None:
-    """Один лёгкий GET главной — без пакета поисков по API."""
+    """Лёгкий запрос к API (не главная): таймаут SSL на / не должен блокировать поиск."""
     blocked = _tnpa_route_blocked_message()
     if blocked:
         raise urllib.error.URLError(blocked)
+    params = urllib.parse.urlencode(
+        {
+            "page": 1,
+            "per-page": 1,
+            "sort": "b.KL",
+            "SearchParam": "CH",
+            "lang": "ru",
+            "stateID": -1,
+            "onlyActive": "null",
+        }
+    )
     req = urllib.request.Request(
-        f"{client.base}/",
+        f"{client.base}/api/tnpadocs?{params}",
         headers={
-            "Accept": "text/html,*/*",
+            "Accept": "application/json, text/plain, */*",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
+            "Referer": f"{client.base}/",
         },
     )
     try:
-        _tnpa_https_read(req, read_sec=min(20, client.timeout))
+        _tnpa_https_read(req, read_sec=client.timeout)
     except urllib.error.HTTPError as e:
         if e.code >= 500:
             raise
@@ -170,6 +182,20 @@ def tnpa_probe_host(client: TnpaClient) -> None:
             _tnpa_mark_route_blocked(msg)
             raise urllib.error.URLError(msg) from e
         raise
+
+
+def _tnpa_probe_soft(client: TnpaClient) -> str | None:
+    """Жёсткий стоп только без маршрута; таймаут/SSL — продолжаем пакет."""
+    try:
+        tnpa_probe_host(client)
+    except Exception as e:
+        if _tnpa_is_route_error(e):
+            return _tnpa_human_network_error(e)
+        blocked = _tnpa_route_blocked_message()
+        if blocked:
+            return blocked
+        log.warning("TNPA probe inconclusive, continuing API batch: %s", e)
+    return None
 
 
 def _tnpa_unavailable_results(items: list[dict[str, str]], message: str) -> list[StnCheckResult]:
@@ -935,12 +961,10 @@ def refine_and_check_normative_refs_tnpa(
     except Exception as e:
         log.warning("TNPA SSL warm failed: %s", e)
     shared_cli = client or TnpaClient()
-    try:
-        tnpa_probe_host(shared_cli)
-    except Exception as e:
-        msg = _tnpa_human_network_error(e)
-        log.warning("TNPA batch skipped after probe: %s", msg)
-        return list(refs or []), _tnpa_unavailable_results(items, msg)
+    probe_block = _tnpa_probe_soft(shared_cli)
+    if probe_block:
+        log.warning("TNPA batch skipped (no route): %s", probe_block)
+        return list(refs or []), _tnpa_unavailable_results(items, probe_block)
 
     checks_by_item: dict[tuple[str, str], StnCheckResult] = {}
 

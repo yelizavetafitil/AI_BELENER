@@ -186,28 +186,62 @@ def test_tnpa_refused_fails_fast_without_triple_retry(monkeypatch):
     assert len(calls) == 1
 
 
-def test_tnpa_batch_skips_when_probe_fails(monkeypatch):
+def test_tnpa_batch_skips_only_on_route_block(monkeypatch):
     import urllib.error
 
-    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa, reset_tnpa_ssl
+    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa, reset_tnpa_route_cache, reset_tnpa_ssl
 
     monkeypatch.setenv("PDF_STN_LOOKUP", "1")
-    from belener.tnpa_lookup import reset_tnpa_route_cache
-
     reset_tnpa_route_cache()
     reset_tnpa_ssl()
-
-    def _probe_fail(_cli):
-        raise urllib.error.URLError("tnpa.by недоступен с этого хоста (VPN/сеть/Docker)")
-
-    monkeypatch.setattr("belener.tnpa_lookup.tnpa_probe_host", _probe_fail)
     monkeypatch.setattr("belener.tnpa_lookup.warm_tnpa_ssl_trust", lambda _h: None)
+
+    def _probe_route(_cli):
+        raise urllib.error.URLError("[Errno 111] Connection refused")
+
+    monkeypatch.setattr("belener.tnpa_lookup.tnpa_probe_host", _probe_route)
 
     refs = [{"kind": "СН", "ref": "СН 1.02.02"}, {"kind": "СН", "ref": "СН 2.01.01"}]
     _, checks = refine_and_check_normative_refs_tnpa(refs, today=date(2026, 1, 1))
     assert len(checks) == 2
     assert all(c.status == "ошибка проверки" for c in checks)
     assert all("недоступен" in (c.error or "") for c in checks)
+
+
+def test_tnpa_batch_continues_when_probe_times_out(monkeypatch):
+    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa, reset_tnpa_route_cache, reset_tnpa_ssl
+
+    monkeypatch.setenv("PDF_STN_LOOKUP", "1")
+    reset_tnpa_route_cache()
+    reset_tnpa_ssl()
+    monkeypatch.setattr("belener.tnpa_lookup.warm_tnpa_ssl_trust", lambda _h: None)
+
+    def _probe_timeout(_cli):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("belener.tnpa_lookup.tnpa_probe_host", _probe_timeout)
+
+    rows = [
+        {
+            "Number": "1.02.02",
+            "OND": "СН",
+            "NND": "x",
+            "RN": "1",
+            "IDGLOBAL": "2",
+            "DTTN": "2020-01-01",
+            "PRIZN_BD": "1",
+        }
+    ]
+
+    class _FakeCli:
+        timeout = 70
+
+        def search_docs(self, query: str, *, page: int = 1, per_page: int = 30):
+            return list(rows)
+
+    refs = [{"kind": "СН", "ref": "СН 1.02.02"}]
+    _, checks = refine_and_check_normative_refs_tnpa(refs, client=_FakeCli(), today=date(2026, 1, 1))
+    assert checks[0].found is True
 
 
 def test_lookup_one_tnpa_timeout_is_not_missing(monkeypatch):
