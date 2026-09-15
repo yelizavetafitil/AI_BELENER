@@ -1307,6 +1307,10 @@ def stn_timeout_sec() -> int:
     except ValueError:
         return 15
 
+def ignore_ssl_errors() -> bool:
+    """Отключение проверки SSL-сертификатов (для работы за корпоративными прокси)."""
+    return (os.environ.get("BELENER_IGNORE_SSL") or "0").strip().lower() in ("1", "true", "yes", "on")
+
 
 def tnpa_timeout_sec() -> int:
     """tnpa.by на медленных каналах часто 30–70 с на запрос."""

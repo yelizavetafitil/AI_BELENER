@@ -186,12 +186,17 @@ def tnpa_probe_host(client: TnpaClient) -> None:
 
 
 def _tnpa_probe_soft(client: TnpaClient) -> str | None:
-    """Жёсткий стоп только без маршрута; таймаут/SSL — продолжаем пакет."""
+    """Проверка доступности API. При таймауте или 5xx — пропускаем пакет, чтобы не висеть."""
     try:
         tnpa_probe_host(client)
     except Exception as e:
         if _tnpa_is_route_error(e):
             return _tnpa_human_network_error(e)
+        msg = _tnpa_err_text(e)
+        if "timed out" in msg or "timeout" in msg:
+            return "таймаут ответа tnpa.by (сервер недоступен)"
+        if "500" in msg or "502" in msg or "503" in msg or "504" in msg:
+            return "ошибка сервера tnpa.by (недоступен)"
         blocked = _tnpa_route_blocked_message()
         if blocked:
             return blocked
@@ -401,7 +406,11 @@ def _tnpa_download_pem(url: str, *, timeout: float = 15) -> bytes:
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; belener-tnpa/1.0)"},
     )
-    ctx = ssl.create_default_context(cafile=certifi.where())
+    from belener.config import ignore_ssl_errors
+    if ignore_ssl_errors():
+        ctx = ssl._create_unverified_context()
+    else:
+        ctx = ssl.create_default_context(cafile=certifi.where())
     with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
         raw = resp.read()
     if raw.startswith(b"-----BEGIN"):
@@ -564,11 +573,17 @@ def _tnpa_ssl_context() -> ssl.SSLContext:
     with _TNPA_SSL_LOCK:
         if _TNPA_SSL_CTX is not None:
             return _TNPA_SSL_CTX
-        ctx = ssl.create_default_context()
-        ctx.load_verify_locations(cafile=certifi.where())
-        trust_path = _tnpa_trust_ca_path()
-        if trust_path != certifi.where():
-            ctx.load_verify_locations(cafile=trust_path)
+        
+        from belener.config import ignore_ssl_errors
+        if ignore_ssl_errors():
+            ctx = ssl._create_unverified_context()
+        else:
+            ctx = ssl.create_default_context()
+            ctx.load_verify_locations(cafile=certifi.where())
+            trust_path = _tnpa_trust_ca_path()
+            if trust_path != certifi.where():
+                ctx.load_verify_locations(cafile=trust_path)
+                
         _TNPA_SSL_CTX = ctx
         return _TNPA_SSL_CTX
 

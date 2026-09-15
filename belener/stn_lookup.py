@@ -520,7 +520,17 @@ class StnClient:
         self.base = (base_url or stn_base_url()).rstrip("/") + "/"
         self.timeout = timeout_sec if timeout_sec is not None else stn_timeout_sec()
         self._jar = http.cookiejar.CookieJar()
-        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self._jar))
+        
+        from belener.config import ignore_ssl_errors
+        if ignore_ssl_errors():
+            import ssl
+            ctx = ssl._create_unverified_context()
+            https_handler = urllib.request.HTTPSHandler(context=ctx)
+            cookie_handler = urllib.request.HTTPCookieProcessor(self._jar)
+            self._opener = urllib.request.build_opener(https_handler, cookie_handler)
+        else:
+            self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self._jar))
+            
         self._logged_in = False
         self._login_user = (login or "").strip()
         self._login_pass = (password or "").strip()
@@ -854,13 +864,9 @@ def lookup_one(
         try:
             cli._ensure_logged_in()
         except StnLoginError as e:
-            out.status = str(e)
-            out.error = str(e)
-            return out
+            log.warning("STN login error: %s, continuing with open fund", e)
         if getattr(cli, "_login_user", "") and getattr(cli, "_login_pass", "") and not cli._logged_in:
-            out.status = cli._login_error or "ошибка входа IPS"
-            out.error = out.status
-            return out
+            log.warning("STN login failed: %s, continuing with open fund", cli._login_error)
 
         rows, used_q = _lookup_rows(kind, ref, client=cli, queries=queries, deadline=deadline)
         variant_retry = False
@@ -1001,38 +1007,11 @@ def refine_and_check_normative_refs(
         log.warning("STN login failed: %s", e)
 
     if login_error and getattr(shared_cli, "_login_user", "") and getattr(shared_cli, "_login_pass", ""):
-        checks = [
-            StnCheckResult(
-                kind=str(item.get("kind") or "").strip(),
-                ref=str(item.get("ref") or "").strip(),
-                query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
-                found=False,
-                status=login_error,
-                error=login_error,
-            )
-            for item in items
-        ]
-        log.info("STN batch: login failed for %s refs", len(checks))
-        return list(refs or []), checks
+        log.info("STN batch: login failed, continuing with open fund")
 
     has_cred_fields = hasattr(shared_cli, "_login_user") and hasattr(shared_cli, "_login_pass")
     if has_cred_fields and (not shared_cli._login_user or not shared_cli._login_pass):
-        login_error = (
-            "нужен вход IPS: укажите PDF_STN_LOGIN и PDF_STN_PASSWORD в .env и перезапустите web"
-        )
-        checks = [
-            StnCheckResult(
-                kind=str(item.get("kind") or "").strip(),
-                ref=str(item.get("ref") or "").strip(),
-                query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
-                found=False,
-                status=login_error,
-                error=login_error,
-            )
-            for item in items
-        ]
-        log.info("STN batch: IPS credentials missing for %s refs", len(checks))
-        return list(refs or []), checks
+        log.info("STN batch: IPS credentials missing, continuing with open fund")
 
     workers = min(stn_parallel_workers(), len(items))
     log.info("STN batch: checking all %s refs (%s workers)", len(items), workers)
