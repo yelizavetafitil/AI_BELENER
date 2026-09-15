@@ -53,13 +53,19 @@ def _legacy_stn_login() -> str:
 def _effective_stn_password(site_login: str, decrypted_password: str, password_enc: str) -> str:
     if decrypted_password:
         return decrypted_password
-    if password_enc:
-        return decrypted_password
     fallback = _legacy_stn_password()
     login = (site_login or "").strip()
     fallback_login = _legacy_stn_login()
     if fallback and (not login or login == fallback_login):
+        if password_enc and not decrypted_password:
+            log.warning(
+                "integration_store: STN password in DB could not be decrypted — using .env fallback"
+            )
         return fallback
+    if password_enc and not decrypted_password:
+        log.warning(
+            "integration_store: STN password decrypt failed and login does not match .env"
+        )
     return ""
 
 
@@ -133,7 +139,7 @@ def get_stn_credentials() -> dict[str, str]:
     for site in list_sites():
         if site.get("kind") == "stn" or _STN_HOST.search(site.get("site_url") or ""):
             full = _get_site_secrets(site["id"])
-            if full:
+            if full and (full.get("password") or "").strip():
                 return full
     from belener.settings_store import get_setting
 
@@ -144,6 +150,14 @@ def get_stn_credentials() -> dict[str, str]:
             "base_url": get_setting("stn.base_url") or "https://normy.stn.by",
             "login": login,
             "password": password,
+        }
+    env_login = (os.environ.get("PDF_STN_LOGIN") or os.environ.get("STN_LOGIN") or "").strip()
+    env_password = (os.environ.get("PDF_STN_PASSWORD") or os.environ.get("STN_PASSWORD") or "").strip()
+    if env_login or env_password:
+        return {
+            "base_url": (os.environ.get("PDF_STN_BASE_URL") or "https://normy.stn.by").strip().rstrip("/"),
+            "login": env_login,
+            "password": env_password,
         }
     return {"base_url": "", "login": "", "password": ""}
 

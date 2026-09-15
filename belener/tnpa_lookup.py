@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import http.client
+import io
 import json
 import logging
 import os
@@ -22,6 +24,7 @@ import certifi
 from belener.config import (
     stn_lookup_enabled,
     tnpa_budget_max_sec,
+    tnpa_connect_timeout_sec,
     tnpa_max_queries,
     tnpa_parallel_workers,
     tnpa_timeout_sec,
@@ -39,6 +42,152 @@ from belener.stn_lookup import (
 )
 
 log = logging.getLogger("belener.tnpa_lookup")
+
+_TNPA_ROUTE_BLOCKED_UNTIL = 0.0
+_TNPA_ROUTE_BLOCKED_MSG = ""
+_TNPA_ROUTE_LOCK = threading.RLock()
+
+
+def _tnpa_open_timeout(read_sec: int | float | None = None) -> tuple[float, float]:
+    read = float(read_sec if read_sec is not None else tnpa_timeout_sec())
+    connect = min(float(tnpa_connect_timeout_sec()), max(5.0, read * 0.5))
+    return (connect, read)
+
+
+def _tnpa_request_timeout(read_sec: int | float | None = None) -> float:
+    """Единый timeout для socket (Python 3.12 не принимает tuple в urlopen/HTTPSConnection)."""
+    connect, read = _tnpa_open_timeout(read_sec)
+    return max(connect, read)
+
+
+def _tnpa_https_read(req: urllib.request.Request, *, read_sec: int | float | None = None) -> bytes:
+    """HTTPS через http.client с одним timeout (совместимо с Python 3.12)."""
+    timeout = _tnpa_request_timeout(read_sec)
+    url = req.get_full_url()
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or "tnpa.by"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    headers = {k: v for k, v in req.header_items()}
+    ctx = _tnpa_ssl_context()
+    conn = http.client.HTTPSConnection(host, port, timeout=timeout, context=ctx)
+    try:
+        method = req.get_method()
+        conn.request(method, path, body=req.data, headers=headers)
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status >= 400:
+            raise urllib.error.HTTPError(
+                url,
+                resp.status,
+                resp.reason,
+                resp.headers,
+                io.BytesIO(body),
+            )
+        return body
+    finally:
+        conn.close()
+
+
+def _tnpa_err_text(exc: BaseException) -> str:
+    return str(exc).casefold()
+
+
+def _tnpa_is_route_error(exc: BaseException) -> bool:
+    msg = _tnpa_err_text(exc)
+    return any(
+        x in msg
+        for x in (
+            "connection refused",
+            "errno 111",
+            "network is unreachable",
+            "no route to host",
+            "name or service not known",
+            "getaddrinfo failed",
+            "nodename nor servname",
+        )
+    )
+
+
+def _tnpa_human_network_error(exc: BaseException) -> str:
+    if isinstance(exc, TypeError) and "tuple" in str(exc).casefold():
+        return "внутренняя ошибка клиента ТНПА (обновите web-контейнер)"
+    msg = _tnpa_err_text(exc)
+    if _tnpa_is_route_error(exc):
+        return "tnpa.by недоступен с этого хоста (VPN/сеть/Docker)"
+    if "timed out" in msg or "timeout" in msg:
+        if "handshake" in msg or "ssl" in msg:
+            return "таймаут SSL tnpa.by"
+        return "таймаут ответа tnpa.by"
+    return str(exc)[:240]
+
+
+def _tnpa_route_blocked_message() -> str | None:
+    with _TNPA_ROUTE_LOCK:
+        if time.monotonic() < _TNPA_ROUTE_BLOCKED_UNTIL and _TNPA_ROUTE_BLOCKED_MSG:
+            return _TNPA_ROUTE_BLOCKED_MSG
+    return None
+
+
+def _tnpa_mark_route_blocked(message: str, *, ttl_sec: float = 120.0) -> None:
+    global _TNPA_ROUTE_BLOCKED_UNTIL, _TNPA_ROUTE_BLOCKED_MSG
+    with _TNPA_ROUTE_LOCK:
+        _TNPA_ROUTE_BLOCKED_UNTIL = time.monotonic() + max(30.0, ttl_sec)
+        _TNPA_ROUTE_BLOCKED_MSG = message
+
+
+def _tnpa_check_is_route_blocked(check: StnCheckResult) -> bool:
+    err = (check.error or "").casefold()
+    return "недоступен" in err or "connection refused" in err or "errno 111" in err
+
+
+def tnpa_probe_host(client: TnpaClient) -> None:
+    """Один лёгкий GET главной — без пакета поисков по API."""
+    blocked = _tnpa_route_blocked_message()
+    if blocked:
+        raise urllib.error.URLError(blocked)
+    req = urllib.request.Request(
+        f"{client.base}/",
+        headers={
+            "Accept": "text/html,*/*",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        },
+    )
+    try:
+        _tnpa_https_read(req, read_sec=min(20, client.timeout))
+    except urllib.error.HTTPError as e:
+        if e.code >= 500:
+            raise
+    except (urllib.error.URLError, TimeoutError, OSError, ssl.SSLError) as e:
+        if _tnpa_is_route_error(e):
+            msg = _tnpa_human_network_error(e)
+            _tnpa_mark_route_blocked(msg)
+            raise urllib.error.URLError(msg) from e
+        raise
+
+
+def _tnpa_unavailable_results(items: list[dict[str, str]], message: str) -> list[StnCheckResult]:
+    out: list[StnCheckResult] = []
+    for item in items:
+        kind = str(item.get("kind") or "").strip()
+        ref = str(item.get("ref") or "").strip()
+        out.append(
+            StnCheckResult(
+                kind=kind,
+                ref=ref,
+                query=search_query(kind, ref),
+                found=False,
+                status="ошибка проверки",
+                error=message,
+            )
+        )
+    return out
 
 _TNPA_INTERMEDIATE_PEM: bytes | None = None
 _TNPA_SSL_CTX: ssl.SSLContext | None = None
@@ -146,9 +295,17 @@ def _tnpa_cert_paths() -> list[Path]:
     ]
 
 
+def reset_tnpa_route_cache() -> None:
+    global _TNPA_ROUTE_BLOCKED_UNTIL, _TNPA_ROUTE_BLOCKED_MSG
+    with _TNPA_ROUTE_LOCK:
+        _TNPA_ROUTE_BLOCKED_UNTIL = 0.0
+        _TNPA_ROUTE_BLOCKED_MSG = ""
+
+
 def reset_tnpa_ssl() -> None:
     """Сброс кэша SSL (после обновления CA)."""
     global _TNPA_SSL_CTX, _TNPA_INTERMEDIATE_PEM, _TNPA_TRUST_CA_PATH, _TNPA_SSL_PROBE_DONE
+    reset_tnpa_route_cache()
     with _TNPA_SSL_LOCK:
         _TNPA_SSL_CTX = None
         _TNPA_INTERMEDIATE_PEM = None
@@ -408,6 +565,9 @@ class TnpaClient:
         self._cache: dict[tuple[str, int, int], list[dict]] = {}
         self._cache_lock = threading.Lock()
 
+    def open_timeout(self) -> tuple[float, float]:
+        return _tnpa_open_timeout(self.timeout)
+
     def search_docs(self, query: str, *, page: int = 1, per_page: int = 30) -> list[dict]:
         q = (query or "").strip()
         cache_key = (q.upper(), page, per_page)
@@ -441,11 +601,11 @@ class TnpaClient:
         )
         last_err: Exception | None = None
         ssl_refreshed = False
+        read_timeout_retries = 0
         host = urllib.parse.urlparse(self.base).hostname or "tnpa.by"
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout, context=_tnpa_ssl_context()) as resp:
-                    raw = resp.read().decode("utf-8", errors="replace")
+                raw = _tnpa_https_read(req, read_sec=self.timeout).decode("utf-8", errors="replace")
                 data = json.loads(raw)
                 rows: list[dict] = []
                 if isinstance(data, list):
@@ -462,14 +622,21 @@ class TnpaClient:
                 return rows
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ssl.SSLError) as e:
                 last_err = e
-                msg = str(e).casefold()
+                msg = _tnpa_err_text(e)
+                if _tnpa_is_route_error(e):
+                    blocked = _tnpa_human_network_error(e)
+                    _tnpa_mark_route_blocked(blocked)
+                    raise urllib.error.URLError(blocked) from e
                 if "certificate verify failed" in msg and not ssl_refreshed:
                     ssl_refreshed = True
                     if _tnpa_refresh_ssl_on_verify_error(host):
                         continue
-                # Полный read-timeout не крутим 3× — иначе UI «висит».
-                # Один повтор только на обрыв SSL handshake (типично при нагрузке).
+                # Полный read-timeout — один повтор; SSL handshake — один повтор.
                 if any(x in msg for x in ("timed out", "timeout")):
+                    if read_timeout_retries < 1 and "handshake" not in msg:
+                        read_timeout_retries += 1
+                        time.sleep(2.0)
+                        continue
                     if attempt < 1 and ("handshake" in msg or "ssl" in msg):
                         time.sleep(1.5)
                         continue
@@ -479,9 +646,6 @@ class TnpaClient:
                     for x in (
                         "temporarily",
                         "reset",
-                        "refused",
-                        "unreachable",
-                        "ssl",
                         "eof",
                         "503",
                         "502",
@@ -633,11 +797,11 @@ def lookup_one_tnpa(
     cli = client or _default_client()
     t0 = time.monotonic()
     skipped_budget = False
+    tried: list[str] = []
     try:
         if deadline is not None and time.monotonic() >= deadline:
             out.status = "пропущено (бюджет времени)"
             return out
-        tried: list[str] = []
         match: dict | None = None
         for raw_q in queries:
             if deadline is not None and time.monotonic() >= deadline:
@@ -671,10 +835,55 @@ def lookup_one_tnpa(
         log.info("TNPA lookup %s %s -> %s in %.1fs", kind, ref, out.status, time.monotonic() - t0)
         return out
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
+        msg = _tnpa_err_text(e)
+        if not _tnpa_is_route_error(e) and any(x in msg for x in ("timed out", "timeout")):
+            from belener.stn_lookup import _extract_number_part
+
+            num = _extract_number_part(kind, ref)
+            alt_queries: list[str] = []
+            for raw_q in (
+                search_query(kind, ref),
+                f"{kind} {num}".strip() if num else "",
+                num,
+                *_tnpa_search_queries(kind, ref),
+            ):
+                q = _clean_stn_query(raw_q)
+                if q and q not in alt_queries:
+                    alt_queries.append(q)
+            for raw_q in alt_queries:
+                if raw_q in tried:
+                    continue
+                q = _clean_stn_query(raw_q)
+                if not q:
+                    continue
+                tried.append(q)
+                try:
+                    rows = cli.search_docs(q)
+                    match = _pick_best_tnpa_match(kind, ref, rows)
+                    if match:
+                        rn = str(match.get("RN") or "")
+                        idglobal = str(match.get("IDGLOBAL") or "")
+                        code = _tnpa_designation(match)
+                        out.found = True
+                        out.doc_id = f"{rn}/{idglobal}" if rn and idglobal else idglobal or rn
+                        out.stn_code = code
+                        out.stn_name = str(match.get("NND") or "")
+                        out.intro_date = _format_tnpa_date(match.get("DTTN"))
+                        out.cancel_date = _format_tnpa_date(_tnpa_cancel_raw(match))
+                        out.status = _tnpa_status(match, today=today)
+                        out.query = "; ".join(tried[:4])
+                        log.info(
+                            "TNPA lookup %s %s -> %s (retry) in %.1fs",
+                            kind,
+                            ref,
+                            out.status,
+                            time.monotonic() - t0,
+                        )
+                        return out
+                except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+                    break
         log.warning("TNPA lookup failed kind=%s ref=%s: %s", kind, ref, e)
-        out.error = str(e)
-        if "timed out" in str(e).casefold():
-            out.error = "таймаут tnpa.by"
+        out.error = _tnpa_human_network_error(e)
         out.status = "ошибка проверки"
         return out
 
@@ -708,13 +917,31 @@ def refine_and_check_normative_refs_tnpa(
         return list(refs or []), []
 
     workers = min(tnpa_parallel_workers(), len(items))
-    log.info("TNPA batch: checking all %s refs (%s workers)", len(items), workers)
+    log.info(
+        "TNPA batch: %s refs, workers=%s, timeout=%ss, connect=%ss",
+        len(items),
+        workers,
+        tnpa_timeout_sec(),
+        tnpa_connect_timeout_sec(),
+    )
     t_batch = time.monotonic()
+    blocked = _tnpa_route_blocked_message()
+    if blocked:
+        log.warning("TNPA batch skipped (cached): %s", blocked)
+        return list(refs or []), _tnpa_unavailable_results(items, blocked)
+
     try:
         warm_tnpa_ssl_trust(urllib.parse.urlparse(tnpa_base_url()).hostname or "tnpa.by")
     except Exception as e:
         log.warning("TNPA SSL warm failed: %s", e)
     shared_cli = client or TnpaClient()
+    try:
+        tnpa_probe_host(shared_cli)
+    except Exception as e:
+        msg = _tnpa_human_network_error(e)
+        log.warning("TNPA batch skipped after probe: %s", msg)
+        return list(refs or []), _tnpa_unavailable_results(items, msg)
+
     checks_by_item: dict[tuple[str, str], StnCheckResult] = {}
 
     def _item_key(item: dict[str, str]) -> tuple[str, str]:
@@ -735,9 +962,14 @@ def refine_and_check_normative_refs_tnpa(
         return key, result
 
     if workers <= 1:
-        for item in items:
+        for i, item in enumerate(items):
             key, result = _run_one(item)
             checks_by_item[key] = result
+            if _tnpa_check_is_route_blocked(result):
+                log.warning("TNPA batch stopped: %s", result.error)
+                break
+            if i + 1 < len(items):
+                time.sleep(0.35)
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futs = {pool.submit(_run_one, item): item for item in items}
@@ -757,12 +989,29 @@ def refine_and_check_normative_refs_tnpa(
                         error=str(e),
                     )
 
-    checks = [checks_by_item[_item_key(item)] for item in items]
+    checks: list[StnCheckResult] = []
+    for item in items:
+        key = _item_key(item)
+        if key in checks_by_item:
+            checks.append(checks_by_item[key])
+        else:
+            msg = _tnpa_route_blocked_message() or "tnpa.by недоступен с этого хоста (VPN/сеть/Docker)"
+            checks.append(
+                StnCheckResult(
+                    kind=str(item.get("kind") or "").strip(),
+                    ref=str(item.get("ref") or "").strip(),
+                    query=search_query(str(item.get("kind") or ""), str(item.get("ref") or "")),
+                    found=False,
+                    status="ошибка проверки",
+                    error=msg,
+                )
+            )
 
     retry_idx = [
         i
         for i, c in enumerate(checks)
         if not c.found
+        and not _tnpa_check_is_route_blocked(c)
         and (
             (c.status or "").startswith("пропущено")
             or c.status == "ошибка проверки"

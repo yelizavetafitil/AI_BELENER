@@ -1266,6 +1266,15 @@ def normative_refs_to_markdown(
                             f'<a class="stn-link stn-link-stn" href="https://normy.stn.by/ips.php?{doc_id}" '
                             f'target="_blank">Стройдок</a>'
                         )
+                elif stn_status_val == "ошибка проверки" or (
+                    str(c.error if hasattr(c, "error") else c.get("error") or "").strip()
+                ):
+                    err_stn = str(
+                        c.error if hasattr(c, "error") else c.get("error") or "нет связи со Стройдок"
+                    ).replace('"', "'")
+                    ips_link = (
+                        f'<span class="stn-link stn-link-muted" title="{err_stn}">нет связи</span>'
+                    )
 
             if show_tnpa and c_tnpa:
                 tnpa_found = bool(c_tnpa.found) if hasattr(c_tnpa, "found") else str(c_tnpa.get("found")) == "1"
@@ -1379,10 +1388,38 @@ def normative_refs_to_markdown(
         )
         if skipped == len(stn_checks) and skipped > 0:
             stn_error = "Проверка ИПС не выполнена — не хватило времени после OCR."
+        if not stn_error:
+            all_stn_miss = all(
+                not (c.found if hasattr(c, "found") else c.get("found"))
+                for c in stn_checks
+            )
+            if all_stn_miss:
+                statuses = [
+                    str(c.status if hasattr(c, "status") else c.get("status") or "").strip()
+                    for c in stn_checks
+                ]
+                if statuses and all("IPS" in s or "вход" in s.casefold() for s in statuses if s):
+                    stn_error = statuses[0]
+                elif statuses and len(set(statuses)) == 1 and statuses[0]:
+                    stn_error = statuses[0]
     if stn_error:
         lines.extend(["", f"<p><em>⚠ {stn_error}</em></p>", ""])
 
     tnpa_error = (tnpa_error or "").strip()
+    if show_tnpa and not tnpa_error and tnpa_checks:
+        failed = [
+            c
+            for c in tnpa_checks
+            if not (c.found if hasattr(c, "found") else c.get("found"))
+        ]
+        if failed and len(failed) == len(tnpa_checks):
+            errs = [
+                str(c.error if hasattr(c, "error") else c.get("error") or "").strip()
+                for c in failed
+            ]
+            errs = [e for e in errs if e]
+            if errs and len(set(errs)) == 1:
+                tnpa_error = errs[0]
     if show_tnpa and tnpa_error:
         lines.extend(["", f"<p><em>⚠ {tnpa_error}</em></p>", ""])
 

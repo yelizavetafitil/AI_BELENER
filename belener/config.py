@@ -1316,6 +1316,14 @@ def tnpa_timeout_sec() -> int:
         return 70
 
 
+def tnpa_connect_timeout_sec() -> float:
+    """Быстрый отказ, если до tnpa.by нет маршрута (VPN, Docker)."""
+    try:
+        return max(5.0, min(float(os.environ.get("PDF_TNPA_CONNECT_TIMEOUT", "12").strip()), 30.0))
+    except ValueError:
+        return 12.0
+
+
 def tnpa_parallel_workers() -> int:
     """1 воркер по умолчанию: 3 параллели на сервере валят SSL handshake."""
     try:

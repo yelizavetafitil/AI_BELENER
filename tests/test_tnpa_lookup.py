@@ -121,6 +121,95 @@ def test_tnpa_parallel_default_independent_of_stn(monkeypatch):
     assert tnpa_parallel_workers() == 2
 
 
+def test_tnpa_https_read_uses_http_client_not_urlopen_tuple(monkeypatch):
+    import urllib.request
+
+    from belener.tnpa_lookup import _tnpa_https_read, reset_tnpa_ssl
+
+    reset_tnpa_ssl()
+    calls: list[object] = []
+
+    class _FakeConn:
+        def __init__(self, host, port, timeout=None, context=None):
+            calls.append(timeout)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            class _R:
+                status = 200
+                reason = "OK"
+                headers = {}
+
+                def read(self):
+                    return b"[]"
+
+            return _R()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("belener.tnpa_lookup.http.client.HTTPSConnection", _FakeConn)
+    monkeypatch.setattr(
+        "belener.tnpa_lookup._tnpa_ssl_context",
+        lambda: __import__("ssl").create_default_context(),
+    )
+    req = urllib.request.Request("https://tnpa.by/api/tnpadocs?page=1")
+    _tnpa_https_read(req, read_sec=55)
+    assert calls and isinstance(calls[0], (int, float))
+
+
+def test_tnpa_refused_fails_fast_without_triple_retry(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    from belener.tnpa_lookup import TnpaClient, reset_tnpa_ssl
+
+    from belener.tnpa_lookup import reset_tnpa_route_cache
+
+    reset_tnpa_route_cache()
+    reset_tnpa_ssl()
+    calls: list[int] = []
+
+    def _fake_read(req, read_sec=None):
+        calls.append(1)
+        raise urllib.error.URLError("[Errno 111] Connection refused")
+
+    monkeypatch.setattr("belener.tnpa_lookup._tnpa_https_read", _fake_read)
+    cli = TnpaClient(timeout_sec=25)
+    try:
+        cli.search_docs("CH 1.02.02")
+        assert False, "expected URLError"
+    except urllib.error.URLError:
+        pass
+    assert len(calls) == 1
+
+
+def test_tnpa_batch_skips_when_probe_fails(monkeypatch):
+    import urllib.error
+
+    from belener.tnpa_lookup import refine_and_check_normative_refs_tnpa, reset_tnpa_ssl
+
+    monkeypatch.setenv("PDF_STN_LOOKUP", "1")
+    from belener.tnpa_lookup import reset_tnpa_route_cache
+
+    reset_tnpa_route_cache()
+    reset_tnpa_ssl()
+
+    def _probe_fail(_cli):
+        raise urllib.error.URLError("tnpa.by недоступен с этого хоста (VPN/сеть/Docker)")
+
+    monkeypatch.setattr("belener.tnpa_lookup.tnpa_probe_host", _probe_fail)
+    monkeypatch.setattr("belener.tnpa_lookup.warm_tnpa_ssl_trust", lambda _h: None)
+
+    refs = [{"kind": "СН", "ref": "СН 1.02.02"}, {"kind": "СН", "ref": "СН 2.01.01"}]
+    _, checks = refine_and_check_normative_refs_tnpa(refs, today=date(2026, 1, 1))
+    assert len(checks) == 2
+    assert all(c.status == "ошибка проверки" for c in checks)
+    assert all("недоступен" in (c.error or "") for c in checks)
+
+
 def test_lookup_one_tnpa_timeout_is_not_missing(monkeypatch):
     monkeypatch.setenv("PDF_STN_LOOKUP", "1")
 
@@ -214,6 +303,12 @@ def test_lookup_one_tnpa_not_found(monkeypatch):
 
 def test_refine_and_check_normative_refs_tnpa(monkeypatch):
     monkeypatch.setenv("PDF_STN_LOOKUP", "1")
+    monkeypatch.setattr("belener.tnpa_lookup.tnpa_probe_host", lambda _cli: None)
+    monkeypatch.setattr("belener.tnpa_lookup.warm_tnpa_ssl_trust", lambda _h: None)
+    from belener.tnpa_lookup import reset_tnpa_route_cache, reset_tnpa_ssl
+
+    reset_tnpa_route_cache()
+    reset_tnpa_ssl()
     rows = [
         {
             "Number": "8969-75",
