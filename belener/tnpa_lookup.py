@@ -107,6 +107,7 @@ def _tnpa_is_route_error(exc: BaseException) -> bool:
             "name or service not known",
             "getaddrinfo failed",
             "nodename nor servname",
+            "socket.gaierror",
         )
     )
 
@@ -194,7 +195,7 @@ def _tnpa_probe_soft(client: TnpaClient) -> str | None:
         blocked = _tnpa_route_blocked_message()
         if blocked:
             return blocked
-        log.warning("TNPA probe inconclusive, continuing API batch: %s", e)
+        log.warning("TNPA probe inconclusive, continuing API batch: %s", _tnpa_human_network_error(e))
     return None
 
 
