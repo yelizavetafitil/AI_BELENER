@@ -21,6 +21,7 @@ import certifi
 
 from belener.config import (
     stn_lookup_enabled,
+    tnpa_budget_max_sec,
     tnpa_max_queries,
     tnpa_parallel_workers,
     tnpa_timeout_sec,
@@ -466,8 +467,12 @@ class TnpaClient:
                     ssl_refreshed = True
                     if _tnpa_refresh_ssl_on_verify_error(host):
                         continue
-                # Таймаут не повторяем — иначе 3×55 с на ref и «зависание» UI.
+                # Полный read-timeout не крутим 3× — иначе UI «висит».
+                # Один повтор только на обрыв SSL handshake (типично при нагрузке).
                 if any(x in msg for x in ("timed out", "timeout")):
+                    if attempt < 1 and ("handshake" in msg or "ssl" in msg):
+                        time.sleep(1.5)
+                        continue
                     raise
                 retryable = any(
                     x in msg
@@ -764,8 +769,13 @@ def refine_and_check_normative_refs_tnpa(
         )
     ]
     if retry_idx:
-        retry_deadline = time.monotonic() + min(180.0, 25.0 * len(retry_idx))
-        log.warning("TNPA retry %s refs after timeouts/budget", len(retry_idx))
+        # Хватает на полный timeout×число промахов (раньше 180 с — мало для 7 refs).
+        retry_sec = min(
+            tnpa_budget_max_sec(),
+            max(90.0, (float(tnpa_timeout_sec()) + 15.0) * len(retry_idx)),
+        )
+        retry_deadline = time.monotonic() + retry_sec
+        log.warning("TNPA retry %s refs after timeouts/budget (%.0fs)", len(retry_idx), retry_sec)
         for i in retry_idx:
             item = items[i]
             again = lookup_one_tnpa(

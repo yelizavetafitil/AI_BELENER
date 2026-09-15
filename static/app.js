@@ -651,6 +651,13 @@ function beautifyNormativeHtml(root) {
         delete img.dataset.fitKey;
         fitPreviewImage(img);
       });
+      img.addEventListener('error', () => {
+        const box = img.closest('.pdf-preview-container');
+        if (!box || box.dataset.previewMissing === '1') return;
+        box.dataset.previewMissing = '1';
+        box.innerHTML =
+          '<p class="preview-missing-note">Превью недоступно (файл устарел или удалён). Запустите проверку снова.</p>';
+      });
     }
     fitPreviewImage(img);
   });

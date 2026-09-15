@@ -13,7 +13,7 @@ from typing import Any
 import fitz
 
 from belener.normative_crops import extract_normatives_document_crops
-from belener.config import upload_temp_dir
+from belener.config import preview_store_dir, prune_preview_store
 from belener.normative_refs import (
     _phrase_matches_highlight_ref,
     _ref_highlight_target,
@@ -912,7 +912,13 @@ def generate_pdf_preview_pages_with_highlights(
         if page_count == 0:
             return pages_out
 
-        tmp_dir = upload_temp_dir()
+        store_dir = preview_store_dir()
+        try:
+            pruned = prune_preview_store()
+            if pruned:
+                log.info("preview store: pruned %s old files", pruned)
+        except Exception as e:
+            log.debug("preview prune skipped: %s", e)
         for page_index in _preview_page_indices(page_count, page_normative_refs):
             if pipeline_deadline is not None and time.monotonic() >= pipeline_deadline - 2.0:
                 log.warning("preview: stop at page=%s (deadline)", page_index + 1)
@@ -925,8 +931,10 @@ def generate_pdf_preview_pages_with_highlights(
                 finally:
                     doc.close()
                 fname = f"preview_{uuid.uuid4().hex}.jpg"
-                out_path = os.path.join(tmp_dir, fname)
+                out_path = os.path.join(store_dir, fname)
                 preview_img.save(out_path, format="JPEG", quality=92)
+                if not os.path.isfile(out_path):
+                    continue
                 pages_out.append(
                     {
                         "page": page_index + 1,
@@ -988,8 +996,10 @@ def generate_pdf_preview_pages_with_highlights(
                 doc.close()
 
             fname = f"preview_{uuid.uuid4().hex}.jpg"
-            out_path = os.path.join(tmp_dir, fname)
+            out_path = os.path.join(store_dir, fname)
             preview_img.save(out_path, format="JPEG", quality=92)
+            if not os.path.isfile(out_path):
+                continue
             pages_out.append(
                 {
                     "page": page_index + 1,

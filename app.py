@@ -12,12 +12,19 @@ import uuid
 import threading
 import urllib.request
 from datetime import timedelta
-from flask import Flask, request, Response, send_file, send_from_directory, stream_with_context, session, redirect, jsonify
+from flask import Flask, request, Response, send_file, send_from_directory, stream_with_context, session, redirect, jsonify, abort
 import psycopg2
 import psycopg2.extras
 import ollama
 
-from belener.config import model_drawing, model_scan, report_llm_enabled, ensure_upload_temp_dir
+from belener.config import (
+    model_drawing,
+    model_scan,
+    report_llm_enabled,
+    ensure_upload_temp_dir,
+    preview_store_dir,
+    upload_temp_dir,
+)
 from belener.extract import extract_pdf_path
 from belener.extract_report import extraction_to_markdown
 from belener.normative_pdf import build_normative_pdf_bytes
@@ -1550,7 +1557,15 @@ def api_chat(conv_id):
 
 @app.route("/api/preview/<path:filename>")
 def serve_preview(filename):
-    return send_from_directory(os.path.join(ROOT_DIR, "data", "tmp"), filename)
+    """Превью из data/previews (и старый data/tmp для истории)."""
+    name = os.path.basename((filename or "").replace("\\", "/"))
+    if not name or name != filename or ".." in name:
+        abort(404)
+    for directory in (preview_store_dir(), upload_temp_dir(), os.path.join(ROOT_DIR, "data", "tmp")):
+        path = os.path.join(directory, name)
+        if os.path.isfile(path):
+            return send_from_directory(directory, name)
+    abort(404)
 
 @app.route("/api/export-normative-pdf", methods=["POST"])
 def api_export_normative_pdf():

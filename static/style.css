@@ -1970,6 +1970,12 @@ body {
   margin-top: 0;
   overscroll-behavior: contain;
 }
+.preview-missing-note {
+  margin: 1.25rem 1rem;
+  color: var(--muted, #6b7280);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
 .normative-workspace-preview {
   overscroll-behavior: contain;
 }

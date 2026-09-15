@@ -110,12 +110,15 @@ def test_pick_best_tnpa_match_gost_dotted():
     assert "12.1.046" in _tnpa_designation(match)
 
 
-def test_tnpa_parallel_ignores_stn_parallel_one(monkeypatch):
+def test_tnpa_parallel_default_independent_of_stn(monkeypatch):
     monkeypatch.setenv("PDF_STN_PARALLEL", "1")
     monkeypatch.delenv("PDF_TNPA_PARALLEL", raising=False)
     from belener.config import tnpa_parallel_workers
 
-    assert tnpa_parallel_workers() >= 2
+    # По умолчанию 1 воркер — параллель на сервере валит SSL handshake.
+    assert tnpa_parallel_workers() == 1
+    monkeypatch.setenv("PDF_TNPA_PARALLEL", "2")
+    assert tnpa_parallel_workers() == 2
 
 
 def test_lookup_one_tnpa_timeout_is_not_missing(monkeypatch):

@@ -28,6 +28,47 @@ def upload_temp_dir() -> str:
     return ensure_upload_temp_dir()
 
 
+def preview_store_dir() -> str:
+    """Каталог превью листов — volume data/, переживает рестарт контейнера."""
+    explicit = (os.environ.get("BELENER_PREVIEW_DIR") or "").strip()
+    if explicit:
+        path = Path(explicit)
+    elif Path("/app/data").exists():
+        path = Path("/app/data/previews")
+    else:
+        path = Path(ensure_upload_temp_dir()) / "previews"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
+def preview_max_age_days() -> int:
+    try:
+        return max(1, min(int(os.environ.get("BELENER_PREVIEW_MAX_AGE_DAYS", "14").strip()), 90))
+    except ValueError:
+        return 14
+
+
+def prune_preview_store(*, max_age_days: int | None = None) -> int:
+    """Удаляет старые JPEG превью. Возвращает число удалённых файлов."""
+    import time
+
+    age_days = preview_max_age_days() if max_age_days is None else max(1, int(max_age_days))
+    cutoff = time.time() - age_days * 86400
+    removed = 0
+    try:
+        root = Path(preview_store_dir())
+        for path in root.glob("preview_*.jpg"):
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+            except OSError:
+                continue
+    except OSError:
+        return removed
+    return removed
+
+
 def extract_mode() -> str:
     """accuracy — медленно (multiview, CV-ячейки); fast — зоны + OCR, рекомендуется в вебе."""
     return (os.environ.get("PDF_EXTRACT_MODE") or "fast").strip().lower()
@@ -1268,38 +1309,52 @@ def stn_timeout_sec() -> int:
 
 
 def tnpa_timeout_sec() -> int:
-    """tnpa.by отвечает медленно (часто 30–50 с на запрос)."""
+    """tnpa.by на медленных каналах часто 30–70 с на запрос."""
     try:
-        return max(20, min(int(os.environ.get("PDF_TNPA_TIMEOUT", "55").strip()), 120))
+        return max(25, min(int(os.environ.get("PDF_TNPA_TIMEOUT", "70").strip()), 120))
     except ValueError:
-        return 55
+        return 70
 
 
 def tnpa_parallel_workers() -> int:
-    """Параллельные запросы к tnpa.by. Не наследуем PDF_STN_PARALLEL=1."""
+    """1 воркер по умолчанию: 3 параллели на сервере валят SSL handshake."""
     try:
-        raw = (os.environ.get("PDF_TNPA_PARALLEL") or "3").strip()
-        return max(1, min(int(raw), 6))
+        raw = (os.environ.get("PDF_TNPA_PARALLEL") or "1").strip()
+        return max(1, min(int(raw), 3))
     except ValueError:
-        return 3
+        return 1
 
 
 def tnpa_max_queries() -> int:
+    """Один короткий SearchParam — меньше HTTP на медленном tnpa.by."""
     try:
-        return max(1, min(int(os.environ.get("PDF_TNPA_MAX_QUERIES", "3").strip()), 6))
+        return max(1, min(int(os.environ.get("PDF_TNPA_MAX_QUERIES", "1").strip()), 3))
     except ValueError:
-        return 3
+        return 1
+
+
+def tnpa_budget_max_sec() -> float:
+    """Верхний предел окна ТНПА (независимо от OCR-бюджета)."""
+    try:
+        return max(300.0, float(os.environ.get("PDF_TNPA_BUDGET_MAX", "1800").strip()))
+    except ValueError:
+        return 1800.0
 
 
 def tnpa_batch_budget_sec(page_count: int = 1, refs_count: int = 0) -> float:
-    """Резерв на пакетную проверку tnpa.by (параллельно со STN)."""
+    """Резерв на пакетную проверку tnpa.by (параллельно со STN).
+
+    Не режем 55% OCR-бюджета: на медленном канале 11 refs × ~55–70 с
+    иначе обрываются после ~4 найденных (как в логах сервера).
+    """
     pages = max(1, int(page_count))
     refs = max(int(refs_count), 0)
     workers = max(1, tnpa_parallel_workers())
-    per_ref = max(12.0, float(tnpa_timeout_sec()) / workers + 4.0)
-    base = max(150.0, refs * per_ref + pages * 2.0)
-    cap = gost_check_total_budget_sec(page_count) * 0.55
-    return min(max(base, 180.0), max(cap, 180.0))
+    # Полный timeout на «волну» (ceil(refs/workers)), плюс запас на handshake/retry.
+    per_wave = max(25.0, float(tnpa_timeout_sec()) + 12.0)
+    waves = max(1, (refs + workers - 1) // workers) if refs else 1
+    base = max(180.0, waves * per_wave + pages * 2.0)
+    return min(base, tnpa_budget_max_sec())
 
 
 def pipeline_tnpa_deadline(

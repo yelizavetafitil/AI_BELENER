@@ -37,13 +37,16 @@ def test_budget_scales_with_page_count():
 
 
 def test_tnpa_budget_scales_with_refs_and_pages(monkeypatch):
-    monkeypatch.setenv("PDF_TNPA_TIMEOUT", "55")
-    monkeypatch.setenv("PDF_TNPA_PARALLEL", "3")
+    monkeypatch.setenv("PDF_TNPA_TIMEOUT", "70")
+    monkeypatch.setenv("PDF_TNPA_PARALLEL", "1")
+    monkeypatch.setenv("PDF_TNPA_BUDGET_MAX", "1800")
     small = tnpa_batch_budget_sec(page_count=1, refs_count=5)
     large = tnpa_batch_budget_sec(page_count=100, refs_count=40)
     assert large > small
     assert small >= 180.0
-    assert large <= gost_check_total_budget_sec(100) * 0.56
+    # 11 refs × ~82 с волны не должны обрезаться OCR-капом ~330 с
+    eleven = tnpa_batch_budget_sec(page_count=1, refs_count=11)
+    assert eleven >= 11 * 70
 
     import time
 
